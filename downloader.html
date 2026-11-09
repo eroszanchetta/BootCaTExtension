@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BootCaT · Corpus workspace</title>
+  <link rel="icon" type="image/png" href="icons/icon-32.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body id="top">
+  <a class="skip-link" href="#search-section">Skip to content</a>
+  <div class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="#top"><img src="icons/BootCaT.svg" width="56" height="56" alt=""><span>BootCaT</span></a>
+      <nav aria-label="Workspace sections">
+        <a href="#search-section">Search</a>
+        <a href="#urls-section">URLs</a>
+        <a href="#review-section">Review &amp; export</a>
+        <a href="#preview-section">Text preview</a>
+      </nav>
+    </div>
+  </div>
+  <main>
+    <header><span class="badge">BOOTCAT LAB · 0.4</span><h1>Collect pages from the web.</h1>
+      <p>Find pages, extract useful text, and build a local corpus.</p></header>
+    <section id="search-section" aria-labelledby="search-heading" tabindex="-1">
+      <h2 id="search-heading">Search and collect</h2>
+      <form id="search-form" class="search-form">
+        <label for="engine">Search engine</label>
+        <select id="engine"></select>
+        <label for="query">Search query</label>
+        <input id="query" required maxlength="2000" placeholder="e.g. renewable energy terminology">
+        <button type="submit">Open search</button>
+      </form>
+      <p class="hint">On the results tab, click the BootCaT toolbar icon → Collect results. Browse more results and collect again as needed. Switch engine here if one stops working.</p>
+      <p id="collection-status" role="status" aria-live="polite">Loading saved searches…</p>
+      <div class="actions collection-actions">
+        <button id="use-collected" disabled>Add collected URLs below</button>
+        <button id="save-searches" class="secondary" disabled>Export searches JSON</button>
+        <button id="clear-searches" class="secondary" disabled>Clear searches</button>
+      </div>
+      <details><summary>Review saved results</summary><div class="table-wrap"><table><thead><tr><th scope="col">Title / URL</th><th scope="col">Search sources</th></tr></thead><tbody id="collected-results"></tbody></table></div><p class="hint">Preview shows the first 200 unique URLs. Export includes all saved results. Remove unwanted URLs from the download list below.</p></details>
+    </section>
+    <section id="urls-section" aria-labelledby="input-heading" tabindex="-1">
+      <h2 id="input-heading">1. Add your URLs</h2>
+      <label for="urls">One full HTTP or HTTPS URL per line</label>
+      <textarea id="urls" spellcheck="false" placeholder="https://example.com/&#10;https://www.iana.org/help/example-domains"></textarea>
+      <p class="hint">Blank lines are ignored. Duplicates and URL fragments are removed. Maximum 500 URLs.</p>
+      <div class="extractor-setting">
+        <label for="extractor">Text extractor for the next batch</label>
+        <select id="extractor"><option value="readability" selected>Mozilla Readability (default)</option><option value="defuddle">Defuddle</option></select>
+        <p class="hint">The choice applies to HTML pages. Plain-text files use the same cleanup with either setting.</p>
+      </div>
+      <div class="actions"><button id="start">Download URLs</button><button id="stop" class="secondary" disabled>Stop</button></div>
+      <p class="hint">Keep this tab open. Public pages only; login cookies are not sent. Up to 10 MiB per file and 100 MiB per batch.</p>
+    </section>
+    <section id="review-section" aria-labelledby="results-heading" tabindex="-1">
+      <h2 id="results-heading">2. Review and export</h2>
+      <p id="status" role="status" aria-live="polite">Ready when you are.</p>
+      <progress id="progress" value="0" max="1" aria-label="URLs processed"></progress>
+      <button id="export" disabled>Save ZIP</button>
+      <p class="hint">Includes all originals, selected UTF-8 corpus texts, search sources and extraction metadata. ZIP entries are uncompressed.</p>
+      <div class="table-wrap"><table><thead><tr><th scope="col">Include</th><th scope="col">URL</th><th scope="col">Download / extraction</th></tr></thead><tbody id="results"></tbody></table></div>
+      <p id="corpus-status" role="status" aria-live="polite">Download pages to extract corpus text.</p>
+    </section>
+    <section id="preview-section" aria-labelledby="preview-title" tabindex="-1">
+      <h2 id="preview-title">Text preview</h2>
+      <p id="preview-meta" class="hint">Choose Preview text beside a downloaded document.</p>
+      <label for="preview-text">Extracted corpus text (read only)</label>
+      <textarea id="preview-text" readonly spellcheck="false"></textarea>
+      <p class="hint">Review the text before export. Extraction may omit useful material or retain boilerplate. HTML and plain text are supported; PDFs retain their original files only.</p>
+    </section>
+    <footer>Local processing · No BootCaT server · Readability text extraction · No page scripts executed</footer>
+  </main>
+  <script src="vendor/Readability.js"></script>
+  <script src="vendor/Defuddle.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

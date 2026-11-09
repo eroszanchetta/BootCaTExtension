@@ -1,0 +1,5 @@
+body { width: 360px; }
+main { margin: 0; padding: 22px; }
+h1 { font-size: 1.55rem; }
+button { width: 100%; font-size: .9rem; }
+#feedback { font-size: .85rem; overflow-wrap: anywhere; }
