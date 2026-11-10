@@ -2,8 +2,8 @@
 // Selectors are heuristics, not a guaranteed search-engine interface.
 export const ENGINES = [
   { id: "google", name: "Google", searchURL: "https://www.google.com/search", queryParam: "q", selectors: ["#search a:has(h3)", "#rso a:has(h3)", "#search h3 a"], titleSelector: "h3", experimental: false },
-  { id: "duckduckgo", name: "DuckDuckGo", searchURL: "https://duckduckgo.com/", queryParam: "q", selectors: ['a[data-testid="result-title-a"]', "a.result__a"], titleSelector: null, experimental: true },
-  { id: "ecosia", name: "Ecosia", searchURL: "https://www.ecosia.org/search", queryParam: "q", selectors: ['a[data-test-id="result-link"]', "a.result-title", "a.result__link"], titleSelector: null, experimental: true }
+  { id: "duckduckgo", name: "DuckDuckGo", searchURL: "https://duckduckgo.com/", queryParam: "q", selectors: ['a[data-testid="result-title-a"]', "a.result__a"], titleSelector: null, experimental: false },
+  { id: "ecosia", name: "Ecosia", searchURL: "https://www.ecosia.org/search", queryParam: "q", selectors: ['a[data-test-id="result-link"]', "a.result-title", "a.result__link"], titleSelector: null, experimental: false }
 ];
 export function adapterForURL(value) {
   try {
