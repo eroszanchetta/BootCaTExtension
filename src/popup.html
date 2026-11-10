@@ -1,11 +1,13 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>BootCaT</title><link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="popup.css"></head>
-<body><main><div class="popup-brand"><img src="icons/icon-48.png" width="48" height="48" alt="BootCaT"></div><span class="badge">BootCaT · 0.4</span><h1>Collect search results</h1>
-<p id="page-info">Checking this tab…</p>
+<body><main><div class="popup-brand"><img src="icons/icon-48.png" width="48" height="48" alt="BootCaT"></div><span class="badge">BootCaT · 0.4</span>
 <button id="workspace" class="secondary">Open BootCaT</button>
 <p class="hint">Open the main BootCaT window.</p>
+<h3>Collect search results</h3>
+<p id="page-info">Checking this tab…</p>
 <button id="collect" disabled>Collect results from this tab</button>
 <p id="feedback" role="status" aria-live="polite">Only results in current page are collected. Supported search engines: DuckDuckGo · Ecosia · Google</p>
-<button id="save-page" class="secondary" disabled>Save current page</button>
+<h3>Save individual pages</h3>
+<button id="save-page" class="secondary" disabled>Add page to corpus</button>
 <p id="page-feedback" class="hint" role="status" aria-live="polite">Directly add current page to corpus (useful when download fails because of CAPTCHA)</p>
 </main><script type="module" src="popup.js"></script></body></html>

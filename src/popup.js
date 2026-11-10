@@ -8,7 +8,7 @@ try {
   [activeTab] = await ext.tabs.query({ active: true, currentWindow: true });
   document.getElementById("save-page").disabled = !/^https?:\/\//.test(activeTab?.url || "");
   const engine = adapterForURL(activeTab?.url);
-  document.getElementById("page-info").textContent = engine ? `${engine.name}${engine.experimental ? " (experimental)" : ""} web results detected.` : "Open a Google, DuckDuckGo or Ecosia web search results tab, then click this extension again.";
+  document.getElementById("page-info").textContent = engine ? `${engine.name}${engine.experimental ? " (experimental)" : ""} web results detected.` : "Open a DuckDuckGo, Ecosia or Google web search results tab, then click this extension again.";
   collect.disabled = !engine;
 } catch (error) { feedback.textContent = error.message; }
 collect.addEventListener("click", async () => {
