@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-import { ENGINES, adapterForURL, searchURL, extractResults } from '../engines.js';
-import { addCollection, uniqueResults } from '../collection.js';
+import { ENGINES, adapterForURL, searchURL, extractResults } from '../src/engines.js';
+import { addCollection, uniqueResults } from '../src/collection.js';
 
 // Synthetic DOM API fixtures test URL handling and isolated-world execution.
 // They do NOT validate selectors against current live engine layouts.
@@ -64,21 +64,29 @@ test('collections preserve cross-provider provenance, replace repeated pages, en
   assert.throws(() => addCollection(Array.from({ length: 100 }, (_, i) => ({ ...google, pageURL: `https://google.com/search?q=${i}` })), ddg), /limit reached/);
 });
 
-test('worker serializes simultaneous collections and reports extraction errors', async () => {
+for (const namespace of ['chrome', 'browser']) test(`${namespace}: background serializes simultaneous collections and reports errors`, async () => {
+  const origin = namespace === 'browser' ? 'moz-extension://test/' : 'chrome-extension://test/';
   let listener;
   let collections = [];
-  globalThis.chrome = {
-    runtime: { id: 'test', getURL: path => `chrome-extension://test/${path}`, onMessage: { addListener: fn => { listener = fn; } } },
-    tabs: { get: async id => ({ id, url: `https://www.google.com/search?q=${id}` }) },
+  let workspaceExists = true, opened = 0, focused = 0;
+  globalThis[namespace] = {
+    runtime: { id: 'test', getURL: path => `${origin}${path}`, onMessage: { addListener: fn => { listener = fn; } } },
+    tabs: {
+      get: async id => ({ id, url: `https://www.google.com/search?q=${id}` }),
+      query: async options => { assert.deepEqual(options, {}); return workspaceExists ? [{ id: 10, windowId: 5, url: origin + 'downloader.html' }, { id: 11, url: 'https://example.org/' }] : []; },
+      update: async (id, options) => { assert.equal(id, 10); assert.equal(options.active, true); focused++; },
+      create: async options => { assert.equal(options.url, origin + 'downloader.html'); opened++; }
+    },
+    windows: { update: async (id, options) => { assert.equal(id, 5); assert.equal(options.focused, true); } },
     scripting: { executeScript: async ({ target }) => [{ result: { engine: 'google', query: String(target.tabId), pageURL: `https://www.google.com/search?q=${target.tabId}`, unresolved: 0, results: target.tabId === 3 ? [] : [{ url: `https://example.org/${target.tabId}`, title: 'Example', positionOnPage: 1 }] } }] },
     storage: { local: {
       get: async () => { await new Promise(r => setTimeout(r, 10)); return { collections }; },
       set: async data => { await new Promise(r => setTimeout(r, 10)); collections = data.collections; }
     } }
   };
-  await import('../background.js');
+  await import(`../src/background.js?namespace=${namespace}`);
   const request = message => new Promise(resolve => {
-    assert.equal(listener(message, { id: 'test', url: 'chrome-extension://test/popup.html' }, resolve), true);
+    assert.equal(listener(message, { id: 'test', url: origin + 'popup.html' }, resolve), true);
   });
   try {
     const replies = await Promise.all([request({ type: 'collect', tabId: 1 }), request({ type: 'collect', tabId: 2 })]);
@@ -90,5 +98,11 @@ test('worker serializes simultaneous collections and reports extraction errors',
     assert.equal(collections.length, 2);
     await request({ type: 'clear-collections' });
     assert.equal(collections.length, 0);
-  } finally { delete globalThis.chrome; }
+    assert.equal((await request({ type: 'open-workspace' })).ok, true);
+    assert.equal(focused, 1); assert.equal(opened, 0);
+    workspaceExists = false;
+    assert.equal((await request({ type: 'open-workspace' })).ok, true);
+    assert.equal(opened, 1);
+    assert.equal(listener({ type: 'collect', tabId: 1 }, { id: 'test', url: 'https://example.org/' }, () => assert.fail('Unexpected reply')), undefined);
+  } finally { delete globalThis[namespace]; }
 });

@@ -1,1 +1,19 @@
-{ "private": true, "type": "module", "scripts": { "test": "node --test" } }
+{
+  "name": "bootcat-extension",
+  "version": "0.4.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "node scripts/build.mjs all",
+    "build:chromium": "node scripts/build.mjs chromium",
+    "build:firefox": "node scripts/build.mjs firefox",
+    "package": "node scripts/package.mjs all",
+    "package:chromium": "node scripts/package.mjs chromium",
+    "package:firefox": "node scripts/package.mjs firefox",
+    "test": "node --test",
+    "test:browser": "node scripts/smoke-chromium.cjs",
+    "lint:firefox": "node scripts/build.mjs firefox && web-ext lint --source-dir dist/firefox",
+    "dev:firefox": "node scripts/build.mjs firefox && web-ext run --source-dir dist/firefox"
+  }
+}

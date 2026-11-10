@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import vm from 'node:vm';
-import { decodeResponse, normaliseText, contentToText, extractDocument, EXTRACTION_LIMIT } from '../extraction.js';
-import { corpusFiles, extractionMetadata } from '../corpus.js';
+import { decodeResponse, normaliseText, contentToText, extractDocument, EXTRACTION_LIMIT } from '../src/extraction.js';
+import { corpusFiles, extractionMetadata } from '../src/corpus.js';
 const encode = text => new TextEncoder().encode(text);
 const text = value => ({ nodeType: 3, nodeValue: value });
 const element = (tag, children = [], attributes = {}) => ({ nodeType: 1, tagName: tag, childNodes: children, hasAttribute: key => key in attributes, getAttribute: key => attributes[key] ?? null });
@@ -59,7 +59,7 @@ test('metadata excludes body text; excluded documents disappear only from corpus
 });
 
 test('bundled upstream script loads without modification and matches recorded snapshot hash', async () => {
-  const script = await readFile(new URL('../vendor/Readability.js', import.meta.url));
+  const script = await readFile(new URL('../src/vendor/Readability.js', import.meta.url));
   assert.equal(createHash('sha256').update(script).digest('hex'), '87fd63ae01549bb9e19dc5778e5c867a2553d6c4e3bdd9c8f35fb6136c5676f1');
   const context = vm.createContext({}); vm.runInContext(script.toString(), context);
   assert.equal(typeof context.Readability, 'function');
@@ -101,7 +101,7 @@ test('missing Defuddle never silently runs Readability and default remains Reada
 
 
 test('real bundled Defuddle exports a constructor and handles an empty document without network access', async () => {
-  const script = await readFile(new URL('../vendor/Defuddle.js', import.meta.url));
+  const script = await readFile(new URL('../src/vendor/Defuddle.js', import.meta.url));
   assert.equal(createHash('sha256').update(script).digest('hex'), '9b61869627a459bddca398d0136f4de7115577f2f9f01eac4b4fb0a88571e1df');
   const context = vm.createContext({ URL });
   context.self = context;

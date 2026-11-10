@@ -1,0 +1,14 @@
+{
+  "background": {
+    "scripts": [
+      "background.js"
+    ],
+    "type": "module"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "bootcat-extension@bootcat.dipintra.it",
+      "strict_min_version": "140.0"
+    }
+  }
+}
