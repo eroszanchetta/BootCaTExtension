@@ -1,9 +1,11 @@
+import { getExtensionAPI } from './extension-api.js';
+const ext = getExtensionAPI();
 import { ENGINES, searchURL } from "./engines.js";
 import { uniqueResults } from "./collection.js";
 import { parseURLs } from "./core.js";
 
 export async function readCollections() {
-  const { collections = [] } = await chrome.storage.local.get("collections");
+  const { collections = [] } = await ext.storage.local.get("collections");
   return collections;
 }
 export function initSearchUI({ isRunning }) {
@@ -19,7 +21,7 @@ export function initSearchUI({ isRunning }) {
     event.preventDefault();
     const query = el("query").value.trim();
     if (!query) return;
-    try { await chrome.tabs.create({ url: searchURL(el("engine").value, query) }); }
+    try { await ext.tabs.create({ url: searchURL(el("engine").value, query) }); }
     catch (error) { status.textContent = error.message; }
   });
   function render() {
@@ -54,11 +56,11 @@ export function initSearchUI({ isRunning }) {
   el("clear-searches").addEventListener("click", async () => {
     if (!window.confirm("Clear all saved search collections? Export them first if you want to keep them. The URL download list will stay as it is.")) return;
     try {
-      const reply = await chrome.runtime.sendMessage({ type: "clear-collections" });
+      const reply = await ext.runtime.sendMessage({ type: "clear-collections" });
       if (!reply?.ok) throw new Error(reply?.error || "Could not clear searches");
     } catch (error) { status.textContent = error.message; }
   });
-  chrome.storage.onChanged.addListener((changes, area) => {
+  ext.storage.onChanged.addListener((changes, area) => {
     if (area === "local" && changes.collections) { collections = changes.collections.newValue || []; render(); }
   });
   readCollections().then(saved => { collections = saved; render(); }, error => { status.textContent = `Could not load saved searches: ${error.message}`; });

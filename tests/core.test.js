@@ -5,8 +5,8 @@ import { writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
-import { parseURLs, filenameFor, fetchFile } from "../core.js";
-import { makeZIP } from "../zip.js";
+import { parseURLs, filenameFor, fetchFile } from "../src/core.js";
+import { makeZIP } from "../src/zip.js";
 
 test("URL validation, deduplication, fragments and credentials", () => {
   assert.deepEqual(parseURLs("https://example.com#one\n\nhttps://example.com/#two\nhttp://example.org/a?q=1"), {
