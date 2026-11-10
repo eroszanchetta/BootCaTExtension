@@ -22,7 +22,7 @@ export function parseURLs(text) {
 }
 
 export function filenameFor(url, type, index) {
-  const extensions = { "text/html": "html", "application/xhtml+xml": "html", "text/plain": "txt", "application/pdf": "pdf", "application/json": "json", "application/xml": "xml", "text/xml": "xml" };
+  const extensions = { "text/html": "html", "application/xhtml+xml": "html", "text/plain": "txt", "application/pdf": "pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx", "application/json": "json", "application/xml": "xml", "text/xml": "xml" };
   const extension = extensions[type.split(";")[0].trim().toLowerCase()] || "bin";
   // Numbered names prevent collisions; never use server-supplied filesystem paths.
   const host = new URL(url).hostname.replace(/[^a-z0-9.-]/gi, "_").slice(0, 80);

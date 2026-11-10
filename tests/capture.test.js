@@ -42,6 +42,7 @@ test('workspace recovers a failed URL without fetching again, replaces repeated 
     document: { getElementById: get, createElement: () => new Element(), createElementNS: () => new Element(), createTextNode: text => Object.assign(new Element(), { textContent: text }) },
     window: { addEventListener() {}, confirm: () => confirm },
     getExtensionAPI: () => ({ storage: { onChanged: { addListener(fn) { notify = fn; } } } }),
+    extractionContentType: (bytes, type) => type, extractDownloadedDocument() {},
     parseURLs, filenameFor, BATCH_LIMIT, FILE_LIMIT: 10 * 1024 * 1024,
     fetchFile: async () => { fetches++; throw new Error('HTTP 403 Forbidden'); },
     initSearchUI: () => ({ flush() {} }),

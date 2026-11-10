@@ -54,7 +54,7 @@
       <div class="extractor-setting">
         <label for="extractor">Text extractor for the next batch</label>
         <select id="extractor"><option value="readability" selected>Mozilla Readability (default)</option><option value="defuddle">Defuddle</option></select>
-        <p class="hint">The choice applies to HTML pages. Plain-text files use the same cleanup with either setting.</p>
+        <p class="hint">The choice applies to HTML pages. PDF, DOCX and plain-text files use their own extraction with either setting.</p>
       </div>
       <div class="actions"><button id="start">Download URLs</button><button id="stop" class="secondary" disabled>Stop</button></div>
       <p class="hint">Keep this tab open. Public pages only; login cookies are not sent. Up to 10 MiB per file and 100 MiB per batch.</p>
@@ -75,9 +75,9 @@
       <p id="preview-meta" class="hint">Click a Preview text button in the review list to display its text here.</p>
       <label for="preview-text">Preview text (read only)</label>
       <textarea id="preview-text" readonly spellcheck="false"></textarea>
-      <p class="hint">Review the text before export. Extraction may omit useful material or retain boilerplate. HTML and plain text are supported; PDFs retain their original files only.</p>
+      <p class="hint">Review the text before export. Extraction may omit useful material or retain boilerplate. HTML, plain text, PDF and DOCX are supported. Scanned PDFs may require OCR; password-protected files are not supported.</p>
     </section>
-    <footer>Local processing · No BootCaT server · Readability text extraction · No page scripts executed</footer>
+    <footer>Local processing · No BootCaT server · HTML · PDF · DOCX text extraction · No page scripts executed</footer>
   </main>
   <script src="vendor/Readability.js"></script>
   <script src="vendor/Defuddle.js"></script>

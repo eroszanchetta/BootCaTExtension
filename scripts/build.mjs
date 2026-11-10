@@ -10,11 +10,21 @@ export async function build(target, { outputRoot = join(ROOT, 'dist'), includeTe
   const common = await readJSON('manifests/common.json');
   const override = await readJSON(`manifests/${target}.json`);
   const manifest = { ...common, ...override };
+  let pdfRoot;
+  try {
+    pdfRoot = dirname(fileURLToPath(import.meta.resolve('pdfjs-dist/package.json')));
+    const info = JSON.parse(await readFile(join(pdfRoot, 'package.json'), 'utf8'));
+    if (info.version !== '5.6.205') throw new Error('Unexpected PDF.js version');
+  } catch (error) { throw new Error(`Run npm install --omit=optional before building (PDF.js 5.6.205 required). ${error.message}`); }
   const destination = join(outputRoot, target);
   await mkdir(outputRoot, { recursive: true });
   // Only replace this known browser's generated folder, never the source tree.
   await rm(destination, { recursive: true, force: true });
   await cp(join(ROOT, 'src'), destination, { recursive: true });
+  const pdfDestination = join(destination, 'vendor/pdfjs');
+  await mkdir(pdfDestination, { recursive: true });
+  for (const name of ['pdf.mjs', 'pdf.worker.mjs']) await cp(join(pdfRoot, 'legacy/build', name), join(pdfDestination, name));
+  for (const name of ['cmaps', 'standard_fonts', 'LICENSE']) await cp(join(pdfRoot, name), join(pdfDestination, name), { recursive: true });
   await writeFile(join(destination, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
   if (includeTests) {
     await mkdir(join(destination, 'tests'), { recursive: true });

@@ -9,16 +9,17 @@ Before switching your installed extension, save pending download ZIPs and export
 After merging the structural change, pull it in VS Code, then build from the repository root:
 
 ```sh
+npm install
 npm run build
 ```
 
-The repository root no longer contains a loadable manifest. Edit `src/`, rebuild, and load the matching generated folder below. Do not edit `dist/`: the next build replaces it. No npm dependency installation is needed for normal builds.
+The repository root no longer contains a loadable manifest. Edit `src/`, rebuild, and load the matching generated folder below. Do not edit `dist/`: the next build replaces it. Run `npm install` after pulling this update to install the pinned PDF.js dependency. Subsequent builds work offline; PDF.js, its worker, character maps, standard fonts and licences are copied into both extension packages. No CDN is used at runtime.
 
 ## Requirements
 
-- Node.js 20+ for building and packaging. Node is a developer tool; extension users do not need it.
+- Node.js 22.15+ (Node 24 recommended) for building, packaging and tests. Node is a developer tool; extension users do not need it.
 - Target browsers: Chromium/Chrome 120+ and Firefox desktop 140+ (including Firefox ESR 140). These are declared targets; see validation limits below.
-- Python 3 additionally for one optional automated ZIP compatibility test.
+- Python 3 additionally for the automated ZIP/DOCX fixture tests (standard library only).
 
 ## Build and load
 
@@ -46,13 +47,13 @@ npm run dev:firefox
 1. Click the toolbar logo, then Open BootCaT.
 2. Open a query from Search, or browse directly to supported web results.
 3. On that search tab, use the toolbar popup's Collect results button.
-4. Return to the workspace, review saved results and add collected URLs to the editable download list. Manual URL pasting is always available.
+4. Return to the workspace, review the URLs automatically added to the editable download list. Manual URL pasting is always available.
 5. Choose Readability (default) or Defuddle before starting the batch.
 6. Download, review text previews and inclusion checkboxes, then Save ZIP.
 
 Google, DuckDuckGo and Ecosia use separate adapters. In the Google layouts tested so far, sign-in was necessary to expose usable destination URLs. Opaque redirects are skipped with a warning. Switching providers retains earlier collections and provenance.
 
-The ZIP retains originals in `pages/`, selected UTF-8 texts in `corpus/`, and `results.json`, `extraction.json` and `searches.json`. Search collections persist locally; downloaded bodies, extracted texts and the editable URL list remain in memory. Keep the workspace open until the ZIP is saved. PDF conversion is not implemented.
+The ZIP retains originals in `pages/`, selected UTF-8 texts in `corpus/`, and `results.json`, `extraction.json` and `searches.json`. Search collections persist locally; downloaded bodies, extracted texts and the editable URL list remain in memory. Keep the workspace open until the ZIP is saved. PDF and DOCX extraction is included; see document-format notes below.
 
 ## Source layout
 
@@ -62,12 +63,12 @@ The ZIP retains originals in `pages/`, selected UTF-8 texts in `corpus/`, and `r
 | `src/extension-api.js` | Prefer `browser.*`, fall back to the supported Chromium `chrome.*` APIs |
 | `src/background.js` | The same message/collection handler for both browser contexts |
 | `src/engines.js` | Search provider detection and DOM adapters |
-| `src/extraction.js`, `src/corpus.js` | Text extraction, inclusion and corpus export |
+| `src/extraction.js`, `src/binary-extraction.js`, `src/docx.js`, `src/corpus.js` | HTML/plain-text/PDF/DOCX extraction, inclusion and corpus export |
 | `src/icons/`, `src/vendor/` | Shared logo, icons and bundled extractors/licences |
 | `manifests/common.json` | Common name/version, permissions, interface and CSP |
 | `manifests/chromium.json` | Chromium minimum version and module service worker |
 | `manifests/firefox.json` | Firefox module background scripts, stable ID and minimum version |
-| `scripts/` | Dependency-free Node build and ZIP packaging; optional browser smoke test |
+| `scripts/` | Node build, local PDF.js asset bundling and ZIP packaging; optional browser smoke test |
 | `tests/` | Shared unit/build tests and optional real-DOM fixtures |
 | `dist/` | Generated output, excluded from Git |
 
@@ -97,7 +98,7 @@ These are unsigned packages for review/upload, not store-published releases. Nor
 npm test
 ```
 
-No npm packages are required for these tests. They cover URL validation, downloading, encoding, extraction boundaries, corpus selection, library hashes, ZIP compatibility, API namespace selection, background messaging with both API namespaces, and the generated builds. Python 3 is used by the independent ZIP reader test.
+Run `npm install` before testing; the PDF tests use the pinned PDF.js package. They cover URL validation, downloading, encoding, extraction boundaries, corpus selection, library hashes, ZIP compatibility, API namespace selection, background messaging with both API namespaces, and the generated builds. Python 3 is used by the independent ZIP reader test.
 
 Builds are checked for matching shared files, the correct manifests, required assets and safe replacement of generated output. Message tests simulate the Firefox namespace/scheme and the Chromium namespace/scheme; they do not substitute for live Firefox testing.
 
@@ -107,7 +108,7 @@ For real browser-DOM extraction fixtures, build with tests included:
 node scripts/build.mjs all --with-tests
 ```
 
-After loading a generated extension, open the workspace and replace `downloader.html` at the end of its address with `tests/browser-tests.html`. Nine offline checks exercise both real extractors, Unicode, structural boundaries and script inertness. Standard builds omit this page.
+After loading a generated extension, open the workspace and replace `downloader.html` at the end of its address with `tests/browser-tests.html`. Twelve offline checks exercise both real extractors, Unicode, structural boundaries and script inertness. Standard builds omit this page.
 
 An optional automated Chromium smoke test uses Playwright. Install the developer-only tooling when needed:
 
@@ -120,6 +121,17 @@ npm run test:browser
 The smoke test builds into a temporary folder/profile and routes all web requests to local fixtures. It checks the extraction page, actual script injection into a mock Google page, saved searches, download/extraction/ZIP with both extractors, workspace reuse and persistence. It never contacts real search engines. `CHROMIUM_EXECUTABLE_PATH` can select an existing compatible Chromium binary.
 
 **Validation in the build environment:** all unit/build tests and both ZIP packages passed. Live Chromium testing was attempted but the environment blocked browser startup (`socket() failed: Operation not permitted`). Firefox is not installed here. Live browser smoke tests and minimum-version verification therefore remain to be performed on a machine that can run the browsers. The optional smoke script is included but has not completed here.
+
+## PDF and DOCX extraction
+
+Downloads containing PDF or DOCX are extracted automatically, independently of the Readability/Defuddle choice (which still controls HTML). Both formats use the existing preview, Include checkbox, trash button and corpus ZIP. Originals are retained even if extraction fails. Correct `.pdf` / `.docx` extensions are assigned to known types, including common downloads served as `application/octet-stream`. A URL ending in `.pdf` that actually returns an HTML page is still treated as HTML.
+
+- **PDF:** PDF.js 5.6.205 extracts embedded text using a bundled local module worker. Page boundaries are separated by blank lines; page counts and per-page character counts are recorded in extraction metadata. Reading order, columns, tables, repeated headers and line breaks can be imperfect. We do not dehyphenate or silently run OCR. Empty/textless PDFs are excluded with an OCR suggestion. Password-protected PDFs report an actionable failure; password entry is not implemented.
+- **DOCX:** a small ZIP/XML text reader extracts main-body paragraphs, hyperlinks and table text, preserving Unicode and explicit line breaks. Hidden runs, deleted text and field instructions are omitted. Headers, footers, comments, footnotes and endnotes are intentionally omitted in this prototype; review text boxes and tables. It does not reproduce Word layout or convert the document to HTML. ZIP/XML inputs are bounded and XML entities are rejected. Legacy `.doc`, PowerPoint, OpenDocument and encrypted documents remain unsupported.
+
+Limits: 10 MiB input per document, 30 seconds per binary extraction, 2 million output characters; PDFs additionally allow at most 300 pages; DOCX allows at most 2,000 ZIP entries, 50 MiB declared total expansion, 3 MiB for each parsed XML part and 60,000 XML elements. Extraction errors produce no partial corpus text. Stop cancels active binary extraction, while retaining downloaded originals. Creating a new project cancels the old work.
+
+The toolbar's **Add page to corpus** action still captures HTML pages, not the browser's built-in PDF viewer. Supply a direct document URL in the download list for PDF/DOCX extraction.
 
 ## Projects and review
 
