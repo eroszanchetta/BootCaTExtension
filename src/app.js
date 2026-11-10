@@ -1,3 +1,6 @@
+import { readSavedPages, clearSavedPages } from './page-store.js';
+import { getExtensionAPI } from './extension-api.js';
+const ext = getExtensionAPI();
 import { parseURLs, filenameFor, fetchFile, FILE_LIMIT, BATCH_LIMIT } from './core.js';
 import { makeZIP } from './zip.js';
 import { initSearchUI, readCollections } from './search-ui.js';
@@ -9,6 +12,7 @@ const VERSION = '0.4.0';
 const ui = Object.fromEntries(['urls', 'start', 'stop', 'export', 'status', 'progress', 'results', 'corpus-status', 'preview-title', 'preview-meta', 'preview-text', 'extractor'].map(id => [id, document.getElementById(id)]));
 let running = false, stopping = false, controller = null;
 let files = [], records = [], documents = [], archiveURL = null, startedAt = null;
+const resultRows = new Map();
 let batchCollections = [];
 let batchExtractor = 'readability';
 ui.extractor.querySelector('option[value="defuddle"]').disabled = !DEFUDDLE_AVAILABLE;
@@ -34,7 +38,9 @@ function preview(doc) {
 function row(url, message, doc = null) {
   const tr = document.createElement('tr');
   const selection = document.createElement('td'), source = document.createElement('td'), result = document.createElement('td');
-  source.textContent = url;
+  const link = document.createElement('a');
+  link.href = url; link.textContent = url; link.target = '_blank'; link.rel = 'noopener noreferrer';
+  source.append(link);
   if (!doc) { selection.textContent = '—'; result.textContent = message; tr.className = 'error'; }
   else {
     const e = doc.extraction;
@@ -51,7 +57,10 @@ function row(url, message, doc = null) {
       const warning = document.createElement('p'); warning.className = 'hint'; warning.textContent = e.warnings.join(' '); result.append(warning);
     }
   }
-  tr.append(selection, source, result); ui.results.append(tr);
+  tr.append(selection, source, result);
+  const previous = resultRows.get(url);
+  if (previous) previous.replaceWith(tr); else ui.results.append(tr);
+  resultRows.set(url, tr);
 }
 ui.stop.addEventListener('click', () => {
   stopping = true; controller?.abort(); ui.stop.disabled = true;
@@ -66,8 +75,8 @@ ui.start.addEventListener('click', async () => {
   try { batchCollections = await readCollections(); }
   catch (error) { ui.start.disabled = false; ui.status.textContent = `Cannot read saved searches: ${error.message}`; return; }
   invalidateArchive();
-  running = true; stopping = false; files = []; records = []; documents = []; startedAt = new Date().toISOString();
-  ui.results.replaceChildren(); ui.urls.disabled = true; ui.extractor.disabled = true; ui.stop.disabled = false; ui.export.disabled = true;
+  running = true; refreshSavedControls(); stopping = false; files = []; records = []; documents = []; startedAt = new Date().toISOString();
+  resultRows.clear(); ui.results.replaceChildren(); ui.urls.disabled = true; ui.extractor.disabled = true; ui.stop.disabled = false; ui.export.disabled = true;
   ui['preview-title'].textContent = 'Text preview'; ui['preview-meta'].textContent = 'Choose Preview text beside a downloaded document.'; ui['preview-text'].value = '';
   ui.progress.max = parsed.urls.length; ui.progress.value = 0; updateCorpusStatus();
   let total = 0;
@@ -98,6 +107,7 @@ ui.start.addEventListener('click', async () => {
     }
   } finally {
     running = false; ui.start.disabled = false; ui.urls.disabled = false; ui.extractor.disabled = false; ui.stop.disabled = true; ui.export.disabled = false;
+    refreshSavedControls();
     const failed = records.filter(r => r.outcome === 'error').length;
     ui.status.textContent = `${stopping ? 'Stopped' : 'Finished'}. ${files.length} downloaded, ${failed} download errors, ${documents.filter(doc => doc.extraction.status === 'failed').length} extraction failures. Review the corpus selection and save the ZIP.`;
   }
@@ -118,3 +128,74 @@ ui.export.addEventListener('click', () => {
     document.body.append(link); link.click(); link.remove();
   } catch (error) { ui.status.textContent = `Could not create ZIP: ${error.message}`; }
 });
+
+const savedUI = {
+  add: document.getElementById('add-saved'), clear: document.getElementById('clear-saved'),
+  status: document.getElementById('saved-status')
+};
+let savedCount = 0;
+function refreshSavedControls() {
+  savedUI.add.disabled = running || !savedCount;
+  savedUI.clear.disabled = running || !savedCount;
+}
+async function refreshSavedPages() {
+  try {
+    savedCount = (await readSavedPages()).length;
+    savedUI.status.textContent = `${savedCount} saved page${savedCount === 1 ? '' : 's'} available. Import to review and extract text; clear only after exporting.`;
+    refreshSavedControls();
+  } catch (error) { savedUI.status.textContent = `Cannot read saved pages: ${error.message}`; }
+}
+ext.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.captureRevision) refreshSavedPages();
+});
+window.addEventListener('focus', refreshSavedPages);
+savedUI.clear.addEventListener('click', async () => {
+  if (running || !window.confirm('Clear saved page snapshots? Export your corpus first. Pages already imported in this workspace will remain until you close it or start a new batch.')) return;
+  try {
+    await clearSavedPages();
+    try { await ext.storage.local.set({ captureRevision: crypto.randomUUID() }); } catch {}
+    await refreshSavedPages();
+  } catch (error) { savedUI.status.textContent = error.message; }
+});
+savedUI.add.addEventListener('click', async () => {
+  if (running) return;
+  running = true; refreshSavedControls(); ui.start.disabled = true; ui.extractor.disabled = true;
+  let imported = 0;
+  try {
+    const pages = await readSavedPages();
+    if (!startedAt) {
+      batchCollections = await readCollections();
+      startedAt = new Date().toISOString();
+    }
+    let total = files.reduce((n, file) => n + file.data.length, 0);
+    for (const page of pages) {
+      if (documents.some(doc => doc.captureId === page.id)) continue;
+      const bytes = new TextEncoder().encode(page.html);
+      if (total + bytes.length > BATCH_LIMIT) throw new Error('Batch limit reached (100 MiB). Export this corpus and start a new batch.');
+      // Match redirects too, so a snapshot replaces the corresponding downloaded text.
+      const index = records.findIndex(record => record.url === page.url || record.finalURL === page.url);
+      const previous = index < 0 ? null : records[index];
+      const url = previous?.url || page.url;
+      const filename = filenameFor(page.url, 'text/html', files.length).replace(/\.html$/, '.captured.html');
+      const extraction = extractDocument(bytes, 'text/html; charset=utf-8', { extractor: ui.extractor.value, sourceURL: page.url });
+      const doc = { url, filename, textFilename: filename.replace(/^pages\//, 'corpus/').replace(/\.[^.]+$/, '.txt'), extraction, captureId: page.id, source: 'browser-tab', capturedAt: page.capturedAt };
+      const record = { url, finalURL: page.url, outcome: 'captured', source: 'browser-tab', capturedAt: page.capturedAt, captureId: page.id, filename, contentType: 'text/html; charset=utf-8', bytes: bytes.length };
+      if (previous) {
+        record.previousAttempt = previous;
+        records[index] = record;
+      } else records.push(record);
+      const oldDocument = documents.findIndex(item => item.url === url);
+      if (oldDocument < 0) documents.push(doc); else documents[oldDocument] = doc;
+      // Retain previous raw downloads for provenance; only one corpus text per URL.
+      files.push({ name: filename, data: bytes }); total += bytes.length;
+      invalidateArchive();
+      row(url, 'Saved from browser tab', doc); updateCorpusStatus(); preview(doc); imported++;
+    }
+    ui.status.textContent = `${imported} saved page${imported === 1 ? '' : 's'} added. Review the text before saving your corpus.`;
+  } catch (error) { ui.status.textContent = `${imported} saved pages added. ${error.message}`; }
+  finally {
+    running = false; ui.start.disabled = false; ui.extractor.disabled = false;
+    ui.export.disabled = !files.length; refreshSavedControls();
+  }
+});
+refreshSavedPages();

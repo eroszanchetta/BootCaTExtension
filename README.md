@@ -119,7 +119,19 @@ npm run test:browser
 
 The smoke test builds into a temporary folder/profile and routes all web requests to local fixtures. It checks the extraction page, actual script injection into a mock Google page, saved searches, download/extraction/ZIP with both extractors, workspace reuse and persistence. It never contacts real search engines. `CHROMIUM_EXECUTABLE_PATH` can select an existing compatible Chromium binary.
 
-**Validation in the build environment:** all 19 unit/build tests and both ZIP packages passed. Live Chromium testing was attempted but the environment blocked browser startup (`socket() failed: Operation not permitted`). Firefox is not installed here. Live browser smoke tests and minimum-version verification therefore remain to be performed on a machine that can run the browsers. The optional smoke script is included but has not completed here.
+**Validation in the build environment:** all unit/build tests and both ZIP packages passed. Live Chromium testing was attempted but the environment blocked browser startup (`socket() failed: Operation not permitted`). Firefox is not installed here. Live browser smoke tests and minimum-version verification therefore remain to be performed on a machine that can run the browsers. The optional smoke script is included but has not completed here.
+
+## Save a page already open in the browser
+
+In **Review and export**, each URL opens in a new tab. If a download fails because of a CAPTCHA, open that link and complete the challenge yourself. Click the BootCaT toolbar icon → **Save current page**, then return to the workspace → **Add saved pages**. The selected extractor processes the snapshot without another network request. This also works without starting a download batch.
+
+A snapshot matching an existing URL (or a successful download's final redirect URL) replaces its review row and corpus text. Reimporting the same snapshot does nothing. Earlier raw files and attempt metadata remain in the ZIP; results and extraction metadata identify browser captures and their capture times. If navigation changes the URL, the snapshot is added as a separate document.
+
+Snapshots contain the rendered top-level HTML, with scripts, frames, editable controls and event handlers removed. They are UTF-8 and are not complete offline copies: external assets, shadow DOM and embedded frames are not bundled. Review the extracted text before including it. The extension does not solve CAPTCHAs or determine whether a challenge is complete. Browser-protected pages and PDFs cannot be captured.
+
+Saved pages persist in extension-local IndexedDB across browser restarts until **Clear saved pages** is used. Limits: 2 MiB / 60,000 elements per snapshot; 20 pages and 20 MiB in the saved queue; 100 MiB per workspace batch. Saving the same URL updates its queued snapshot. Export before clearing or closing a workspace: the workspace's extraction and selection state are still held only in that tab. A new download batch resets the review list; saved snapshots can be added again.
+
+The optional Chromium smoke test also checks failed-download recovery, snapshot cleanup, repeat imports and saved-page persistence. Native browser execution remains blocked in this build environment; these checks must be run locally.
 
 ## Collaboration
 
