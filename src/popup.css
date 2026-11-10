@@ -4,7 +4,7 @@ h1 { font-size: 1.55rem; }
 button { width: 100%; font-size: .9rem; }
 #feedback { font-size: .85rem; overflow-wrap: anywhere; }
 
-#page-feedback.saved {
+#page-feedback.saved, #feedback.saved {
   color: #166534;
   background: #ecfdf3;
   border-left: 4px solid #166534;
@@ -12,3 +12,5 @@ button { width: 100%; font-size: .9rem; }
   padding: 10px 12px;
   font-weight: 700;
 }
+
+#workspace { margin-top: 10px; }

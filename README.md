@@ -133,9 +133,11 @@ The **Project name** field at the top is saved locally and used in the corpus ZI
 
 The **Include** checkbox controls corpus inclusion while retaining original files. The trash button on the right instead asks for confirmation and deletes that page's text, original files (including previous captures), and download metadata from the review list and future exports. It also removes the URL from the download list and clears the preview if it displays that page. Saved search provenance remains in the search collections. Delete buttons are disabled while downloads or imports are running.
 
+On detected search results pages, **Add page to corpus** is disabled so results are collected through the search action instead. After collection, that action stays disabled and displays a green **Results added** message, including when reopening the popup on the same results URL. A different results page remains collectable. Clearing searches or starting a new project resets this state.
+
 ## Save a page already open in the browser
 
-In **Review and export**, each URL opens in a new tab. If a download fails because of a CAPTCHA, open that link and complete the challenge yourself. Click the BootCaT toolbar icon → **Save current page**. The button stays disabled and a green **Page saved** message confirms success. Save errors leave the button enabled for retry.
+In **Review and export**, each URL opens in a new tab. Failed downloads display instructions for opening the page, completing any CAPTCHA or sign-in, and saving it through the toolbar; the original error appears at the end in parentheses and remains in download metadata. If a download fails because of a CAPTCHA, open that link and complete the challenge yourself. Click the BootCaT toolbar icon → **Add page to corpus**. The button stays disabled and a green **Page saved** message confirms success. Save errors leave the button enabled for retry.
 
 The snapshot is added to the review list automatically, using the selected Readability or Defuddle extractor without another network request. If the workspace is closed, it opens in a background tab. If downloads are running, the snapshot waits until the batch finishes. A snapshot matching an existing URL (or a successful download's final redirect URL) replaces its review row and corpus text. Earlier raw files and attempt metadata remain in the ZIP; metadata identifies browser captures and their capture times. If navigation changes the URL, the snapshot is added as a separate document.
 
