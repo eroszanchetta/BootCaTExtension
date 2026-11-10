@@ -47,8 +47,8 @@
       <details><summary>Review saved results</summary><div class="table-wrap"><table><thead><tr><th scope="col">Title / URL</th><th scope="col">Search sources</th></tr></thead><tbody id="collected-results"></tbody></table></div><p class="hint">Preview shows the first 200 unique URLs. Export includes all saved results. Remove unwanted URLs from the download list below.</p></details>
     </section>
     <section id="urls-section" aria-labelledby="input-heading" tabindex="-1">
-      <h2 id="input-heading">1. Add your URLs</h2>
-      <label for="urls">One full HTTP or HTTPS URL per line</label>
+      <h2 id="input-heading">URL list</h2>
+      <label for="urls">One URL per line, URLs collect from search engines will be added here, you can also add them manually</label>
       <textarea id="urls" spellcheck="false" placeholder="https://example.com/&#10;https://www.iana.org/help/example-domains"></textarea>
       <p class="hint">Blank lines are ignored. Duplicates and URL fragments are removed. Maximum 500 URLs.</p>
       <div class="extractor-setting">
@@ -60,11 +60,11 @@
       <p class="hint">Keep this tab open. Public pages only; login cookies are not sent. Up to 10 MiB per file and 100 MiB per batch.</p>
     </section>
     <section id="review-section" aria-labelledby="results-heading" tabindex="-1">
-      <h2 id="results-heading">2. Review and export</h2>
+      <h2 id="results-heading">Review and download</h2>
       <p id="status" role="status" aria-live="polite">Ready when you are.</p>
       <progress id="progress" value="0" max="1" aria-label="URLs processed"></progress>
       <p id="saved-status" role="status" aria-live="polite"></p>
-      <p class="hint">For a failed download, open its URL, complete any CAPTCHA, then use the BootCaT toolbar button → Save current page. The page is added here automatically.</p>
+      <p class="hint">Check below to see the download status of each URL</p>
       <button id="export" disabled>Save Corpus</button>
       <p class="hint">Includes all original downloaded files, selected corpus text files, search sources and extraction metadata.</p>
       <div class="table-wrap"><table><thead><tr><th scope="col">Include</th><th scope="col">URL</th><th scope="col">Download / extraction</th><th scope="col">Delete</th></tr></thead><tbody id="results"></tbody></table></div>
