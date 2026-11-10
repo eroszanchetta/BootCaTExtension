@@ -27,6 +27,7 @@ class Element {
   append(...children) { for (const child of children) { child.parent = this; this.children.push(child); } }
   replaceChildren() { this.children = []; }
   replaceWith(other) { const i = this.parent.children.indexOf(this); this.parent.children[i] = other; other.parent = this.parent; }
+  remove() { if (this.parent) this.parent.children = this.parent.children.filter(item => item !== this); }
   setAttribute() {}
 }
 
@@ -34,16 +35,18 @@ test('workspace recovers a failed URL without fetching again, replaces repeated 
   const elements = new Map();
   const get = id => elements.get(id) || (elements.set(id, new Element()), elements.get(id));
   get('urls').value = 'https://example.org/blocked'; get('extractor').value = 'readability';
-  let pages = [], fetches = 0, extractionChoices = [], notify;
+  let pages = [], fetches = 0, extractionChoices = [], notify, confirm = true;
   const settle = () => new Promise(resolve => setImmediate(resolve));
   const context = vm.createContext({
     console, URL, TextEncoder, AbortController, Date, setTimeout: (fn, delay) => { if (delay < 1000) queueMicrotask(fn); return 0; }, clearTimeout() {},
-    document: { getElementById: get, createElement: () => new Element(), createTextNode: text => Object.assign(new Element(), { textContent: text }) },
-    window: { addEventListener() {}, confirm: () => true },
+    document: { getElementById: get, createElement: () => new Element(), createElementNS: () => new Element(), createTextNode: text => Object.assign(new Element(), { textContent: text }) },
+    window: { addEventListener() {}, confirm: () => confirm },
     getExtensionAPI: () => ({ storage: { onChanged: { addListener(fn) { notify = fn; } } } }),
     parseURLs, filenameFor, BATCH_LIMIT, FILE_LIMIT: 10 * 1024 * 1024,
     fetchFile: async () => { fetches++; throw new Error('HTTP 403 Forbidden'); },
-    initSearchUI() {}, readCollections: async () => [], DEFUDDLE_AVAILABLE: true,
+    initSearchUI: () => ({ flush() {} }),
+    initProjectUI: () => ({ ready: Promise.resolve(), snapshot: () => ({ id: 'test', name: 'Test corpus' }) }),
+    projectFilename: name => name, readCollections: async () => [], DEFUDDLE_AVAILABLE: true,
     readSavedPages: async () => [...pages], removeSavedPage: async page => { pages = pages.filter(item => item.id !== page.id); },
     extractDocument: (bytes, type, options) => {
       extractionChoices.push(options.extractor);
@@ -79,6 +82,21 @@ test('workspace recovers a failed URL without fetching again, replaces repeated 
   assert.equal(result.metadata[0].capturedAt, '2026-11-10T13:00:00Z');
   assert.equal(new Set(result.files).size, 2, 'new captures retain uniquely named originals');
   assert.equal(get('export').disabled, false);
+  assert.equal(get('preview-text').value, '', 'imports must not automatically populate preview');
+  assert.equal(get('preview-title').textContent, 'Preview text');
+  const resultRow = get('results').children[0];
+  resultRow.children[2].children[1].handlers.click();
+  assert.equal(get('preview-text').value, 'Recovered corpus text');
+  const trash = resultRow.children[3].children[0];
+  confirm = false; trash.handlers.click();
+  assert.equal(get('results').children.length, 1, 'cancel must retain the page');
+  confirm = true; trash.handlers.click();
+  assert.equal(get('results').children.length, 0);
+  assert.equal(get('preview-text').value, '', 'deleting the previewed page must clear its text');
+  const removed = JSON.parse(vm.runInContext('JSON.stringify({ files, documents, records, corpus: corpusFiles(documents) })', context));
+  assert.deepEqual(removed, { files: [], documents: [], records: [], corpus: [] });
+  assert.equal(get('export').disabled, true);
+
 });
 
 for (const success of [true, false]) test(`popup ${success ? 'keeps save disabled and confirms success' : 'allows retry after a failed save'}`, async () => {
@@ -96,6 +114,7 @@ for (const success of [true, false]) test(`popup ${success ? 'keeps save disable
     document: { getElementById: get }, window: { close() {} },
     adapterForURL: () => null,
     getExtensionAPI: () => ({
+      storage: { onChanged: { addListener() {} } },
       tabs: { query: async () => [{ id: 9, url: 'https://example.org/article' }] },
       runtime: { sendMessage: async message => { assert.equal(message.type, 'save-page'); assert.equal(message.tabId, 9); return success ? { ok: true } : { ok: false, error: 'Could not read page' }; } }
     })

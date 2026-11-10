@@ -121,6 +121,18 @@ The smoke test builds into a temporary folder/profile and routes all web request
 
 **Validation in the build environment:** all unit/build tests and both ZIP packages passed. Live Chromium testing was attempted but the environment blocked browser startup (`socket() failed: Operation not permitted`). Firefox is not installed here. Live browser smoke tests and minimum-version verification therefore remain to be performed on a machine that can run the browsers. The optional smoke script is included but has not completed here.
 
+## Projects and review
+
+The **Project name** field at the top is saved locally and used in the corpus ZIP filename, `project.json`, and export metadata. BootCaT currently has one active project; downloaded content and selections still live in the workspace tab, so export before closing it.
+
+**New project** asks for confirmation, then clears all extension-local project data: the name, saved search collections, URL list, pending snapshots, downloaded files, corpus texts, selections, progress and preview. Open workspaces and popups reset to the new project. Active downloads are cancelled; search/capture requests from the old project cannot populate the new one. Previously exported files on your computer are unaffected.
+
+**Collect results from this tab** adds collected URLs to the download list automatically and opens a background workspace if needed. New URLs wait until an active batch finishes, and duplicates are skipped. Existing manual edits are preserved. The download list retains its 500-URL limit; saved searches can still be exported if a collection would exceed it.
+
+**Preview text** stays blank until a Preview text button is clicked. The section heading remains fixed and the selected page is identified below it.
+
+The **Include** checkbox controls corpus inclusion while retaining original files. The trash button on the right instead asks for confirmation and deletes that page's text, original files (including previous captures), and download metadata from the review list and future exports. It also removes the URL from the download list and clears the preview if it displays that page. Saved search provenance remains in the search collections. Delete buttons are disabled while downloads or imports are running.
+
 ## Save a page already open in the browser
 
 In **Review and export**, each URL opens in a new tab. If a download fails because of a CAPTCHA, open that link and complete the challenge yourself. Click the BootCaT toolbar icon → **Save current page**. The button stays disabled and a green **Page saved** message confirms success. Save errors leave the button enabled for retry.

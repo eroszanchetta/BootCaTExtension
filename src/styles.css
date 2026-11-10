@@ -55,3 +55,11 @@ nav a:hover { background: #c7ddeb; }
   html { scroll-padding-top: 150px; } section { scroll-margin-top: 150px; }
 }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+.project-controls { display: flex; gap: 12px; align-items: center; }
+.project-controls input { flex: 1; min-width: 0; }
+.project-controls button { flex-shrink: 0; }
+.delete-button { padding: 7px 10px; color: #a22d25; background: white; border-color: #d5aaa6; }
+.delete-button:hover { background: #fff1f0; }
+.delete-button svg { display: block; width: 20px; height: 20px; }
+@media (max-width: 500px) { .project-controls { flex-direction: column; align-items: stretch; } }

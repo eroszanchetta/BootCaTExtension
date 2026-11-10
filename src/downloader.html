@@ -16,13 +16,19 @@
         <a href="#search-section">Search</a>
         <a href="#urls-section">URLs</a>
         <a href="#review-section">Review &amp; export</a>
-        <a href="#preview-section">Text preview</a>
+        <a href="#preview-section">Preview text</a>
       </nav>
     </div>
   </div>
   <main>
     <header><span class="badge">BootCaT · 0.4</span><h1>Collect pages from the web.</h1>
       <p>Find pages, extract useful text, and build a local corpus.</p></header>
+    <section aria-labelledby="project-heading">
+      <h2 id="project-heading">Project</h2>
+      <label for="project-name">Project name</label>
+      <div class="project-controls"><input id="project-name" maxlength="120" value="Untitled project" autocomplete="off"><button id="new-project" class="secondary">New project</button></div>
+      <p id="project-status" class="hint" role="status" aria-live="polite"></p>
+    </section>
     <section id="search-section" aria-labelledby="search-heading" tabindex="-1">
       <h2 id="search-heading">Search and collect</h2>
       <form id="search-form" class="search-form">
@@ -32,10 +38,9 @@
         <input id="query" required maxlength="2000" placeholder="e.g. renewable energy terminology">
         <button type="submit">Open search</button>
       </form>
-      <p class="hint">On the results tab, click the BootCaT toolbar icon → Collect results. Browse more results and collect again as needed. Switch engine here if one stops working.</p>
+      <p class="hint">On the results tab, click the BootCaT toolbar icon → Collect results. Collected URLs appear in the download list automatically. Browse more results and collect again as needed. Switch engine here if one stops working.</p>
       <p id="collection-status" role="status" aria-live="polite">Loading saved searches…</p>
       <div class="actions collection-actions">
-        <button id="use-collected" disabled>Add collected URLs below</button>
         <button id="save-searches" class="secondary" disabled>Export searches JSON</button>
         <button id="clear-searches" class="secondary" disabled>Clear searches</button>
       </div>
@@ -62,13 +67,13 @@
       <p class="hint">For a failed download, open its URL, complete any CAPTCHA, then use the BootCaT toolbar button → Save current page. The page is added here automatically.</p>
       <button id="export" disabled>Save Corpus</button>
       <p class="hint">Includes all original downloaded files, selected corpus text files, search sources and extraction metadata.</p>
-      <div class="table-wrap"><table><thead><tr><th scope="col">Include</th><th scope="col">URL</th><th scope="col">Download / extraction</th></tr></thead><tbody id="results"></tbody></table></div>
+      <div class="table-wrap"><table><thead><tr><th scope="col">Include</th><th scope="col">URL</th><th scope="col">Download / extraction</th><th scope="col">Delete</th></tr></thead><tbody id="results"></tbody></table></div>
       <p id="corpus-status" role="status" aria-live="polite">Download pages to extract corpus text.</p>
     </section>
     <section id="preview-section" aria-labelledby="preview-title" tabindex="-1">
-      <h2 id="preview-title">Text preview</h2>
-      <p id="preview-meta" class="hint">Choose Preview text beside a downloaded document.</p>
-      <label for="preview-text">Extracted corpus text (read only)</label>
+      <h2 id="preview-title">Preview text</h2>
+      <p id="preview-meta" class="hint">Click a Preview text button in the review list to display its text here.</p>
+      <label for="preview-text">Preview text (read only)</label>
       <textarea id="preview-text" readonly spellcheck="false"></textarea>
       <p class="hint">Review the text before export. Extraction may omit useful material or retain boilerplate. HTML and plain text are supported; PDFs retain their original files only.</p>
     </section>
