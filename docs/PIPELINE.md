@@ -29,7 +29,7 @@ Downloaded file bodies, extracted texts, inclusion decisions and the editable do
 
 ## Text extraction and review
 
-The extraction layer is separate from search providers. `src/extraction.js` dispatches HTML/XHTML to the chosen bundled extractor (Readability by default), passes plain text through whitespace normalization, and marks other MIME types (including PDF) as unsupported while retaining their original files. Content type comes from the HTTP response; we do not guess that a binary response is HTML.
+The extraction layer is separate from search providers. `src/extraction.js` dispatches HTML/XHTML to the chosen bundled extractor (Readability by default), passes plain text through whitespace normalization, while src/binary-extraction.js routes PDF and DOCX downloads through their own asynchronous adapters. Other MIME types remain unsupported while retaining their original files. Content type comes from the HTTP response; we do not guess that a binary response is HTML.
 
 HTML is decoded using BOM precedence, then the HTTP charset, then an HTML meta charset in the first 4 KiB. When no encoding is declared, valid UTF-8 is used; invalid UTF-8 falls back to Windows-1252 with a warning. Unknown encodings and replacement characters also produce warnings. These are heuristics, not a complete browser encoding-sniffing implementation; inspect accented and non-Latin characters. Output text is always UTF-8.
 
@@ -37,11 +37,15 @@ A detached DOM is passed to the chosen extractor with a 60,000-element limit. Re
 
 Neither extractor always finds the right content. Technical lists, glossaries, tables and multi-column pages deserve particular attention. Empty or failed extractions are excluded with a message; there is no automatic whole-page-text fallback. Successful texts below 200 characters are flagged but included for review. A few common login/access-check titles are heuristically flagged and excluded by default. These are warnings and rules, not confidence scores or a comprehensive CAPTCHA detector. A returned nonempty text can still contain boilerplate.
 
-HTML/plain-text responses above **3 MiB** skip extraction to limit memory and UI stalls; their originals remain in the ZIP. The download limits are still 10 MiB per response / 100 MiB per batch. Parsing is synchronous in the workspace tab and may briefly pause the interface; Stop takes effect between extraction operations. Additional memory is needed for decoded strings, DOMs, texts and ZIP creation.
+HTML/plain-text responses above **3 MiB** skip extraction to limit memory and UI stalls; their originals remain in the ZIP. The download limits are still 10 MiB per response / 100 MiB per batch. Parsing is synchronous in the workspace tab and may briefly pause the interface; Stop takes effect between synchronous HTML extraction operations; PDF/DOCX extraction also observes cancellation. Additional memory is needed for decoded strings, DOMs, texts and ZIP creation.
 
 Use each row's **Include** checkbox to choose the corpus output. Original files are retained even when excluded or unsupported. Changing inclusion invalidates the cached ZIP, so the next save reflects your decisions. **Preview text** is read only; edit the exported `.txt` files if manual corrections are needed. No combined corpus file is generated: separate documents preserve document boundaries for concordancers.
 
 The extension never inserts downloaded HTML or extracted HTML into its live interface. Preview uses a textarea value. A content security policy permits bundled images for the logo and blocks remote image/frame/object resource loads; page scripts are not executed. Both extractors are bundled locally, with their licences and source hashes in `src/vendor/`. Users do not install dependencies or download library code at runtime.
+
+## Document extraction
+
+PDF/DOCX details, prototype omissions and limits are documented in the README. Binary adapters return the same status/text/inclusion/metadata contract as HTML. PDF.js receives a copy of the bytes, so transferring its input to a worker does not detach the original ZIP payload. Binary parsing errors stay extraction failures rather than being reported as network errors. Generic MIME responses are identified using PDF signatures or a Word document part inside a bounded ZIP directory; file extensions alone never turn a login HTML page into a PDF.
 
 ## Encoded links and changing layouts
 

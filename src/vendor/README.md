@@ -19,3 +19,9 @@ License: `LICENSE-Defuddle` (MIT), copied unchanged from the package.
 The UMD bundle exports `globalThis.Defuddle` as a constructor.
 No CLI or npm dependencies are required for this browser bundle.
 No remote scripts or asynchronous extractors are used.
+
+# PDF.js build dependency
+
+`pdfjs-dist` is pinned to 5.6.205 in package.json. Run `npm install` before building. scripts/build.mjs copies the unmodified legacy pdf.mjs/pdf.worker.mjs, cmaps, standard_fonts and Apache-2.0 LICENSE into dist/<browser>/vendor/pdfjs/. Font/CMap notices are included from their upstream folders. These generated assets are not committed under src/. The extension fetches no library code from a CDN. Text extraction uses an explicit local module worker with eval and WebAssembly disabled; PDF scripts are never executed. Both browser packages use the same assets.
+
+Source: https://github.com/mozilla/pdf.js and the official pdfjs-dist npm package. Update the pinned package and PDFJS_VERSION together, review browser/Node compatibility and rerun unit/build plus real-browser worker tests.

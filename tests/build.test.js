@@ -29,10 +29,14 @@ test('both builds contain identical shared files and separate valid manifests', 
     assert.ok(f.browser_specific_settings.gecko.id);
     const source = await list(join(ROOT, 'src'));
     for (const dir of [chromium, firefox]) {
-      assert.deepEqual(await list(dir), [...source, 'manifest.json'].sort());
+      const generated = (await list(dir)).filter(path => !path.startsWith('vendor/pdfjs/'));
+      assert.deepEqual(generated, [...source, 'manifest.json'].sort());
+      for (const file of ['pdf.mjs', 'pdf.worker.mjs', 'LICENSE', 'cmaps/Adobe-Japan1-UCS2.bcmap', 'standard_fonts/LICENSE_FOXIT', 'standard_fonts/LICENSE_LIBERATION']) await readFile(join(dir, 'vendor/pdfjs', file));
+      assert.match(manifests[0].content_security_policy.extension_pages, /worker-src 'self'/);
       for (const path of source) assert.deepEqual(await readFile(join(dir, path)), await readFile(join(ROOT, 'src', path)), path);
       for (const file of [c.action.default_popup, ...Object.values(c.icons), 'extension-api.js', 'vendor/Readability.js', 'vendor/Defuddle.js']) await readFile(join(dir, file));
     }
+    for (const path of await list(join(chromium, 'vendor/pdfjs'))) assert.deepEqual(await readFile(join(chromium, 'vendor/pdfjs', path)), await readFile(join(firefox, 'vendor/pdfjs', path)), path);
     await build('chromium', { outputRoot, includeTests: true });
     await readFile(join(chromium, 'tests/browser-tests.html'));
     await build('chromium', { outputRoot });

@@ -22,7 +22,7 @@
     "storage"
   ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'none'; img-src 'self'; frame-src 'none'; style-src 'self'; base-uri 'none';"
+    "extension_pages": "script-src 'self'; object-src 'none'; img-src 'self'; frame-src 'none'; style-src 'self'; base-uri 'none'; worker-src 'self';"
   },
   "icons": {
     "16": "icons/icon-16.png",

@@ -3,7 +3,9 @@
   "version": "0.4.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=22.15.0"
+  },
   "scripts": {
     "build": "node scripts/build.mjs all",
     "build:chromium": "node scripts/build.mjs chromium",
@@ -15,5 +17,8 @@
     "test:browser": "node scripts/smoke-chromium.cjs",
     "lint:firefox": "node scripts/build.mjs firefox && web-ext lint --source-dir dist/firefox",
     "dev:firefox": "node scripts/build.mjs firefox && web-ext run --source-dir dist/firefox"
+  },
+  "dependencies": {
+    "pdfjs-dist": "5.6.205"
   }
 }

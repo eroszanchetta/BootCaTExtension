@@ -1,3 +1,7 @@
+import { extractDownloadedDocument } from '../binary-extraction.js';
+import { makeZIP } from '../zip.js';
+import { DOCX_MIME } from '../docx.js';
+import { docxFiles, pdfFixture } from './browser-tests.fixtures.js';
 import { extractDocument, contentToText } from '../extraction.js';
 const encode = text => new TextEncoder().encode(text);
 const results = [];
@@ -61,4 +65,29 @@ check('plain text remains independent of the chosen HTML extractor', () => {
   const result = extractDocument(encode(text), 'text/plain', { extractor: 'defuddle' });
   assert(result.status === 'ok' && result.extractor === 'plain-text' && result.text === text, 'Plain-text path changed');
 });
+async function checkAsync(name, fn) {
+  try { await fn(); results.push(`PASS: ${name}`); }
+  catch (error) { results.push(`FAIL: ${name}: ${error.message}`); }
+}
+await checkAsync('local PDF worker extracts embedded text without detaching the original', async () => {
+  const bytes = pdfFixture({ twoPages: true });
+  const before = bytes.length;
+  const result = await extractDownloadedDocument(bytes, 'application/pdf');
+  assert(result.status === 'ok', result.warnings.join(' '));
+  assert(result.pageCount === 2 && result.text.includes('Renewable energy corpus.'), 'PDF text/page metadata missing');
+  assert(bytes.length === before, 'Original PDF bytes detached');
+});
+await checkAsync('real DOMParser reads DOCX paragraphs and tables without rendering document markup', async () => {
+  const bytes = new Uint8Array(await makeZIP(docxFiles).arrayBuffer());
+  const result = await extractDownloadedDocument(bytes, DOCX_MIME);
+  assert(result.status === 'ok', result.warnings.join(' '));
+  assert(result.text === 'Caffè 中文 corpus.\n\nSecond paragraph.\n\nLeft cell Right cell', result.text);
+});
+await checkAsync('textless PDF is excluded and suggests OCR', async () => {
+  const result = await extractDownloadedDocument(pdfFixture({ empty: true }), 'application/pdf');
+  assert(result.status === 'failed' && !result.included && !result.text, 'Textless PDF included');
+  assert(result.warnings.some(warning => warning.includes('OCR')), 'Missing OCR guidance');
+});
 document.getElementById('output').textContent = results.join('\n') + `\n\n${results.filter(r => r.startsWith('PASS')).length}/${results.length} passed.`;
+
+document.getElementById('output').dataset.complete = 'true';

@@ -1,3 +1,4 @@
+import { extractDownloadedDocument, extractionContentType } from './binary-extraction.js';
 import { initProjectUI, projectFilename } from './project-ui.js';
 import { readSavedPages, removeSavedPage } from './page-store.js';
 import { getExtensionAPI } from './extension-api.js';
@@ -148,10 +149,11 @@ ui.start.addEventListener('click', async () => {
         const response = await fetchFile(url, controller.signal, Math.min(FILE_LIMIT, BATCH_LIMIT - total));
         if (projectResetting) return;
         clearTimeout(timer); // The timeout bounds network I/O, not synchronous parsing.
-        const filename = filenameFor(url, response.contentType, index);
+        const filename = filenameFor(url, extractionContentType(response.bytes, response.contentType), index);
         files.push({ name: filename, data: response.bytes }); total += response.bytes.length;
         records.push({ url, finalURL: response.finalURL, outcome: 'downloaded', httpStatus: response.status, contentType: response.contentType, bytes: response.bytes.length, filename, downloadedAt: new Date().toISOString() });
-        const extraction = extractDocument(response.bytes, response.contentType, { extractor: batchExtractor, sourceURL: response.finalURL || url });
+        const extraction = await extractDownloadedDocument(response.bytes, response.contentType, { extractor: batchExtractor, sourceURL: response.finalURL || url, signal: controller.signal });
+        if (projectResetting) return;
         const doc = { url, filename, textFilename: filename.replace(/^pages\//, 'corpus/').replace(/\.[^.]+$/, '.txt'), extraction };
         documents.push(doc);
         row(url, `Downloaded · ${(response.bytes.length / 1024).toFixed(1)} KiB`, doc); updateCorpusStatus();
