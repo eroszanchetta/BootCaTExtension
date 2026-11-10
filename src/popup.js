@@ -39,3 +39,12 @@ document.getElementById('save-page').addEventListener('click', async event => {
     pageFeedback.classList.add('saved');
   } catch (error) { pageFeedback.textContent = error.message; button.disabled = false; }
 });
+
+let popupProjectId;
+ext.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local' || !changes.project) return;
+  popupProjectId ||= changes.project.oldValue?.id;
+  const next = changes.project.newValue;
+  if (next && popupProjectId && next.id !== popupProjectId) window.location.reload();
+  if (next) popupProjectId = next.id;
+});

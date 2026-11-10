@@ -11,6 +11,8 @@ export async function readCollections() {
 export function initSearchUI({ isRunning }) {
   const el = id => document.getElementById(id);
   let collections = [];
+  let changed = false;
+  const seenCollections = new Set(), pending = new Set();
   const status = el("collection-status");
   for (const engine of ENGINES) {
     const option = document.createElement("option");
@@ -28,7 +30,7 @@ export function initSearchUI({ isRunning }) {
     const results = uniqueResults(collections);
     const unresolved = collections.reduce((sum, item) => sum + item.unresolved, 0);
     status.textContent = `${results.length} unique URLs from ${collections.length} saved result pages.${unresolved ? ` ${unresolved} candidate links could not be resolved; consider another engine for those searches.` : ""}`;
-    for (const id of ["use-collected", "save-searches", "clear-searches"]) el(id).disabled = !collections.length;
+    for (const id of ["save-searches", "clear-searches"]) el(id).disabled = !collections.length;
     const body = el("collected-results"); body.replaceChildren();
     for (const result of results.slice(0, 200)) {
       const tr = document.createElement("tr"), title = document.createElement("td"), source = document.createElement("td");
@@ -37,15 +39,32 @@ export function initSearchUI({ isRunning }) {
       tr.append(title, source); body.append(tr);
     }
   }
-  el("use-collected").addEventListener("click", () => {
-    if (isRunning()) { status.textContent = "Wait for the current download to finish before changing the URL list."; return; }
-    const current = parseURLs(el("urls").value);
-    if (current.errors.length) { status.textContent = "Correct invalid URLs below before adding collected URLs."; return; }
-    const merged = [...new Set([...current.urls, ...uniqueResults(collections).map(item => item.url)])];
-    if (merged.length > 500) { status.textContent = "More than 500 URLs: export searches and paste a smaller selection into the download list."; return; }
-    el("urls").value = merged.join("\n");
-    status.textContent = `${merged.length} URLs are now in the download list. Review/edit the list, then click Download URLs.`;
-  });
+  function flush() {
+    if (!pending.size) return;
+    if (isRunning()) { status.textContent += ' New URLs will be added after the current batch finishes.'; return; }
+    const input = el('urls');
+    const current = parseURLs(input.value);
+    const existing = new Set(current.urls);
+    const additions = [...pending].filter(url => !existing.has(url));
+    if (existing.size + additions.length > 500) {
+      status.textContent = 'Collected URLs are saved, but the download list would exceed 500 URLs. Shorten the list to add the remaining URLs automatically, or export searches.';
+      return;
+    }
+    // Preserve manual edits, including invalid lines which the downloader will flag.
+    if (additions.length) input.value = input.value.trimEnd() + (input.value.trim() ? '\n' : '') + additions.join('\n');
+    pending.clear();
+  }
+  function receive(saved) {
+    collections = saved;
+    if (!saved.length) pending.clear();
+    for (const collection of collections) {
+      if (seenCollections.has(collection.id)) continue;
+      seenCollections.add(collection.id);
+      for (const item of collection.results) pending.add(item.url);
+    }
+    render(); flush();
+  }
+  el('urls').addEventListener('input', flush);
   el("save-searches").addEventListener("click", () => {
     const blob = new Blob([JSON.stringify({ version: "0.2.0", collections, results: uniqueResults(collections) }, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob), link = document.createElement("a");
@@ -61,7 +80,8 @@ export function initSearchUI({ isRunning }) {
     } catch (error) { status.textContent = error.message; }
   });
   ext.storage.onChanged.addListener((changes, area) => {
-    if (area === "local" && changes.collections) { collections = changes.collections.newValue || []; render(); }
+    if (area === "local" && changes.collections) { changed = true; receive(changes.collections.newValue || []); }
   });
-  readCollections().then(saved => { collections = saved; render(); }, error => { status.textContent = `Could not load saved searches: ${error.message}`; });
+  readCollections().then(saved => { if (!changed) receive(saved); }, error => { status.textContent = `Could not load saved searches: ${error.message}`; });
+  return { flush };
 }

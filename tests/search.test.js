@@ -68,6 +68,25 @@ for (const namespace of ['chrome', 'browser']) test(`${namespace}: background se
   const origin = namespace === 'browser' ? 'moz-extension://test/' : 'chrome-extension://test/';
   let listener;
   let collections = [];
+  const stored = {};
+  let releaseInjection, injectionStarted;
+  const started = new Promise(resolve => { injectionStarted = resolve; });
+  const gate = new Promise(resolve => { releaseInjection = resolve; });
+  let clearedSnapshots = 0;
+  globalThis.indexedDB = { open() {
+    const request = {};
+    queueMicrotask(() => {
+      request.result = {
+        close() {},
+        transaction() {
+          const tx = { objectStore: () => ({ clear() { clearedSnapshots++; queueMicrotask(() => tx.oncomplete()); } }) };
+          return tx;
+        }
+      };
+      request.onsuccess();
+    });
+    return request;
+  } };
   let workspaceExists = true, opened = 0, focused = 0;
   globalThis[namespace] = {
     runtime: { id: 'test', getURL: path => `${origin}${path}`, onMessage: { addListener: fn => { listener = fn; } } },
@@ -78,10 +97,11 @@ for (const namespace of ['chrome', 'browser']) test(`${namespace}: background se
       create: async options => { assert.equal(options.url, origin + 'downloader.html'); opened++; }
     },
     windows: { update: async (id, options) => { assert.equal(id, 5); assert.equal(options.focused, true); } },
-    scripting: { executeScript: async ({ target }) => [{ result: { engine: 'google', query: String(target.tabId), pageURL: `https://www.google.com/search?q=${target.tabId}`, unresolved: 0, results: target.tabId === 3 ? [] : [{ url: `https://example.org/${target.tabId}`, title: 'Example', positionOnPage: 1 }] } }] },
+    scripting: { executeScript: async ({ target }) => { if (target.tabId === 4) { injectionStarted(); await gate; } return [{ result: { engine: 'google', query: String(target.tabId), pageURL: `https://www.google.com/search?q=${target.tabId}`, unresolved: 0, results: target.tabId === 3 ? [] : [{ url: `https://example.org/${target.tabId}`, title: 'Example', positionOnPage: 1 }] } }]; } },
     storage: { local: {
-      get: async () => { await new Promise(r => setTimeout(r, 10)); return { collections }; },
-      set: async data => { await new Promise(r => setTimeout(r, 10)); collections = data.collections; }
+      get: async key => { await new Promise(r => setTimeout(r, 10)); return key === "collections" ? { collections } : { [key]: stored[key] }; },
+      set: async data => { await new Promise(r => setTimeout(r, 10)); Object.assign(stored, data); if (data.collections) collections = data.collections; },
+      clear: async () => { for (const key of Object.keys(stored)) delete stored[key]; collections = []; }
     } }
   };
   await import(`../src/background.js?namespace=${namespace}`);
@@ -104,5 +124,22 @@ for (const namespace of ['chrome', 'browser']) test(`${namespace}: background se
     assert.equal((await request({ type: 'open-workspace' })).ok, true);
     assert.equal(opened, 1);
     assert.equal(listener({ type: 'collect', tabId: 1 }, { id: 'test', url: 'https://example.org/' }, () => assert.fail('Unexpected reply')), undefined);
-  } finally { delete globalThis[namespace]; }
+    const project = (await request({ type: 'get-project' })).project;
+    assert.equal((await request({ type: 'rename-project', projectId: project.id, name: 'Energy corpus' })).ok, true);
+    assert.equal(stored.project.name, 'Energy corpus');
+    stored.unrelatedOldState = 'must clear';
+    const oldCollection = request({ type: 'collect', tabId: 4 });
+    await started;
+    const reset = await request({ type: 'new-project' });
+    assert.equal(reset.ok, true); assert.notEqual(reset.project.id, project.id);
+    assert.equal(reset.project.name, 'Untitled project');
+    assert.equal(clearedSnapshots, 1); assert.equal(stored.unrelatedOldState, undefined);
+    assert.equal(collections.length, 0);
+    releaseInjection();
+    const stale = await oldCollection;
+    assert.equal(stale.ok, false); assert.match(stale.error, /project changed/);
+    assert.equal(collections.length, 0, 'old collection must not reappear after reset');
+    assert.equal((await request({ type: 'rename-project', projectId: project.id, name: 'Old name' })).ok, false);
+
+  } finally { delete globalThis[namespace]; delete globalThis.indexedDB; }
 });

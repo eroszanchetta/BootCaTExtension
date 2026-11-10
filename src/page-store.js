@@ -28,6 +28,7 @@ async function transaction(mode, operation) {
 export const readSavedPages = () => transaction('readonly', (store, done) => {
   const request = store.getAll(); request.onsuccess = () => done(request.result);
 });
+export const clearSavedPages = () => transaction('readwrite', store => store.clear());
 export const removeSavedPage = page => transaction('readwrite', store => {
   const request = store.get(page.url);
   // Do not delete a newer snapshot saved while the old one was importing.

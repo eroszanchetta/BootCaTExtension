@@ -1,0 +1,77 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import vm from 'node:vm';
+import { readFile } from 'node:fs/promises';
+import { parseURLs } from '../src/core.js';
+import { uniqueResults } from '../src/collection.js';
+import { projectFilename } from '../src/project-ui.js';
+
+class Element {
+  constructor() { this.value = ''; this.textContent = ''; this.handlers = {}; this.children = []; }
+  addEventListener(type, fn) { this.handlers[type] = fn; }
+  append(...children) { this.children.push(...children); }
+  replaceChildren() { this.children = []; }
+}
+const fixture = () => {
+  const elements = new Map();
+  return id => elements.get(id) || (elements.set(id, new Element()), elements.get(id));
+};
+
+test('collected URLs append automatically, defer during downloads and preserve manual edits', async () => {
+  const get = fixture();
+  let notify, running = false;
+  get('urls').value = 'https://manual.test/\ninvalid manual line';
+  const context = vm.createContext({
+    document: { getElementById: get, createElement: () => new Element() },
+    getExtensionAPI: () => ({ storage: { local: { get: async () => ({ collections: [] }) }, onChanged: { addListener(fn) { notify = fn; } } } }),
+    ENGINES: [], uniqueResults, parseURLs, isRunning: () => running
+  });
+  const source = (await readFile(new URL('../src/search-ui.js', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '').replace(/^export /gm, '');
+  vm.runInContext(source + '\nglobalThis.search = initSearchUI({ isRunning });', context);
+  await new Promise(resolve => setImmediate(resolve));
+  const collection = { id: 'one', results: [{ url: 'https://collected.test/' }, { url: 'https://manual.test/' }], unresolved: 0 };
+  notify({ collections: { newValue: [collection] } }, 'local');
+  assert.equal(get('urls').value, 'https://manual.test/\ninvalid manual line\nhttps://collected.test/');
+  get('urls').value = 'https://manual.test/';
+  notify({ collections: { newValue: [collection] } }, 'local');
+  assert.equal(get('urls').value, 'https://manual.test/', 'unchanged collections must not restore manually removed URLs');
+  running = true;
+  notify({ collections: { newValue: [collection, { ...collection, id: 'two', results: [{ url: 'https://later.test/' }] }] } }, 'local');
+  assert.equal(get('urls').value, 'https://manual.test/');
+  running = false; vm.runInContext('search.flush()', context);
+  assert.equal(get('urls').value, 'https://manual.test/\nhttps://later.test/');
+});
+
+test('project UI confirms reset, persists names and resets another workspace on project change', async () => {
+  const get = fixture();
+  let notify, confirm = false, resets = 0, renamed = 0;
+  const requests = [];
+  const project = { id: 'one', name: 'Initial project' };
+  const context = vm.createContext({
+    document: { getElementById: get }, window: { confirm: () => confirm },
+    onReset: () => { resets++; }, onRename: () => { renamed++; },
+    getExtensionAPI: () => ({
+      storage: { onChanged: { addListener(fn) { notify = fn; } } },
+      runtime: { sendMessage: async message => { requests.push(message); return { ok: true, project }; } }
+    })
+  });
+  const source = (await readFile(new URL('../src/project-ui.js', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '').replace(/^export /gm, '');
+  vm.runInContext(source + '\nglobalThis.ui = initProjectUI({ onReset, onRename });', context);
+  await vm.runInContext('ui.ready', context);
+  assert.equal(get('project-name').value, 'Initial project');
+  get('project-name').value = 'Energy corpus'; await get('project-name').handlers.input();
+  assert.equal(requests.at(-1).type, 'rename-project'); assert.equal(requests.at(-1).name, 'Energy corpus');
+  assert.equal(vm.runInContext('ui.snapshot().name', context), 'Energy corpus');
+  await get('new-project').handlers.click();
+  assert.equal(requests.filter(item => item.type === 'new-project').length, 0);
+  confirm = true; await get('new-project').handlers.click();
+  assert.equal(requests.at(-1).type, 'new-project');
+  notify({ project: { newValue: { id: 'two', name: 'Untitled project' } } }, 'local');
+  assert.equal(resets, 1); assert.ok(renamed >= 2);
+});
+
+test('project names produce safe archive filenames while retaining Unicode', () => {
+  assert.equal(projectFilename('Corpus: energia/中文?'), 'Corpus- energia-中文-');
+  assert.equal(projectFilename('... '), 'bootcat-corpus');
+  assert.ok(projectFilename('x'.repeat(200)).length <= 80);
+});
