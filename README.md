@@ -123,15 +123,15 @@ The smoke test builds into a temporary folder/profile and routes all web request
 
 ## Save a page already open in the browser
 
-In **Review and export**, each URL opens in a new tab. If a download fails because of a CAPTCHA, open that link and complete the challenge yourself. Click the BootCaT toolbar icon → **Save current page**, then return to the workspace → **Add saved pages**. The selected extractor processes the snapshot without another network request. This also works without starting a download batch.
+In **Review and export**, each URL opens in a new tab. If a download fails because of a CAPTCHA, open that link and complete the challenge yourself. Click the BootCaT toolbar icon → **Save current page**. The button stays disabled and a green **Page saved** message confirms success. Save errors leave the button enabled for retry.
 
-A snapshot matching an existing URL (or a successful download's final redirect URL) replaces its review row and corpus text. Reimporting the same snapshot does nothing. Earlier raw files and attempt metadata remain in the ZIP; results and extraction metadata identify browser captures and their capture times. If navigation changes the URL, the snapshot is added as a separate document.
+The snapshot is added to the review list automatically, using the selected Readability or Defuddle extractor without another network request. If the workspace is closed, it opens in a background tab. If downloads are running, the snapshot waits until the batch finishes. A snapshot matching an existing URL (or a successful download's final redirect URL) replaces its review row and corpus text. Earlier raw files and attempt metadata remain in the ZIP; metadata identifies browser captures and their capture times. If navigation changes the URL, the snapshot is added as a separate document.
 
 Snapshots contain the rendered top-level HTML, with scripts, frames, editable controls and event handlers removed. They are UTF-8 and are not complete offline copies: external assets, shadow DOM and embedded frames are not bundled. Review the extracted text before including it. The extension does not solve CAPTCHAs or determine whether a challenge is complete. Browser-protected pages and PDFs cannot be captured.
 
-Saved pages persist in extension-local IndexedDB across browser restarts until **Clear saved pages** is used. Limits: 2 MiB / 60,000 elements per snapshot; 20 pages and 20 MiB in the saved queue; 100 MiB per workspace batch. Saving the same URL updates its queued snapshot. Export before clearing or closing a workspace: the workspace's extraction and selection state are still held only in that tab. A new download batch resets the review list; saved snapshots can be added again.
+A local IndexedDB inbox retains snapshots until the workspace imports them, then removes each imported snapshot automatically. Limits: 2 MiB / 60,000 elements per snapshot; 20 pages and 20 MiB awaiting import; 100 MiB per workspace batch. If import fails, remaining snapshots stay available for retry when the workspace regains focus or a new batch finishes. Export before closing the workspace or starting another batch: the review list, extracted texts and selection state are held only in that tab.
 
-The optional Chromium smoke test also checks failed-download recovery, snapshot cleanup, repeat imports and saved-page persistence. Native browser execution remains blocked in this build environment; these checks must be run locally.
+The optional Chromium smoke test also checks failed-download recovery, snapshot cleanup and automatic import. Native browser execution remains blocked in this build environment; these checks must be run locally.
 
 ## Collaboration
 
