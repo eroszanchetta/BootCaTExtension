@@ -60,6 +60,7 @@ async function handle(message) {
     const project = await serialize(ensureProject);
     const tab = await ext.tabs.get(message.tabId);
     if (!/^https?:\/\//.test(tab.url || '')) throw new Error('Open a web page first.');
+    if (adapterForURL(tab.url)) throw new Error('Use Collect results from this tab for a search results page.');
     const injected = await ext.scripting.executeScript({ target: { tabId: tab.id }, func: captureCurrentPage });
     const page = injected[0]?.result;
     if (!page || page.error) throw new Error(page?.error || 'Could not read this page.');

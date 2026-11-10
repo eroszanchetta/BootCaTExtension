@@ -59,6 +59,10 @@ test('workspace recovers a failed URL without fetching again, replaces repeated 
   await get('start').handlers.click();
   assert.equal(fetches, 1);
   assert.equal(get('results').children.length, 1);
+  const failedMessage = get('results').children[0].children[2].textContent;
+  assert.match(failedMessage, /Click its URL/);
+  assert.match(failedMessage, /BootCaT toolbar icon → Add page to corpus/);
+  assert.ok(failedMessage.endsWith('(HTTP 403 Forbidden)'));
   const link = get('results').children[0].children[1].children[0];
   assert.equal(link.href, 'https://example.org/blocked'); assert.equal(link.target, '_blank');
   assert.equal(link.rel, 'noopener noreferrer');

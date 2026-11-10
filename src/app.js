@@ -158,7 +158,9 @@ ui.start.addEventListener('click', async () => {
       } catch (error) {
         if (projectResetting) return;
         const message = stopping ? 'Stopped by user' : timedOut ? 'Timed out after 30 seconds' : error.message;
-        records.push({ url, outcome: stopping ? 'cancelled' : 'error', error: message }); row(url, message);
+        records.push({ url, outcome: stopping ? 'cancelled' : 'error', error: message });
+        const tip = `Could not download this page. Click its URL to open it in a new tab. Complete any CAPTCHA or sign-in, then click the BootCaT toolbar icon → Add page to corpus. The page will appear here automatically. (${message})`;
+        row(url, stopping ? message : tip);
       } finally { clearTimeout(timer); controller = null; }
       ui.progress.value = index + 1;
       if (!stopping) await new Promise(resolve => setTimeout(resolve, 500));

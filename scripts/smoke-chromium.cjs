@@ -69,6 +69,7 @@ const { join } = require('node:path');
     await page.click('#start');
     await page.waitForFunction(() => !document.querySelector('#start').disabled && document.querySelector('#status').textContent.startsWith('Finished.'));
     assert.match(await page.locator('#status').innerText(), /1 download errors/);
+    assert.match(await page.locator('#results td').nth(2).innerText(), /Add page to corpus.*\(HTTP 403[^)]*\)$/);
     assert.equal(await page.locator('#results a').getAttribute('href'), 'https://corpus.test/blocked');
     await search.goto('https://corpus.test/blocked');
     await search.evaluate(() => {

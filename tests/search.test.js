@@ -112,6 +112,9 @@ for (const namespace of ['chrome', 'browser']) test(`${namespace}: background se
     const replies = await Promise.all([request({ type: 'collect', tabId: 1 }), request({ type: 'collect', tabId: 2 })]);
     assert.equal(replies.every(r => r.ok), true);
     assert.equal(collections.length, 2);
+    const wrongAction = await request({ type: 'save-page', tabId: 1 });
+    assert.equal(wrongAction.ok, false);
+    assert.match(wrongAction.error, /Use Collect results/);
     const failed = await request({ type: 'collect', tabId: 3 });
     assert.equal(failed.ok, false);
     assert.match(failed.error, /No usable results/);
