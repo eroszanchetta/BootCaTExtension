@@ -9,9 +9,9 @@ async function database() {
   });
 }
 export function validateSavedPages(pages) {
-  if (pages.length > 20) throw new Error('Saved page limit reached (20). Clear saved pages after exporting your corpus.');
+  if (pages.length > 20) throw new Error('Saved page limit reached (20). Open BootCaT to add them to the review list before saving more pages.');
   const size = pages.reduce((n, page) => n + new TextEncoder().encode(page.html).length, 0);
-  if (size > 20 * 1024 * 1024) throw new Error('Saved pages exceed 20 MiB. Clear saved pages after exporting your corpus.');
+  if (size > 20 * 1024 * 1024) throw new Error('Saved pages exceed 20 MiB. Open BootCaT to add them to the review list before saving more pages.');
 }
 async function transaction(mode, operation) {
   const db = await database();
@@ -28,7 +28,11 @@ async function transaction(mode, operation) {
 export const readSavedPages = () => transaction('readonly', (store, done) => {
   const request = store.getAll(); request.onsuccess = () => done(request.result);
 });
-export const clearSavedPages = () => transaction('readwrite', store => store.clear());
+export const removeSavedPage = page => transaction('readwrite', store => {
+  const request = store.get(page.url);
+  // Do not delete a newer snapshot saved while the old one was importing.
+  request.onsuccess = () => { if (request.result?.id === page.id) store.delete(page.url); };
+});
 export const savePage = page => transaction('readwrite', (store, done, fail) => {
   const request = store.getAll();
   request.onsuccess = () => {

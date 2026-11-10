@@ -35,6 +35,10 @@ async function handle(message) {
     await savePage({ ...page, id: crypto.randomUUID() });
     // The snapshot remains saved even if the optional UI notification fails.
     try { await ext.storage.local.set({ captureRevision: crypto.randomUUID() }); } catch {}
+    const url = ext.runtime.getURL('downloader.html');
+    if (!(await ext.tabs.query({})).some(tab => tab.url === url)) {
+      await ext.tabs.create({ url, active: false });
+    }
     return {};
   }
   if (message.type !== "collect") throw new Error("Unknown request");

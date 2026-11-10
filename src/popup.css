@@ -3,3 +3,12 @@ main { margin: 0; padding: 22px; }
 h1 { font-size: 1.55rem; }
 button { width: 100%; font-size: .9rem; }
 #feedback { font-size: .85rem; overflow-wrap: anywhere; }
+
+#page-feedback.saved {
+  color: #166534;
+  background: #ecfdf3;
+  border-left: 4px solid #166534;
+  border-radius: 4px;
+  padding: 10px 12px;
+  font-weight: 700;
+}

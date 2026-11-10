@@ -34,16 +34,17 @@ test('workspace recovers a failed URL without fetching again, replaces repeated 
   const elements = new Map();
   const get = id => elements.get(id) || (elements.set(id, new Element()), elements.get(id));
   get('urls').value = 'https://example.org/blocked'; get('extractor').value = 'readability';
-  let pages = [], fetches = 0, extractionChoices = [];
+  let pages = [], fetches = 0, extractionChoices = [], notify;
+  const settle = () => new Promise(resolve => setImmediate(resolve));
   const context = vm.createContext({
     console, URL, TextEncoder, AbortController, Date, setTimeout: (fn, delay) => { if (delay < 1000) queueMicrotask(fn); return 0; }, clearTimeout() {},
     document: { getElementById: get, createElement: () => new Element(), createTextNode: text => Object.assign(new Element(), { textContent: text }) },
     window: { addEventListener() {}, confirm: () => true },
-    getExtensionAPI: () => ({ storage: { onChanged: { addListener() {} } } }),
+    getExtensionAPI: () => ({ storage: { onChanged: { addListener(fn) { notify = fn; } } } }),
     parseURLs, filenameFor, BATCH_LIMIT, FILE_LIMIT: 10 * 1024 * 1024,
     fetchFile: async () => { fetches++; throw new Error('HTTP 403 Forbidden'); },
     initSearchUI() {}, readCollections: async () => [], DEFUDDLE_AVAILABLE: true,
-    readSavedPages: async () => pages, clearSavedPages: async () => {},
+    readSavedPages: async () => [...pages], removeSavedPage: async page => { pages = pages.filter(item => item.id !== page.id); },
     extractDocument: (bytes, type, options) => {
       extractionChoices.push(options.extractor);
       return { status: 'ok', included: true, characters: bytes.length, text: 'Recovered corpus text', title: 'Recovered page', warnings: [], extractor: options.extractor };
@@ -51,6 +52,7 @@ test('workspace recovers a failed URL without fetching again, replaces repeated 
   });
   const source = (await readFile(new URL('../src/app.js', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
   vm.runInContext(source, context);
+  await settle();
   await get('start').handlers.click();
   assert.equal(fetches, 1);
   assert.equal(get('results').children.length, 1);
@@ -59,11 +61,14 @@ test('workspace recovers a failed URL without fetching again, replaces repeated 
   assert.equal(link.rel, 'noopener noreferrer');
   pages = [{ id: 'one', url: 'https://example.org/blocked', html: '<article>Recovered</article>', capturedAt: '2026-11-10T12:00:00Z' }];
   get('extractor').value = 'defuddle';
-  await get('add-saved').handlers.click();
-  await get('add-saved').handlers.click();
+  notify({ captureRevision: {} }, 'local');
+  notify({ captureRevision: {} }, 'local');
+  await settle();
+  assert.equal(pages.length, 0, 'imported snapshots should leave the inbox');
   assert.equal(extractionChoices.length, 1, 'same snapshot should import once');
-  pages = [{ ...pages[0], id: 'two' }];
-  await get('add-saved').handlers.click();
+  pages = [{ id: 'two', url: 'https://example.org/blocked', html: '<article>New snapshot</article>', capturedAt: '2026-11-10T13:00:00Z' }];
+  notify({ captureRevision: {} }, 'local');
+  await settle();
   assert.equal(fetches, 1, 'import must not request the URL again');
   assert.deepEqual(extractionChoices, ['defuddle', 'defuddle']);
   assert.equal(get('results').children.length, 1);
@@ -71,7 +76,36 @@ test('workspace recovers a failed URL without fetching again, replaces repeated 
   assert.equal(result.records.length, 1); assert.equal(result.documents.length, 1); assert.equal(result.text.length, 1);
   assert.equal(result.records[0].previousAttempt.previousAttempt.error, 'HTTP 403 Forbidden');
   assert.equal(result.metadata[0].source, 'browser-tab'); assert.equal(result.metadata[0].captureId, 'two');
-  assert.equal(result.metadata[0].capturedAt, pages[0].capturedAt);
+  assert.equal(result.metadata[0].capturedAt, '2026-11-10T13:00:00Z');
   assert.equal(new Set(result.files).size, 2, 'new captures retain uniquely named originals');
   assert.equal(get('export').disabled, false);
+});
+
+for (const success of [true, false]) test(`popup ${success ? 'keeps save disabled and confirms success' : 'allows retry after a failed save'}`, async () => {
+  const elements = new Map();
+  const get = id => {
+    if (!elements.has(id)) {
+      const element = new Element();
+      const classes = new Set();
+      element.classList = { add: name => classes.add(name), remove: name => classes.delete(name), contains: name => classes.has(name) };
+      elements.set(id, element);
+    }
+    return elements.get(id);
+  };
+  const context = vm.createContext({
+    document: { getElementById: get }, window: { close() {} },
+    adapterForURL: () => null,
+    getExtensionAPI: () => ({
+      tabs: { query: async () => [{ id: 9, url: 'https://example.org/article' }] },
+      runtime: { sendMessage: async message => { assert.equal(message.type, 'save-page'); assert.equal(message.tabId, 9); return success ? { ok: true } : { ok: false, error: 'Could not read page' }; } }
+    })
+  });
+  const source = (await readFile(new URL('../src/popup.js', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
+  await vm.runInContext(`(async () => { ${source} })()`, context);
+  const button = get('save-page');
+  assert.equal(button.disabled, false);
+  await button.handlers.click({ currentTarget: button });
+  assert.equal(button.disabled, success);
+  assert.equal(get('page-feedback').textContent, success ? 'Page saved' : 'Could not read page');
+  assert.equal(get('page-feedback').classList.contains('saved'), success);
 });

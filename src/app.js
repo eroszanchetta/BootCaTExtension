@@ -1,4 +1,4 @@
-import { readSavedPages, clearSavedPages } from './page-store.js';
+import { readSavedPages, removeSavedPage } from './page-store.js';
 import { getExtensionAPI } from './extension-api.js';
 const ext = getExtensionAPI();
 import { parseURLs, filenameFor, fetchFile, FILE_LIMIT, BATCH_LIMIT } from './core.js';
@@ -75,7 +75,7 @@ ui.start.addEventListener('click', async () => {
   try { batchCollections = await readCollections(); }
   catch (error) { ui.start.disabled = false; ui.status.textContent = `Cannot read saved searches: ${error.message}`; return; }
   invalidateArchive();
-  running = true; refreshSavedControls(); stopping = false; files = []; records = []; documents = []; startedAt = new Date().toISOString();
+  running = true; stopping = false; files = []; records = []; documents = []; startedAt = new Date().toISOString();
   resultRows.clear(); ui.results.replaceChildren(); ui.urls.disabled = true; ui.extractor.disabled = true; ui.stop.disabled = false; ui.export.disabled = true;
   ui['preview-title'].textContent = 'Text preview'; ui['preview-meta'].textContent = 'Choose Preview text beside a downloaded document.'; ui['preview-text'].value = '';
   ui.progress.max = parsed.urls.length; ui.progress.value = 0; updateCorpusStatus();
@@ -107,7 +107,7 @@ ui.start.addEventListener('click', async () => {
     }
   } finally {
     running = false; ui.start.disabled = false; ui.urls.disabled = false; ui.extractor.disabled = false; ui.stop.disabled = true; ui.export.disabled = false;
-    refreshSavedControls();
+    importSavedPages();
     const failed = records.filter(r => r.outcome === 'error').length;
     ui.status.textContent = `${stopping ? 'Stopped' : 'Finished'}. ${files.length} downloaded, ${failed} download errors, ${documents.filter(doc => doc.extraction.status === 'failed').length} extraction failures. Review the corpus selection and save the ZIP.`;
   }
@@ -129,47 +129,36 @@ ui.export.addEventListener('click', () => {
   } catch (error) { ui.status.textContent = `Could not create ZIP: ${error.message}`; }
 });
 
-const savedUI = {
-  add: document.getElementById('add-saved'), clear: document.getElementById('clear-saved'),
-  status: document.getElementById('saved-status')
-};
-let savedCount = 0;
-function refreshSavedControls() {
-  savedUI.add.disabled = running || !savedCount;
-  savedUI.clear.disabled = running || !savedCount;
-}
-async function refreshSavedPages() {
+// Saved snapshots are a durable inbox until a workspace has imported them.
+// Coalesce notifications and defer imports while a download batch is running.
+let importingSavedPages = false;
+let savedPagesPending = false;
+async function importSavedPages() {
+  savedPagesPending = true;
+  if (running || importingSavedPages) return;
+  importingSavedPages = true;
+  const status = document.getElementById('saved-status');
   try {
-    savedCount = (await readSavedPages()).length;
-    savedUI.status.textContent = `${savedCount} saved page${savedCount === 1 ? '' : 's'} available. Import to review and extract text; clear only after exporting.`;
-    refreshSavedControls();
-  } catch (error) { savedUI.status.textContent = `Cannot read saved pages: ${error.message}`; }
+    while (savedPagesPending && !running) {
+      savedPagesPending = false;
+      await importPendingPages(status);
+    }
+  } finally { importingSavedPages = false; }
 }
-ext.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && changes.captureRevision) refreshSavedPages();
-});
-window.addEventListener('focus', refreshSavedPages);
-savedUI.clear.addEventListener('click', async () => {
-  if (running || !window.confirm('Clear saved page snapshots? Export your corpus first. Pages already imported in this workspace will remain until you close it or start a new batch.')) return;
-  try {
-    await clearSavedPages();
-    try { await ext.storage.local.set({ captureRevision: crypto.randomUUID() }); } catch {}
-    await refreshSavedPages();
-  } catch (error) { savedUI.status.textContent = error.message; }
-});
-savedUI.add.addEventListener('click', async () => {
-  if (running) return;
-  running = true; refreshSavedControls(); ui.start.disabled = true; ui.extractor.disabled = true;
+async function importPendingPages(status) {
+  // Keep the batch stable across asynchronous inbox reads and acknowledgements.
+  running = true; ui.start.disabled = true; ui.extractor.disabled = true;
   let imported = 0;
   try {
     const pages = await readSavedPages();
+    if (!pages.length) return;
     if (!startedAt) {
       batchCollections = await readCollections();
       startedAt = new Date().toISOString();
     }
     let total = files.reduce((n, file) => n + file.data.length, 0);
     for (const page of pages) {
-      if (documents.some(doc => doc.captureId === page.id)) continue;
+      if (documents.some(doc => doc.captureId === page.id)) { await removeSavedPage(page); continue; }
       const bytes = new TextEncoder().encode(page.html);
       if (total + bytes.length > BATCH_LIMIT) throw new Error('Batch limit reached (100 MiB). Export this corpus and start a new batch.');
       // Match redirects too, so a snapshot replaces the corresponding downloaded text.
@@ -190,12 +179,17 @@ savedUI.add.addEventListener('click', async () => {
       files.push({ name: filename, data: bytes }); total += bytes.length;
       invalidateArchive();
       row(url, 'Saved from browser tab', doc); updateCorpusStatus(); preview(doc); imported++;
+      await removeSavedPage(page);
     }
-    ui.status.textContent = `${imported} saved page${imported === 1 ? '' : 's'} added. Review the text before saving your corpus.`;
-  } catch (error) { ui.status.textContent = `${imported} saved pages added. ${error.message}`; }
+    if (imported) status.textContent = `${imported} saved page${imported === 1 ? '' : 's'} added to the review list. Review the text before saving your corpus.`;
+  } catch (error) { status.textContent = `Could not add all saved pages: ${error.message} Your remaining saved pages are retained. Export and start a new batch if it is full.`; }
   finally {
     running = false; ui.start.disabled = false; ui.extractor.disabled = false;
-    ui.export.disabled = !files.length; refreshSavedControls();
+    ui.export.disabled = !files.length;
   }
+}
+ext.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.captureRevision) importSavedPages();
 });
-refreshSavedPages();
+window.addEventListener('focus', importSavedPages);
+importSavedPages();
