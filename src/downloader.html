@@ -58,6 +58,12 @@
       <h2 id="results-heading">2. Review and export</h2>
       <p id="status" role="status" aria-live="polite">Ready when you are.</p>
       <progress id="progress" value="0" max="1" aria-label="URLs processed"></progress>
+      <div class="actions">
+        <button id="add-saved" class="secondary" disabled>Add saved pages</button>
+        <button id="clear-saved" class="secondary" disabled>Clear saved pages</button>
+      </div>
+      <p id="saved-status" role="status" aria-live="polite">Loading saved pages…</p>
+      <p class="hint">For a failed download, open its URL, complete any CAPTCHA, then use the BootCaT toolbar button → Save current page. Saved snapshots stay here until cleared, including after restarting the browser.</p>
       <button id="export" disabled>Save Corpus</button>
       <p class="hint">Includes all original downloaded files, selected corpus text files, search sources and extraction metadata.</p>
       <div class="table-wrap"><table><thead><tr><th scope="col">Include</th><th scope="col">URL</th><th scope="col">Download / extraction</th></tr></thead><tbody id="results"></tbody></table></div>

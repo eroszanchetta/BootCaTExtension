@@ -6,6 +6,7 @@ const feedback = document.getElementById("feedback");
 let activeTab;
 try {
   [activeTab] = await ext.tabs.query({ active: true, currentWindow: true });
+  document.getElementById("save-page").disabled = !/^https?:\/\//.test(activeTab?.url || "");
   const engine = adapterForURL(activeTab?.url);
   document.getElementById("page-info").textContent = engine ? `${engine.name}${engine.experimental ? " (experimental)" : ""} web results detected.` : "Open a Google, DuckDuckGo or Ecosia web search results tab, then click this extension again.";
   collect.disabled = !engine;
@@ -25,4 +26,15 @@ document.getElementById("workspace").addEventListener("click", async () => {
     if (!result?.ok) throw new Error(result?.error || "Could not open workspace");
     window.close();
   } catch (error) { feedback.textContent = error.message; }
+});
+
+document.getElementById('save-page').addEventListener('click', async event => {
+  const button = event.currentTarget;
+  button.disabled = true; feedback.textContent = 'Saving this page…';
+  try {
+    const result = await ext.runtime.sendMessage({ type: 'save-page', tabId: activeTab.id });
+    if (!result?.ok) throw new Error(result?.error || 'Could not save this page.');
+    feedback.textContent = 'Page saved. Open BootCaT and choose “Add saved pages” to extract its text.';
+  } catch (error) { feedback.textContent = error.message; }
+  finally { button.disabled = false; }
 });

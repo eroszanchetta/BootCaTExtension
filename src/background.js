@@ -1,3 +1,5 @@
+import { captureCurrentPage } from './page-capture.js';
+import { savePage } from './page-store.js';
 import { getExtensionAPI } from './extension-api.js';
 const ext = getExtensionAPI();
 import { adapterForURL, extractResults } from "./engines.js";
@@ -24,6 +26,17 @@ async function handle(message) {
     await ext.storage.local.set({ collections: [] });
     return {};
   });
+  if (message.type === 'save-page') {
+    const tab = await ext.tabs.get(message.tabId);
+    if (!/^https?:\/\//.test(tab.url || '')) throw new Error('Open a web page first.');
+    const injected = await ext.scripting.executeScript({ target: { tabId: tab.id }, func: captureCurrentPage });
+    const page = injected[0]?.result;
+    if (!page || page.error) throw new Error(page?.error || 'Could not read this page.');
+    await savePage({ ...page, id: crypto.randomUUID() });
+    // The snapshot remains saved even if the optional UI notification fails.
+    try { await ext.storage.local.set({ captureRevision: crypto.randomUUID() }); } catch {}
+    return {};
+  }
   if (message.type !== "collect") throw new Error("Unknown request");
   const tab = await ext.tabs.get(message.tabId);
   const adapter = adapterForURL(tab.url);
