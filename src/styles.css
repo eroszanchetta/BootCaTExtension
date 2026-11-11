@@ -63,3 +63,5 @@ nav a:hover { background: #c7ddeb; }
 .delete-button:hover { background: #fff1f0; }
 .delete-button svg { display: block; width: 20px; height: 20px; }
 @media (max-width: 500px) { .project-controls { flex-direction: column; align-items: stretch; } }
+
+.performance-warning:not(:empty) { color: #754400; background: #fff6df; border-left: 4px solid #c68210; padding: 10px 12px; border-radius: 4px; }

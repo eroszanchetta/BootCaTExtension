@@ -5,7 +5,7 @@ import { writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
-import { parseURLs, filenameFor, fetchFile } from "../src/core.js";
+import { parseURLs, filenameFor, fetchFile, urlListWarning } from "../src/core.js";
 import { makeZIP } from "../src/zip.js";
 
 test("URL validation, deduplication, fragments and credentials", () => {
@@ -13,7 +13,9 @@ test("URL validation, deduplication, fragments and credentials", () => {
     urls: ["https://example.com/", "http://example.org/a?q=1"], errors: []
   });
   assert.equal(parseURLs("javascript:alert(1)\nfile:///etc/passwd\nhttps://user:secret@example.com\nbroken").errors.length, 4);
-  assert.equal(parseURLs(Array.from({ length: 501 }, (_, i) => `https://example.com/${i}`).join("\n")).errors.length, 1);
+  assert.equal(parseURLs(Array.from({ length: 501 }, (_, i) => `https://example.com/${i}`).join("\n")).errors.length, 0);
+  assert.equal(urlListWarning(500), '');
+  assert.match(urlListWarning(501), /may take longer/);
   assert.equal(filenameFor("https://example.com/../../evil", "text/html; charset=UTF-8", 0), "pages/0001-example.com.html");
 });
 

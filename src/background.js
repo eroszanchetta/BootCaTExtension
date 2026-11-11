@@ -1,5 +1,6 @@
+import { ensureStoredProject, resetStoredProject, storedProjectId } from './project-store.js';
 import { captureCurrentPage } from './page-capture.js';
-import { savePage, clearSavedPages } from './page-store.js';
+import { savePage } from './page-store.js';
 import { getExtensionAPI } from './extension-api.js';
 const ext = getExtensionAPI();
 import { adapterForURL, extractResults } from "./engines.js";
@@ -14,18 +15,38 @@ function serialize(task) {
 }
 async function ensureProject() {
   let { project } = await ext.storage.local.get('project');
+  const storedId = await storedProjectId();
+  if (storedId && project?.id !== storedId) {
+    // Recover a reset interrupted between the atomic database clear and the
+    // storage.local notification. Never attach an old project's collections.
+    project = { id: storedId, name: 'Untitled project' };
+    await ext.storage.local.clear();
+    await ext.storage.local.set({ project, collections: [], captureRevision: crypto.randomUUID() });
+  }
   if (!project) {
     project = { id: crypto.randomUUID(), name: 'Untitled project' };
     await ext.storage.local.set({ project });
   }
+  await ensureStoredProject(project.id);
   return project;
 }
 async function assertProject(id) {
   if ((await ensureProject()).id !== id) throw new Error('The project changed. Collect or save the page again for the new project.');
 }
-async function ensureWorkspace() {
+async function workspaceTabs() {
   const url = ext.runtime.getURL('downloader.html');
-  if (!(await ext.tabs.query({})).some(tab => tab.url === url)) await ext.tabs.create({ url, active: false });
+  if (typeof ext.runtime.getContexts === 'function') {
+    // Own extension pages can have their URL hidden in tabs.query without the
+    // broad tabs permission. Contexts exposes only this extension's documents.
+    const contexts = await ext.runtime.getContexts({ contextTypes: ['TAB'] });
+    const ids = [...new Set(contexts.filter(context => context.documentUrl?.split('#')[0] === url && context.tabId >= 0).map(context => context.tabId))];
+    const tabs = await Promise.all(ids.map(id => ext.tabs.get(id).catch(() => null)));
+    return tabs.filter(Boolean);
+  }
+  return (await ext.tabs.query({})).filter(tab => tab.url?.split('#')[0] === url);
+}
+async function ensureWorkspace() {
+  if (!(await workspaceTabs()).length) await ext.tabs.create({ url: ext.runtime.getURL('downloader.html'), active: false });
 }
 async function handle(message) {
   if (message.type === 'get-project') return serialize(async () => ({ project: await ensureProject() }));
@@ -37,15 +58,15 @@ async function handle(message) {
   });
   if (message.type === 'new-project') return serialize(async () => {
     // Serialize with collection/capture writes so stale work cannot survive reset.
-    await clearSavedPages();
-    await ext.storage.local.clear();
     const project = { id: crypto.randomUUID(), name: 'Untitled project' };
+    await resetStoredProject(project.id);
+    await ext.storage.local.clear();
     await ext.storage.local.set({ project, collections: [], captureRevision: crypto.randomUUID() });
     return { project };
   });
   if (message.type === "open-workspace") {
     const url = ext.runtime.getURL("downloader.html");
-    const tabs = (await ext.tabs.query({})).filter(tab => tab.url === url);
+    const tabs = await workspaceTabs();
     if (tabs.length) {
       await ext.tabs.update(tabs[0].id, { active: true });
       await ext.windows.update(tabs[0].windowId, { focused: true });

@@ -8,11 +8,11 @@ export async function readCollections() {
   const { collections = [] } = await ext.storage.local.get("collections");
   return collections;
 }
-export function initSearchUI({ isRunning }) {
+export function initSearchUI({ isRunning, seenCollectionIds = [], onChange = () => {} }) {
   const el = id => document.getElementById(id);
   let collections = [];
   let changed = false;
-  const seenCollections = new Set(), pending = new Set();
+  const seenCollections = new Set(seenCollectionIds), pending = new Set(), pendingCollections = new Set();
   const status = el("collection-status");
   for (const engine of ENGINES) {
     const option = document.createElement("option");
@@ -40,26 +40,24 @@ export function initSearchUI({ isRunning }) {
     }
   }
   function flush() {
-    if (!pending.size) return;
+    if (!pending.size && !pendingCollections.size) return;
     if (isRunning()) { status.textContent += ' New URLs will be added after the current batch finishes.'; return; }
     const input = el('urls');
     const current = parseURLs(input.value);
     const existing = new Set(current.urls);
     const additions = [...pending].filter(url => !existing.has(url));
-    if (existing.size + additions.length > 500) {
-      status.textContent = 'Collected URLs are saved, but the download list would exceed 500 URLs. Shorten the list to add the remaining URLs automatically, or export searches.';
-      return;
-    }
     // Preserve manual edits, including invalid lines which the downloader will flag.
     if (additions.length) input.value = input.value.trimEnd() + (input.value.trim() ? '\n' : '') + additions.join('\n');
-    pending.clear();
+    for (const id of pendingCollections) seenCollections.add(id);
+    pending.clear(); pendingCollections.clear();
+    onChange({ urls: input.value, seenCollections: [...seenCollections] });
   }
   function receive(saved) {
     collections = saved;
-    if (!saved.length) pending.clear();
+    if (!saved.length) { pending.clear(); pendingCollections.clear(); }
     for (const collection of collections) {
-      if (seenCollections.has(collection.id)) continue;
-      seenCollections.add(collection.id);
+      if (seenCollections.has(collection.id) || pendingCollections.has(collection.id)) continue;
+      pendingCollections.add(collection.id);
       for (const item of collection.results) pending.add(item.url);
     }
     render(); flush();

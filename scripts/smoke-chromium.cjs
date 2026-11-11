@@ -55,7 +55,18 @@ const { join } = require('node:path');
     assert.equal(await page.locator('#use-collected').count(), 0);
     await page.fill('#project-name', 'Energy corpus');
     assert.equal(await page.inputValue('#urls'), 'https://corpus.test/article');
+    async function deleteAllRows() {
+      let count;
+      while ((count = await page.locator('#results .delete-button').count())) {
+        await page.locator('#results .delete-button').first().click();
+        await page.waitForFunction(count => document.querySelectorAll('#results tr').length < count, count);
+      }
+    }
     for (const extractor of ['readability', 'defuddle']) {
+      if (extractor === 'defuddle') {
+        await page.click('#results .delete-button');
+        await page.fill('#urls', 'https://corpus.test/article');
+      }
       await page.selectOption('#extractor', extractor);
       await page.click('#start');
       await page.waitForFunction(() => !document.querySelector('#start').disabled && document.querySelector('#status').textContent.startsWith('Finished.'));
@@ -63,6 +74,7 @@ const { join } = require('node:path');
       assert.equal(await page.inputValue('#preview-text'), '');
       assert.equal(await page.locator('#preview-title').innerText(), 'Preview text');
       await page.click('#results .preview-button');
+      await page.waitForFunction(() => document.querySelector('#preview-text').value.includes('Renewable energy'));
       assert.ok((await page.inputValue('#preview-text')).includes('Renewable energy'));
       assert.ok(!(await page.inputValue('#preview-text')).includes('MENU_SENTINEL'));
       const downloadEvent = page.waitForEvent('download'); await page.click('#export');
@@ -70,18 +82,22 @@ const { join } = require('node:path');
       assert.equal(await download.failure(), null);
       console.log(`${extractor}: search collection → download → extraction → ZIP passed`);
     }
+    await deleteAllRows();
     await page.fill('#urls', 'https://corpus.test/document.pdf\nhttps://corpus.test/document.docx');
     await page.click('#start');
     await page.waitForFunction(() => !document.querySelector('#start').disabled && document.querySelector('#status').textContent.startsWith('Finished.'));
     assert.match(await page.locator('#status').innerText(), /0 download errors, 0 extraction failures/);
     assert.equal(await page.inputValue('#preview-text'), '');
     await page.locator('#results .preview-button').nth(0).click();
+    await page.waitForFunction(() => document.querySelector('#preview-text').value.includes('Renewable energy corpus'));
     assert.match(await page.inputValue('#preview-text'), /Renewable energy corpus/);
     await page.locator('#results .preview-button').nth(1).click();
+    await page.waitForFunction(() => document.querySelector('#preview-text').value.includes('Caffè 中文 corpus'));
     assert.match(await page.inputValue('#preview-text'), /Caffè 中文 corpus/);
     const documentsDownload = page.waitForEvent('download'); await page.click('#export');
     await (await documentsDownload).saveAs(join(root, 'documents.zip'));
     console.log('PDF/DOCX download, local extraction, preview and ZIP passed.');
+    await deleteAllRows();
     await page.fill('#urls', 'https://corpus.test/blocked');
     await page.click('#start');
     await page.waitForFunction(() => !document.querySelector('#start').disabled && document.querySelector('#status').textContent.startsWith('Finished.'));
@@ -104,8 +120,16 @@ const { join } = require('node:path');
     assert.equal(await page.locator('#results tr').count(), 1);
     assert.equal(await page.inputValue('#preview-text'), '');
     await page.click('#results .preview-button');
+    await page.waitForFunction(() => document.querySelector('#preview-text').value.includes('Renewable energy'));
+    assert.ok((await page.inputValue('#preview-text')).includes('Renewable energy'));
+    await page.reload();
+    await page.waitForFunction(() => document.querySelectorAll('#results tr').length === 1 && !document.querySelector('#start').disabled);
+    assert.equal(await page.inputValue('#preview-text'), '');
+    await page.click('#results .preview-button');
+    await page.waitForFunction(() => document.querySelector('#preview-text').value.includes('Renewable energy'));
     assert.ok((await page.inputValue('#preview-text')).includes('Renewable energy'));
     await page.click('#results .delete-button');
+    await page.waitForFunction(() => document.querySelectorAll('#results tr').length === 0);
     assert.equal(await page.locator('#results tr').count(), 0);
     assert.equal(await page.inputValue('#preview-text'), '');
     assert.equal(await page.locator('#export').isDisabled(), true);
@@ -113,7 +137,7 @@ const { join } = require('node:path');
     await page.waitForFunction(async () => (await (await import('./page-store.js')).readSavedPages()).length === 0);
     console.log('Automatic failed URL recovery, inert UTF-8 snapshots and inbox consumption passed.');
     await page.evaluate(() => (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'open-workspace' }));
-    assert.equal((await worker.evaluate(async () => (await (globalThis.browser ?? chrome).tabs.query({})).filter(tab => tab.url?.endsWith('/downloader.html')).length)), 1);
+    assert.equal(context.pages().filter(tab => tab.url().split('#')[0] === origin + '/downloader.html').length, 1);
     await page.reload();
     await page.waitForFunction(() => document.querySelector('#collection-status').textContent.includes('1 unique URLs'));
     await page.waitForFunction(() => document.querySelector('#project-name').value === 'Energy corpus');
@@ -125,6 +149,12 @@ const { join } = require('node:path');
     assert.equal(await page.locator('#results tr').count(), 0);
     assert.equal(await page.locator('#export').isDisabled(), true);
     assert.equal(await page.evaluate(async () => (await (await import('./page-store.js')).readSavedPages()).length), 0);
+    await page.fill('#urls', Array.from({ length: 501 }, (_, i) => `https://corpus.test/large/${i}`).join('\n'));
+    await page.waitForFunction(() => document.querySelector('#storage-status').textContent.startsWith('Saved in this browser'));
+    assert.match(await page.locator('#urls-warning').innerText(), /501 URLs/);
+    await page.reload();
+    await page.waitForFunction(() => document.querySelector('#urls').value.split('\n').length === 501 && !document.querySelector('#start').disabled);
+    assert.match(await page.locator('#urls-warning').innerText(), /501 URLs/);
     assert.deepEqual(errors, []);
     console.log('Workspace reuse, saved-search persistence and zero page errors passed.');
   } finally { await context?.close(); await rm(root, { recursive: true, force: true }); }
