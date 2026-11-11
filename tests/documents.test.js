@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { extractDownloadedDocument, documentType, extractionContentType, pdfPageText } from '../src/binary-extraction.js';
+import { extractDownloadedDocument, documentType, extractionContentType, pdfPageText, PDFJS_VERSION } from '../src/binary-extraction.js';
 import { DOCX_MIME } from '../src/docx.js';
 import { filenameFor } from '../src/core.js';
 import { makeZIP } from '../src/zip.js';
@@ -92,11 +92,21 @@ test('cancelled extraction and protected PDFs report a useful failure without in
   const cancelled = await extractDownloadedDocument(await docx(), DOCX_MIME, { ...options, signal: controller.signal });
   assert.equal(cancelled.status, 'failed'); assert.match(cancelled.warnings.join(' '), /cancelled/);
   const password = Object.assign(new Error('Password required'), { name: 'PasswordException' });
-  const protectedResult = await extractDownloadedDocument(pdfFixture(), 'application/pdf', { loadPDF: async () => ({ getDocument: () => ({ promise: Promise.reject(password), destroy: async () => {} }) }) });
+  const protectedResult = await extractDownloadedDocument(pdfFixture(), 'application/pdf', { loadPDF: async () => ({ version: PDFJS_VERSION, getDocument: () => ({ promise: Promise.reject(password), destroy: async () => {} }) }) });
   assert.equal(protectedResult.included, false); assert.match(protectedResult.warnings.join(' '), /Password-protected PDF/);
 });
 
 test('PDF spacing preserves adjacent glyph fragments and Unicode; only visible gaps add spaces', () => {
   const item = (str, x, width, hasEOL = false) => ({ str, transform: [1, 0, 0, 1, x, 10], width, height: 10, hasEOL });
   assert.equal(pdfPageText([item('Hel', 0, 15), item('lo', 15, 10), item('world', 30, 25, true), item('中文', 0, 20)]), 'Hello world\n中文');
+});
+
+
+test('PDF document JavaScript is not executed during text extraction', async () => {
+  globalThis.bootcatPDFScriptRan = false;
+  try {
+    const result = await extractDownloadedDocument(pdfFixture({ javascript: true }), 'application/pdf', options);
+    assert.equal(result.status, 'ok', result.warnings.join(' '));
+    assert.equal(globalThis.bootcatPDFScriptRan, false);
+  } finally { delete globalThis.bootcatPDFScriptRan; }
 });
