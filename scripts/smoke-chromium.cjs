@@ -137,7 +137,7 @@ const { join } = require('node:path');
     await page.waitForFunction(async () => (await (await import('./page-store.js')).readSavedPages()).length === 0);
     console.log('Automatic failed URL recovery, inert UTF-8 snapshots and inbox consumption passed.');
     await page.evaluate(() => (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'open-workspace' }));
-    assert.equal((await worker.evaluate(async () => (await (globalThis.browser ?? chrome).tabs.query({})).filter(tab => tab.url?.endsWith('/downloader.html')).length)), 1);
+    assert.equal(context.pages().filter(tab => tab.url().split('#')[0] === origin + '/downloader.html').length, 1);
     await page.reload();
     await page.waitForFunction(() => document.querySelector('#collection-status').textContent.includes('1 unique URLs'));
     await page.waitForFunction(() => document.querySelector('#project-name').value === 'Energy corpus');

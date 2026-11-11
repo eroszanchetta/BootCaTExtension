@@ -80,7 +80,7 @@ for (const namespace of ['chrome', 'browser']) test(`${namespace}: background se
   globalThis[namespace] = {
     runtime: { id: 'test', getURL: path => `${origin}${path}`, onMessage: { addListener: fn => { listener = fn; } } },
     tabs: {
-      get: async id => ({ id, url: `https://www.google.com/search?q=${id}` }),
+      get: async id => id === 10 ? ({ id, windowId: 5 }) : ({ id, url: `https://www.google.com/search?q=${id}` }),
       query: async options => { assert.deepEqual(options, {}); return workspaceExists ? [{ id: 10, windowId: 5, url: origin + 'downloader.html' }, { id: 11, url: 'https://example.org/' }] : []; },
       update: async (id, options) => { assert.equal(id, 10); assert.equal(options.active, true); focused++; },
       create: async options => { assert.equal(options.url, origin + 'downloader.html'); opened++; }
@@ -112,6 +112,14 @@ for (const namespace of ['chrome', 'browser']) test(`${namespace}: background se
     assert.equal(collections.length, 0);
     assert.equal((await request({ type: 'open-workspace' })).ok, true);
     assert.equal(focused, 1); assert.equal(opened, 0);
+    globalThis[namespace].runtime.getContexts = async options => {
+      assert.deepEqual(options, { contextTypes: ['TAB'] });
+      return [{ documentUrl: origin + 'downloader.html#preview-section', tabId: 10 }];
+    };
+    assert.equal((await request({ type: 'open-workspace' })).ok, true);
+    assert.equal(focused, 2); assert.equal(opened, 0, 'own-page contexts avoid duplicate workspace tabs when tab URLs are hidden');
+    delete globalThis[namespace].runtime.getContexts;
+
     workspaceExists = false;
     assert.equal((await request({ type: 'open-workspace' })).ok, true);
     assert.equal(opened, 1);
