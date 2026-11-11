@@ -1,6 +1,7 @@
 import { extractDOCX, DOCX_MIME, zipDirectory } from './docx.js';
 import { extractDocument, normaliseText } from './extraction.js';
-export const PDFJS_VERSION = '5.6.205';
+import { PDFJS_VERSION } from './pdfjs-version.js';
+export { PDFJS_VERSION } from './pdfjs-version.js';
 export const TEXT_LIMIT = 2_000_000;
 const GENERIC = new Set(['', 'application/octet-stream', 'binary/octet-stream', 'application/zip']);
 export function documentType(bytes, contentType) {
@@ -50,6 +51,7 @@ export function pdfPageText(items) {
 }
 async function extractPDF(bytes, { signal, loadPDF = () => import('./vendor/pdfjs/pdf.mjs') }) {
   const pdfjs = await abortable(loadPDF(), signal);
+  if (pdfjs.version !== PDFJS_VERSION) throw new Error(`PDF.js version mismatch: expected ${PDFJS_VERSION}, loaded ${pdfjs.version || 'unknown'}. Rebuild and reload the extension.`);
   let port, worker, task;
   try {
     if (typeof Worker === 'function') {
@@ -60,7 +62,7 @@ async function extractPDF(bytes, { signal, loadPDF = () => import('./vendor/pdfj
     }
     task = pdfjs.getDocument({
       data: bytes.slice(), worker,
-      isEvalSupported: false, useWasm: false, disableFontFace: true, useSystemFonts: false,
+      useWasm: false, disableFontFace: true, useSystemFonts: false,
       useWorkerFetch: false, verbosity: 0,
       cMapUrl: new URL('./vendor/pdfjs/cmaps/', import.meta.url).href, cMapPacked: true,
       standardFontDataUrl: new URL('./vendor/pdfjs/standard_fonts/', import.meta.url).href

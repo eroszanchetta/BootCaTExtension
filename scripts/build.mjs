@@ -1,3 +1,4 @@
+import { PDFJS_VERSION } from '../src/pdfjs-version.js';
 import { cp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,8 +15,8 @@ export async function build(target, { outputRoot = join(ROOT, 'dist'), includeTe
   try {
     pdfRoot = dirname(fileURLToPath(import.meta.resolve('pdfjs-dist/package.json')));
     const info = JSON.parse(await readFile(join(pdfRoot, 'package.json'), 'utf8'));
-    if (info.version !== '5.6.205') throw new Error('Unexpected PDF.js version');
-  } catch (error) { throw new Error(`Run npm install --omit=optional before building (PDF.js 5.6.205 required). ${error.message}`); }
+    if (info.version !== PDFJS_VERSION) throw new Error(`Unexpected PDF.js version: ${info.version}`);
+  } catch (error) { throw new Error(`Run npm install before building (PDF.js ${PDFJS_VERSION} required). ${error.message}`); }
   const destination = join(outputRoot, target);
   await mkdir(outputRoot, { recursive: true });
   // Only replace this known browser's generated folder, never the source tree.

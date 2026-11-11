@@ -9,12 +9,12 @@ export const docxFiles = [
   { name: '_rels/.rels', data: '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>' },
   { name: 'word/document.xml', data: wordXML }
 ];
-export function pdfFixture({ empty = false, twoPages = false } = {}) {
+export function pdfFixture({ empty = false, twoPages = false, javascript = false } = {}) {
   // Minimal valid PDF with offsets computed from its ASCII bytes.
   const text = 'BT /F1 12 Tf 50 750 Td (Renewable energy corpus.) Tj 0 -20 Td (Second line.) Tj ET';
   const stream = empty ? '' : text;
   const objects = [
-    '<< /Type /Catalog /Pages 2 0 R >>',
+    `<< /Type /Catalog /Pages 2 0 R${javascript ? ' /OpenAction << /S /JavaScript /JS (globalThis.bootcatPDFScriptRan = true;) >>' : ''} >>`,
     `<< /Type /Pages /Kids [3 0 R${twoPages ? ' 6 0 R' : ''}] /Count ${twoPages ? 2 : 1} >>`,
     '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
     '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
