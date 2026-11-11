@@ -5,7 +5,7 @@ import { captureTabDocument, readPDFFile, fileWarnings, PDF_REVIEW_NOTICE } from
 import { validateSavedPages, savePage, readSavedPages } from '../src/page-store.js';
 import * as storage from '../src/project-store.js';
 import { workspace, waitFor, extracted } from './helpers/workspace.js';
-import { FILE_LIMIT, fetchFile } from '../src/core.js';
+import { FILE_LIMIT, PDF_IMPORT_LIMIT, fetchFile } from '../src/core.js';
 
 const pdf = new TextEncoder().encode('%PDF-1.4\nPDF fixture bytes');
 const blocked = { executeScript: async () => { throw new Error('Cannot access PDF viewer'); } };
@@ -60,7 +60,8 @@ test('local PDF input is bounded and mixed inbox size counts PDF Blob bytes', as
   assert.deepEqual(await readPDFFile(new Blob([pdf])), pdf);
   await assert.rejects(readPDFFile(new Blob(['<html>Challenge</html>'])), /does not contain a PDF/);
   await assert.rejects(readPDFFile(new Blob([])), /non-empty/);
-  await assert.rejects(readPDFFile({ size: FILE_LIMIT + 1, arrayBuffer() { assert.fail('must reject before reading'); } }), /10 MiB/);
+  await assert.rejects(readPDFFile({ size: PDF_IMPORT_LIMIT + 1, arrayBuffer() { assert.fail('must reject before reading'); } }), /50 MiB/);
+  await assert.rejects(readPDFFile({ size: FILE_LIMIT + 1, arrayBuffer() { assert.fail('must reject before reading'); } }, FILE_LIMIT), /10 MiB/);
   validateSavedPages([{ kind: 'pdf', blob: new Blob([new Uint8Array(FILE_LIMIT)]) }, { html: 'HTML' }]);
   assert.throws(() => validateSavedPages([
     { kind: 'pdf', blob: new Blob([new Uint8Array(FILE_LIMIT)]) },
@@ -97,10 +98,19 @@ test('local PDF chooser keeps failures intact on invalid input and replaces only
   globalThis.indexedDB = new IDBFactory();
   const app = await workspace('local', { fetch: async () => { throw new Error('HTTP 403'); } });
   await app.input('urls', 'https://example.org/one\nhttps://example.org/two'); await app.click('start');
-  const input = app.get('results').children[1].children[1].children.find(item => item.type === 'file');
+  const button = app.get('results').children[1].children[1].children.find(item => item.className === 'secondary import-pdf-button');
+  const input = app.get('import-pdf-picker');
+  button.handlers.click();
+  const row = app.get('results').children[1];
+  await app.focus();
+  assert.equal(app.get('results').children[1], row, 'returning from the chooser must not rebuild its target row');
   input.files = [new Blob(['Not PDF'])]; await input.handlers.change();
   assert.equal((await storage.loadWorkspace('local')).entries.filter(entry => entry.doc).length, 0);
   assert.match(app.get('status').textContent, /does not contain a PDF/);
+  assert.match(app.get('pdf-import-status').textContent, /PDF not imported/);
+  await app.focus();
+  assert.match(app.get('results').children[1].children[1].children.find(item => item.className === 'hint pdf-import-feedback').textContent, /PDF not imported/);
+  app.get('results').children[1].children[1].children.find(item => item.className === 'secondary import-pdf-button').handlers.click();
   input.files = [new Blob([pdf])]; await input.handlers.change();
   const entries = (await storage.loadWorkspace('local')).entries;
   assert.equal(entries.length, 2); assert.equal(entries.find(entry => entry.url.endsWith('/one')).doc, null);
@@ -108,6 +118,47 @@ test('local PDF chooser keeps failures intact on invalid input and replaces only
   assert.equal(imported.record.source, 'local-file'); assert.match(imported.doc.filename, /\.pdf$/);
   await app.click('start');
   assert.deepEqual(app.fetched, ['https://example.org/one', 'https://example.org/two', 'https://example.org/one']);
+});
+
+test('manually selected PDF above 10 MiB imports with the larger extraction allowance and exports exact original', async () => {
+  globalThis.indexedDB = new IDBFactory();
+  const bytes = new Uint8Array(15690948); bytes.set(pdf);
+  const app = await workspace('large', { fetch: async () => { throw new Error('HTTP 403'); }, extractor: async (data, type, options) => {
+    assert.equal(data.length, bytes.length); assert.equal(options.localPDF, true);
+    return { ...extracted('Large PDF text'), format: 'pdf' };
+  } });
+  await app.input('urls', 'https://example.org/L15.pdf'); await app.click('start');
+  app.get('results').children[0].children[1].children.find(item => item.className === 'secondary import-pdf-button').handlers.click();
+  app.get('import-pdf-picker').files = [new Blob([bytes])]; await app.get('import-pdf-picker').handlers.change();
+  const entry = (await storage.loadWorkspace('large')).entries[0];
+  assert.equal(entry.record.bytes, 15690948); assert.equal(entry.doc.extraction.status, 'ok');
+  assert.match(app.get('pdf-import-status').textContent, /PDF imported/);
+  assert.deepEqual(new Uint8Array(await (await storage.readOriginal('large', entry.doc.filename)).arrayBuffer()), bytes);
+  await app.click('export'); assert.ok(app.archive().size > bytes.length);
+});
+
+test('successful downloads with failed PDF or HTML extraction do not offer PDF recovery', async () => {
+  for (const format of ['pdf', 'html']) {
+    globalThis.indexedDB = new IDBFactory();
+    const app = await workspace('failed-extraction', { extractor: async () => ({ ...extracted(''), status: 'failed', included: false, format, warnings: ['No text'] }) });
+    await app.input('urls', `https://example.org/document.${format}`); await app.click('start');
+    const entry = app.state().entries[0]; assert.ok(entry.doc);
+    assert.ok(await storage.readOriginal('failed-extraction', entry.doc.filename));
+    assert.equal(app.get('results').children[0].children[1].children.some(item => item.className === 'secondary import-pdf-button'), false);
+  }
+});
+
+test('cancelling the native PDF chooser allows focus refresh and a subsequent selection', async () => {
+  globalThis.indexedDB = new IDBFactory();
+  const app = await workspace('cancel', { fetch: async () => { throw new Error('HTTP 403'); } });
+  await app.input('urls', 'https://example.org/failed'); await app.click('start');
+  app.get('results').children[0].children[1].children.find(item => item.className === 'secondary import-pdf-button').handlers.click();
+  app.get('import-pdf-picker').handlers.cancel();
+  await app.focus();
+  assert.match(app.get('pdf-import-status').textContent, /selection cancelled/);
+  app.get('results').children[0].children[1].children.find(item => item.className === 'secondary import-pdf-button').handlers.click();
+  app.get('import-pdf-picker').files = [new Blob([pdf])]; await app.get('import-pdf-picker').handlers.change();
+  assert.ok(app.state().entries[0].doc);
 });
 
 test('old generic PDF notices are hidden without losing specific warnings', () => {

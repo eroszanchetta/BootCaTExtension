@@ -1,4 +1,4 @@
-import { fetchFile, FILE_LIMIT } from './core.js';
+import { fetchFile, FILE_LIMIT, PDF_IMPORT_LIMIT } from './core.js';
 import { captureCurrentPage } from './page-capture.js';
 
 export const PDF_REVIEW_NOTICE = 'PDF reading order, columns, headers and line breaks may need review. OCR is not performed.';
@@ -12,9 +12,9 @@ function webURL(value) {
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('Open an HTTP or HTTPS page without URL credentials first.');
   url.hash = ''; return url.href;
 }
-export async function readPDFFile(file) {
+export async function readPDFFile(file, limit = PDF_IMPORT_LIMIT) {
   if (!file || !file.size) throw new Error('Choose a non-empty PDF file.');
-  if (file.size > FILE_LIMIT) throw new Error('PDF exceeds the 10 MiB file limit.');
+  if (file.size > limit) throw new Error(`PDF exceeds the ${limit / 1024 / 1024} MiB file limit.`);
   const bytes = new Uint8Array(await file.arrayBuffer());
   if (!hasPDFSignature(bytes)) throw new Error('This file does not contain a PDF. Download the PDF itself, rather than an HTML sign-in or CAPTCHA page.');
   return bytes;

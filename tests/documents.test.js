@@ -57,6 +57,14 @@ test('textless and malformed PDFs produce no included corpus text', async () => 
   assert.equal(invalid.status, 'failed'); assert.equal(invalid.text, '');
 });
 
+test('larger local PDF imports extract with the 50 MiB allowance while ordinary PDF inputs stay bounded', async () => {
+  const bytes = pdfFixture({ paddingBytes: 15 * 1024 * 1024 });
+  const ordinary = await extractDownloadedDocument(bytes, 'application/pdf', options);
+  assert.equal(ordinary.status, 'failed'); assert.match(ordinary.warnings.join(' '), /10 MiB/);
+  const local = await extractDownloadedDocument(bytes, 'application/pdf', { ...options, localPDF: true });
+  assert.equal(local.status, 'ok', local.warnings.join(' ')); assert.match(local.text, /Renewable energy corpus/);
+});
+
 test('DOCX STORE and DEFLATE files preserve Unicode, paragraphs and table cells; omit hidden/deleted/field text', async () => {
   for (const compressed of [false, true]) {
     const result = await extractDownloadedDocument(await docx(docxFiles, compressed), DOCX_MIME, options);

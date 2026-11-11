@@ -1,5 +1,6 @@
 // Browser-independent functions: also exercised by the Node tests.
 export const FILE_LIMIT = 10 * 1024 * 1024;
+export const PDF_IMPORT_LIMIT = 50 * 1024 * 1024;
 export const URL_WARNING_THRESHOLD = 500;
 export function urlListWarning(count) {
   return count > URL_WARNING_THRESHOLD ? `This project has ${count.toLocaleString()} URLs. Large lists may take longer to download, review and export, and use substantial browser storage. You can continue.` : '';
