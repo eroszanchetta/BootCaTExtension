@@ -25,4 +25,15 @@ jobs:
       - run: npm test
       - run: npm run package
       - run: npx playwright install --with-deps chromium
-      - run: npm run test:browser
+      - run: npm run test:browser > browser-test.log 2>&1
+      - name: Report browser failure
+        if: failure()
+        run: |
+          python3 - <<'PYCODE'
+          from pathlib import Path
+          path = Path('browser-test.log')
+          if path.exists():
+              log = path.read_text()[-16000:]
+              escaped = log.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+              print('::error title=Browser smoke test::' + escaped)
+          PYCODE
