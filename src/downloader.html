@@ -8,11 +8,12 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body id="top">
-  <a class="skip-link" href="#search-section">Skip to content</a>
+  <a class="skip-link" href="#seeds-section">Skip to content</a>
   <div class="topbar">
     <div class="topbar-inner">
       <a class="brand" href="#top"><img src="icons/BootCaT.svg" width="56" height="56" alt=""><span>BootCaT</span></a>
       <nav aria-label="Workspace sections">
+        <a href="#seeds-section">Seeds &amp; Tuples</a>
         <a href="#search-section">Search</a>
         <a href="#urls-section">URLs</a>
         <a href="#review-section">Review &amp; Download</a>
@@ -29,15 +30,43 @@
       <div class="project-controls"><input id="project-name" maxlength="120" value="Untitled project" autocomplete="off"><button id="new-project" class="secondary">New project</button></div>
       <p id="project-status" class="hint" role="status" aria-live="polite"></p>
     </section>
+    <section id="seeds-section" aria-labelledby="seeds-heading" tabindex="-1">
+      <h2 id="seeds-heading">Seeds and tuples</h2>
+      <label for="seeds">Seeds, one per line</label>
+      <textarea id="seeds" spellcheck="false" disabled placeholder="renewable energy&#10;storage&#10;electricity network&#10;generation&#10;capacity"></textarea>
+      <p class="hint">Enter at least 5 distinct seeds. Each seed can be one word or several words. There is no fixed upper limit on seed count. Blank and duplicate lines are ignored.</p>
+      <p id="seed-status" role="status" aria-live="polite"></p>
+      <div class="tuple-settings">
+        <div><label for="tuple-length">Seeds per tuple (1–10)</label><input id="tuple-length" type="number" min="1" max="10" step="1" value="3" disabled></div>
+        <div><label for="tuple-count">Number of tuples</label><input id="tuple-count" type="number" min="1" step="1" value="10" disabled></div>
+      </div>
+      <p id="tuple-warning" class="hint performance-warning" role="status" aria-live="polite"></p>
+      <div class="actions"><button id="generate-tuples" type="button" disabled>Generate tuples</button><button id="stop-tuples" type="button" class="secondary" hidden>Stop generation</button></div>
+      <p class="hint">Multi-word seeds are enclosed in double quotes. Seeds do not repeat within a tuple; reordering the same seeds does not create another combination. Generating again replaces the tuples below.</p>
+      <p id="tuple-status" role="status" aria-live="polite"></p>
+      <label for="tuples">Tuples (editable, one per line)</label>
+      <textarea id="tuples" spellcheck="false" disabled placeholder="Generate tuples above, then edit them here."></textarea>
+      <button id="prepare-queries" type="button" disabled>Create search queries</button>
+      <p class="hint">Uses the search engine selected below. Queries open only when you click a query link or Open all queries.</p>
+    </section>
     <section id="search-section" aria-labelledby="search-heading" tabindex="-1">
       <h2 id="search-heading">Search and collect</h2>
+      <label for="engine">Search engine</label>
+      <select id="engine"></select>
+      <h3 id="query-list-heading">Search queries</h3>
+      <p id="query-summary" role="status" aria-live="polite">No search queries prepared yet.</p>
+      <ol id="prepared-queries" class="query-list"></ol>
+      <div id="query-pagination" class="actions" hidden><button id="previous-queries" type="button" class="secondary">Previous</button><span id="query-page"></span><button id="next-queries" type="button" class="secondary">Next</button></div>
+      <div class="actions"><button id="open-all-queries" type="button" disabled>Open all queries</button><button id="stop-query-tabs" type="button" class="secondary" hidden>Stop opening tabs</button></div>
+      <p class="hint">Search engines may refuse automated batch queries, block requests or show CAPTCHAs. Opening many tabs can slow your browser. You will be asked to confirm before opening all queries.</p>
+      <p id="query-status" role="status" aria-live="polite"></p>
+      <details><summary>Open a single custom search</summary>
       <form id="search-form" class="search-form">
-        <label for="engine">Search engine</label>
-        <select id="engine"></select>
         <label for="query">Search query</label>
         <input id="query" required maxlength="2000" placeholder="e.g. renewable energy terminology">
         <button type="submit">Open search</button>
       </form>
+      </details>
       <p class="hint">On the results tab, click the BootCaT toolbar icon → Collect results. Collected URLs appear in the download list automatically. Browse more results and collect again as needed. Switch engine here if one stops working.</p>
       <p id="collection-status" role="status" aria-live="polite">Loading saved searches…</p>
       <div class="actions collection-actions">

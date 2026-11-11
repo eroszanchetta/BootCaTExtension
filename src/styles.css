@@ -66,3 +66,9 @@ nav a:hover { background: #c7ddeb; }
 @media (max-width: 500px) { .project-controls { flex-direction: column; align-items: stretch; } }
 
 .performance-warning:not(:empty) { color: #754400; background: #fff6df; border-left: 4px solid #c68210; padding: 10px 12px; border-radius: 4px; }
+[hidden] { display: none !important; }
+.tuple-settings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 16px 0; }
+.query-list { max-height: 360px; overflow: auto; padding-left: 2rem; overflow-wrap: anywhere; }
+.query-list li { padding: 5px 0; }
+#query-pagination { align-items: center; flex-wrap: wrap; margin: 12px 0; }
+@media (max-width: 500px) { .tuple-settings { grid-template-columns: 1fr; } }

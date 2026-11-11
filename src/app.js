@@ -7,6 +7,7 @@ import { getExtensionAPI } from './extension-api.js';
 import { parseURLs, filenameFor, fetchFile, FILE_LIMIT, urlListWarning } from './core.js';
 import { makeStoredZIP } from './zip-blob.js';
 import { initSearchUI, readCollections } from './search-ui.js';
+import { initSeedsUI } from './seeds-ui.js';
 import { extractDocument } from './extraction.js';
 import { extractionMetadata } from './corpus.js';
 import { DEFUDDLE_AVAILABLE } from './defuddle-loader.js';
@@ -14,7 +15,7 @@ import { DEFUDDLE_AVAILABLE } from './defuddle-loader.js';
 const ext = getExtensionAPI(), VERSION = '0.4.0';
 const ui = Object.fromEntries(['urls', 'start', 'stop', 'export', 'status', 'progress', 'results', 'corpus-status', 'preview-title', 'preview-meta', 'preview-text', 'extractor', 'urls-warning', 'storage-status', 'saved-status', 'query', 'engine', 'import-pdf-picker', 'pdf-import-status'].map(id => [id, document.getElementById(id)]));
 let ready = false, running = false, stopping = false, resetting = false, controller = null;
-let projectId, state, entries = [], searchUI, archiveURL = null, previewURL = null, previewFilename = null;
+let projectId, state, entries = [], searchUI, seedsUI, archiveURL = null, previewURL = null, previewFilename = null;
 let writes = Promise.resolve(), pendingWrites = 0, writeError = null, capturesPending = false, refreshing = false;
 let pickingPDF = false, pdfImportTarget = null, pdfImportStatus = { url: null, message: '' };
 const rows = new Map(), controls = new Map();
@@ -24,14 +25,14 @@ if (!DEFUDDLE_AVAILABLE) ui.extractor.querySelector('option[value="defuddle"]').
 const projectUI = initProjectUI({
   onRename: invalidateArchive,
   onReset: () => {
-    resetting = true; controller?.abort(); running = false;
+    resetting = true; controller?.abort(); seedsUI?.destroy(); running = false;
     invalidateArchive(); ui.urls.value = ''; ui.query.value = ''; clearPreview();
     document.getElementById('project-name').value = 'Untitled project';
     window.location.reload();
   }
 });
 window.addEventListener('beforeunload', event => {
-  if (!resetting && (running || pendingWrites || projectUI.isSaving?.())) { event.preventDefault(); event.returnValue = ''; }
+  if (!resetting && (running || seedsUI?.isBusy() || pendingWrites || projectUI.isSaving?.())) { event.preventDefault(); event.returnValue = ''; }
 });
 function invalidateArchive() { if (archiveURL) { URL.revokeObjectURL(archiveURL); archiveURL = null; } }
 function storageMessage() {
@@ -196,7 +197,7 @@ async function restore({ draft = true } = {}) {
   if (resetting) return;
   const saved = await storage.loadWorkspace(projectId); if (resetting) return;
   invalidateArchive(); state = saved; entries = saved.entries;
-  if (draft) { ui.urls.value = saved.draft.urls; ui.query.value = saved.draft.query; ui.extractor.value = saved.draft.extractor; if (saved.draft.engine) ui.engine.value = saved.draft.engine; }
+  if (draft) { ui.urls.value = saved.draft.urls; ui.query.value = saved.draft.query; ui.extractor.value = saved.draft.extractor; if (saved.draft.engine) ui.engine.value = saved.draft.engine; seedsUI?.restore(saved.draft); }
   renderEntries();
   const selected = entries.find(entry => entry.url === previewURL)?.doc;
   if (previewURL && selected?.filename !== previewFilename) clearPreview();
@@ -353,7 +354,7 @@ for (const [id, key, type] of [['urls', 'urls', 'input'], ['query', 'query', 'in
 }
 ext.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes.captureRevision) importSavedPages(); });
 window.addEventListener('focus', async () => {
-  if (!ready || running || pickingPDF || pendingWrites || refreshing || resetting) return;
+  if (!ready || running || seedsUI?.isBusy() || pickingPDF || pendingWrites || refreshing || resetting) return;
   refreshing = true;
   try { await restore(); await importSavedPages(); } catch (error) { report(error); } finally { refreshing = false; }
 });
@@ -364,6 +365,7 @@ window.addEventListener('focus', async () => {
     await restore();
     searchUI = initSearchUI({ isRunning: () => running, seenCollectionIds: state.draft.seenCollections, onChange: patch => { queueDraft(patch); warnURLs(); } });
     if (state.draft.engine) ui.engine.value = state.draft.engine;
-    ready = true; updateControls(); await importSavedPages();
+    ready = true; seedsUI = initSeedsUI({ draft: state.draft, onChange: queueDraft });
+    updateControls(); await importSavedPages();
   } catch (error) { report(error); }
 })();

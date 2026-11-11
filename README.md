@@ -15,6 +15,18 @@ npm run build
 
 The repository root no longer contains a loadable manifest. Edit `src/`, rebuild, and load the matching generated folder below. Do not edit `dist/`: the next build replaces it. Run `npm install` after pulling this update to install the pinned PDF.js dependency. Subsequent builds work offline; PDF.js, its worker, character maps, standard fonts and licences are copied into both extension packages. No CDN is used at runtime.
 
+## Seeds, tuples and search queries
+
+The first workspace section after Project accepts one seed per line, with at least five distinct seeds and no fixed maximum seed count. A seed may be one word or a phrase. Blank lines and duplicates are ignored after whitespace/Unicode normalization; case is preserved. Existing outer double quotes are accepted; multi-word seeds are automatically quoted in generated tuples. Embedded double quotes are escaped, and query syntax can be edited before searching.
+
+Choose 1–10 seeds per tuple (default 3) and a requested tuple count (default 10). Generation samples distinct combinations without enumerating every possible combination or retrying random collisions. A seed never repeats within a tuple, and reordering the same seeds does not count as another combination. If the requested count exceeds the possible combinations, all available combinations are returned in random order with an explanation. Uniqueness applies within a generated batch. Large requests show a performance notice and generation can be stopped; stopping keeps the previous tuple text. Generating again replaces the editable tuple text.
+
+After editing the tuples, click **Create search queries**. Each nonblank line becomes a clickable search query; identical query lines are deduplicated. Preparing queries opens no tabs. Changing the selected engine updates the links without regenerating tuples. Editing the tuple text clears the prepared links until queries are created again. Individual links open a new results tab; use the toolbar's collection action as before.
+
+**Open all queries** asks for confirmation that search engines may refuse automated batch queries, block requests or show CAPTCHAs, and that many tabs may affect browser performance. It opens the approved queries in background tabs. **Stop opening tabs** stops the remaining requests without closing tabs already created. A failure reports how many tabs opened; individual links remain available. Longer query lists are displayed 100 at a time, with pagination, while Open all includes the entire prepared list. The manual single-query form remains available under **Open a single custom search**.
+
+Seeds, generation parameters, edited tuple text and prepared queries are part of the persistent project draft and `project.json` export. New project clears them. Old projects receive empty/default fields without a schema migration. There are no new dependencies or permissions; searches are sent to the selected engine only through explicit link clicks or the confirmed batch action.
+
 ## Requirements
 
 - Node.js 22.15+ (Node 24 recommended) for building, packaging and tests. Node is a developer tool; extension users do not need it.
@@ -63,6 +75,7 @@ The ZIP retains originals in `pages/`, selected UTF-8 texts in `corpus/`, raw PD
 | `src/extension-api.js` | Prefer `browser.*`, fall back to the supported Chromium `chrome.*` APIs |
 | `src/background.js` | The same message/collection handler for both browser contexts |
 | `src/engines.js` | Search provider detection and DOM adapters |
+| `src/tuples.js`, `src/seeds-ui.js` | Random unique seed combinations, editable tuples and explicit search-query opening |
 | `src/extraction.js`, `src/binary-extraction.js`, `src/docx.js`, `src/corpus.js` | HTML/plain-text/PDF/DOCX extraction, inclusion and corpus export |
 | `src/icons/`, `src/vendor/` | Shared logo, icons and bundled extractors/licences |
 | `manifests/common.json` | Common name/version, permissions, interface and CSP |
