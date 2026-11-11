@@ -1,5 +1,5 @@
 import { ensureStoredProject, resetStoredProject, storedProjectId } from './project-store.js';
-import { captureCurrentPage } from './page-capture.js';
+import { captureTabDocument } from './pdf-recovery.js';
 import { savePage } from './page-store.js';
 import { getExtensionAPI } from './extension-api.js';
 const ext = getExtensionAPI();
@@ -82,9 +82,7 @@ async function handle(message) {
     const tab = await ext.tabs.get(message.tabId);
     if (!/^https?:\/\//.test(tab.url || '')) throw new Error('Open a web page first.');
     if (adapterForURL(tab.url)) throw new Error('Use Collect results from this tab for a search results page.');
-    const injected = await ext.scripting.executeScript({ target: { tabId: tab.id }, func: captureCurrentPage });
-    const page = injected[0]?.result;
-    if (!page || page.error) throw new Error(page?.error || 'Could not read this page.');
+    const page = await captureTabDocument(tab, ext.scripting);
     return serialize(async () => {
       await assertProject(project.id);
       await savePage({ ...page, id: crypto.randomUUID() });

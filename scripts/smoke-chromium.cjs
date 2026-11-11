@@ -4,10 +4,11 @@ const assert = require('node:assert/strict');
 const { mkdtemp, rm } = require('node:fs/promises');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
+const { createServer } = require('node:http');
 (async () => {
   const { build } = await import('./build.mjs');
   const root = await mkdtemp(join(tmpdir(), 'bootcat-browser-'));
-  let context;
+  let context, pdfServer;
   try {
     const extension = await build('chromium', { outputRoot: join(root, 'build'), includeTests: true });
     context = await chromium.launchPersistentContext(join(root, 'profile'), {
@@ -23,12 +24,27 @@ const { join } = require('node:path');
     const origin = worker.url().slice(0, worker.url().lastIndexOf('/'));
     const paragraph = 'Renewable energy requires careful planning and reliable electricity networks. Technical terminology describes generation capacity, storage systems and distribution. Translators need clear examples of these expressions in context. These paragraphs provide a realistic corpus extraction fixture without involving a remote website.';
     const { pdfFixture, docxFiles } = await import('../tests/browser-tests.fixtures.js');
+    // A real server verifies extension-worker fetches and cookie behavior without
+    // relying on Playwright interception of protected PDF viewer requests.
+    pdfServer = createServer((request, response) => {
+      if (request.url === '/login') {
+        response.writeHead(200, { 'Content-Type': 'text/html', 'Set-Cookie': 'pdfSession=allowed; Path=/; SameSite=Lax' });
+        response.end('<p>Manual sign-in complete</p>'); return;
+      }
+      if (request.url === '/session-document' && request.headers.cookie?.includes('pdfSession=allowed')) {
+        response.writeHead(200, { 'Content-Type': 'application/pdf' }); response.end(Buffer.from(pdfFixture())); return;
+      }
+      response.writeHead(403, { 'Content-Type': 'text/html' }); response.end('CAPTCHA required');
+    });
+    await new Promise(resolve => pdfServer.listen(0, '127.0.0.1', resolve));
+    const pdfOrigin = `http://127.0.0.1:${pdfServer.address().port}`;
     const { makeZIP } = await import('../src/zip.js');
     const docxBytes = Buffer.from(await makeZIP(docxFiles).arrayBuffer());
     const article = `<!doctype html><html lang="en"><head><title>Energy terminology</title></head><body><nav>MENU_SENTINEL</nav><article><h1>Energy terminology</h1>${Array.from({ length: 4 }, () => `<p>${paragraph}</p>`).join('')}</article><footer>FOOTER_SENTINEL</footer></body></html>`;
     // Fixtures only: this test never contacts real search engines or websites.
     await context.route(/^https?:/, route => {
       const url = new URL(route.request().url());
+      if (url.origin === pdfOrigin) return route.continue();
       if (url.hostname === 'www.google.com') return route.fulfill({ contentType: 'text/html', body: '<div id="search"><a href="https://corpus.test/article"><h3>Energy article</h3></a></div>' });
       if (url.hostname === 'corpus.test' && url.pathname === '/document.pdf') return route.fulfill({ contentType: 'application/pdf', body: Buffer.from(pdfFixture()) });
       if (url.hostname === 'corpus.test' && url.pathname === '/document.docx') return route.fulfill({ contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', body: docxBytes });
@@ -88,6 +104,8 @@ const { join } = require('node:path');
     await page.waitForFunction(() => !document.querySelector('#start').disabled && document.querySelector('#status').textContent.startsWith('Finished.'));
     assert.match(await page.locator('#status').innerText(), /0 download errors, 0 extraction failures/);
     assert.equal(await page.inputValue('#preview-text'), '');
+    assert.equal(await page.locator('#pdf-notice').count(), 1);
+    assert.ok(!(await page.locator('#results').innerText()).includes('PDF reading order'));
     await page.locator('#results .preview-button').nth(0).click();
     await page.waitForFunction(() => document.querySelector('#preview-text').value.includes('Renewable energy corpus'));
     assert.match(await page.inputValue('#preview-text'), /Renewable energy corpus/);
@@ -136,6 +154,36 @@ const { join } = require('node:path');
     assert.equal(await page.locator('#add-saved, #clear-saved').count(), 0);
     await page.waitForFunction(async () => (await (await import('./page-store.js')).readSavedPages()).length === 0);
     console.log('Automatic failed URL recovery, inert UTF-8 snapshots and inbox consumption passed.');
+    await page.fill('#urls', `${pdfOrigin}/session-document\n${pdfOrigin}/always-blocked.pdf`);
+    await page.click('#start');
+    await page.waitForFunction(() => !document.querySelector('#start').disabled && document.querySelector('#status').textContent.startsWith('Finished.'));
+    assert.match(await page.locator('#status').innerText(), /2 download errors/);
+    await search.goto(pdfOrigin + '/login');
+    await search.goto(pdfOrigin + '/session-document', { waitUntil: 'domcontentloaded' });
+    const recoveredPDF = await page.evaluate(tabId => (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'save-page', tabId }), tabId);
+    assert.equal(recoveredPDF.ok, true, JSON.stringify(recoveredPDF));
+    const sessionRow = page.locator('#results tr').filter({ has: page.locator(`a[href="${pdfOrigin}/session-document"]`) });
+    await sessionRow.locator('.preview-button').waitFor();
+    await page.waitForFunction(() => !document.querySelector('#start').disabled);
+    assert.match(await sessionRow.innerText(), /PDF saved using browser session/);
+    assert.ok(!(await sessionRow.innerText()).includes('PDF reading order'));
+    await sessionRow.locator('.preview-button').click();
+    await page.waitForFunction(() => document.querySelector('#preview-text').value.includes('Renewable energy corpus'));
+    const localRow = page.locator('#results tr').filter({ has: page.locator(`a[href="${pdfOrigin}/always-blocked.pdf"]`) });
+    const chooserEvent = page.waitForEvent('filechooser'); await localRow.locator('.import-pdf-button').click();
+    await (await chooserEvent).setFiles({ name: 'downloaded.pdf', mimeType: 'application/pdf', buffer: Buffer.from(pdfFixture()) });
+    await localRow.locator('.preview-button').waitFor();
+    await page.waitForFunction(() => !document.querySelector('#start').disabled);
+    assert.match(await localRow.innerText(), /Imported PDF/);
+    assert.equal(await page.locator('#results tr').count(), 2, 'recovery must replace failed rows');
+    const recoveredDownload = page.waitForEvent('download'); await page.click('#export');
+    await (await recoveredDownload).saveAs(join(root, 'recovered-pdfs.zip'));
+    await page.reload();
+    await page.waitForFunction(() => document.querySelectorAll('#results tr').length === 2 && !document.querySelector('#start').disabled);
+    assert.equal(await page.inputValue('#preview-text'), '');
+    assert.match(await page.locator('#results').innerText(), /Imported PDF/);
+    await deleteAllRows();
+    console.log('Session-aware PDF tab recovery, browser file chooser import, persistence and export passed.');
     await page.evaluate(() => (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'open-workspace' }));
     assert.equal(context.pages().filter(tab => tab.url().split('#')[0] === origin + '/downloader.html').length, 1);
     await page.reload();
@@ -157,5 +205,5 @@ const { join } = require('node:path');
     assert.match(await page.locator('#urls-warning').innerText(), /501 URLs/);
     assert.deepEqual(errors, []);
     console.log('Workspace reuse, saved-search persistence and zero page errors passed.');
-  } finally { await context?.close(); await rm(root, { recursive: true, force: true }); }
+  } finally { await context?.close(); if (pdfServer) await new Promise(resolve => pdfServer.close(resolve)); await rm(root, { recursive: true, force: true }); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

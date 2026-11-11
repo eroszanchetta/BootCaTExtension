@@ -1,7 +1,7 @@
 import { transaction as dbTransaction } from './storage-db.js';
 export function validateSavedPages(pages) {
   if (pages.length > 20) throw new Error('Saved page limit reached (20). Open BootCaT to add them to the review list before saving more pages.');
-  const size = pages.reduce((n, page) => n + new TextEncoder().encode(page.html).length, 0);
+  const size = pages.reduce((n, page) => n + (page.kind === 'pdf' ? page.blob.size : new TextEncoder().encode(page.html).length), 0);
   if (size > 20 * 1024 * 1024) throw new Error('Saved pages exceed 20 MiB. Open BootCaT to add them to the review list before saving more pages.');
 }
 function transaction(mode, operation) {
