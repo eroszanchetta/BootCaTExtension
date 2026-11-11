@@ -1,6 +1,7 @@
 import { extractDOCX, DOCX_MIME, zipDirectory } from './docx.js';
 import { extractDocument, normaliseText } from './extraction.js';
 import { PDFJS_VERSION } from './pdfjs-version.js';
+import { FILE_LIMIT, PDF_IMPORT_LIMIT } from './core.js';
 export { PDFJS_VERSION } from './pdfjs-version.js';
 export const TEXT_LIMIT = 2_000_000;
 const GENERIC = new Set(['', 'application/octet-stream', 'binary/octet-stream', 'application/zip']);
@@ -103,7 +104,8 @@ export async function extractDownloadedDocument(bytes, contentType, options = {}
     extractorVersion: format === 'pdf' ? PDFJS_VERSION : '1', format,
     encoding: 'unicode', title: '', language: '', characters: 0, included: false, warnings: [], text: ''
   };
-  if (bytes.length > 10 * 1024 * 1024) return { ...meta, warnings: ['Document exceeds the 10 MiB extraction limit. Original file retained.'] };
+  const inputLimit = format === 'pdf' && options.localPDF ? PDF_IMPORT_LIMIT : FILE_LIMIT;
+  if (bytes.length > inputLimit) return { ...meta, warnings: [`Document exceeds the ${inputLimit / 1024 / 1024} MiB extraction limit. Original file retained.`] };
   const signal = options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(30000)]) : AbortSignal.timeout(30000);
   try {
     signal.throwIfAborted();

@@ -9,7 +9,7 @@ export const docxFiles = [
   { name: '_rels/.rels', data: '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>' },
   { name: 'word/document.xml', data: wordXML }
 ];
-export function pdfFixture({ empty = false, twoPages = false, javascript = false } = {}) {
+export function pdfFixture({ empty = false, twoPages = false, javascript = false, paddingBytes = 0 } = {}) {
   // Minimal valid PDF with offsets computed from its ASCII bytes.
   const text = 'BT /F1 12 Tf 50 750 Td (Renewable energy corpus.) Tj 0 -20 Td (Second line.) Tj ET';
   const stream = empty ? '' : text;
@@ -21,6 +21,8 @@ export function pdfFixture({ empty = false, twoPages = false, javascript = false
     `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
     ...(twoPages ? ['<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>'] : [])
   ];
+  // An unreferenced stream makes a valid, larger file without changing its text.
+  if (paddingBytes) objects.push(`<< /Length ${paddingBytes} >>\nstream\n${'x'.repeat(paddingBytes)}\nendstream`);
   let pdf = '%PDF-1.4\n', offsets = [0];
   for (let i = 0; i < objects.length; i++) { offsets.push(pdf.length); pdf += `${i + 1} 0 obj\n${objects[i]}\nendobj\n`; }
   const xref = pdf.length;
