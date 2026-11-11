@@ -71,8 +71,8 @@ export function allocateFileIndex(projectId) {
 // Commit original bytes, extracted text, metadata and progress together. No
 // document is shown as saved until this transaction has completed successfully.
 export function saveDocument(projectId, record, document, original, { advance = false } = {}) {
-  const { text, ...extraction } = document.extraction;
-  const doc = { ...document, extraction };
+  const { text, rawText, ...extraction } = document.extraction;
+  const doc = { ...document, extraction, ...(typeof rawText === 'string' ? { rawTextFilename: document.filename.replace(/^pages\//, 'raw-pdf/').replace(/\.[^.]+$/, '.txt') } : {}) };
   const blob = original instanceof Blob ? original : new Blob([original]);
   return projectTransaction(projectId, ['documents', 'files', 'texts'], 'readwrite', (tx, done) => {
     const documents = tx.objectStore('documents'), request = documents.get(record.url);
@@ -82,7 +82,7 @@ export function saveDocument(projectId, record, document, original, { advance = 
       if (previous?.record) entry.record.previousAttempt = previous.record;
       documents.put(entry);
       tx.objectStore('files').add({ name: record.filename, blob });
-      tx.objectStore('texts').put({ url: record.url, blob: new Blob([text || ''], { type: 'text/plain;charset=utf-8' }) });
+      tx.objectStore('texts').put({ url: record.url, blob: new Blob([text || ''], { type: 'text/plain;charset=utf-8' }), ...(typeof rawText === 'string' ? { rawBlob: new Blob([rawText], { type: 'text/plain;charset=utf-8' }) } : {}) });
       const meta = tx.objectStore('meta'), batchRequest = meta.get('batch');
       batchRequest.onsuccess = () => {
         const batch = batchRequest.result;
@@ -135,14 +135,15 @@ export function removeDocument(projectId, url) {
     };
   });
 }
-function readBlob(projectId, storeName, key) {
+function readBlob(projectId, storeName, key, field = 'blob') {
   return projectTransaction(projectId, [storeName], 'readonly', (tx, done) => {
     const request = tx.objectStore(storeName).get(key);
-    request.onsuccess = () => done(request.result?.blob || null);
+    request.onsuccess = () => done(request.result?.[field] || null);
   });
 }
 export const readOriginal = (id, name) => readBlob(id, 'files', name);
 export const readText = (id, url) => readBlob(id, 'texts', url);
+export const readRawText = (id, url) => readBlob(id, 'texts', url, 'rawBlob');
 
 export function storedProjectId() {
   return transaction(['meta'], 'readonly', (tx, done) => { const request = tx.objectStore('meta').get('active'); request.onsuccess = () => done(request.result?.projectId); });

@@ -61,12 +61,12 @@ test('local PDF input is bounded and mixed inbox size counts PDF Blob bytes', as
   await assert.rejects(readPDFFile(new Blob(['<html>Challenge</html>'])), /does not contain a PDF/);
   await assert.rejects(readPDFFile(new Blob([])), /non-empty/);
   await assert.rejects(readPDFFile({ size: PDF_IMPORT_LIMIT + 1, arrayBuffer() { assert.fail('must reject before reading'); } }), /50 MiB/);
-  await assert.rejects(readPDFFile({ size: FILE_LIMIT + 1, arrayBuffer() { assert.fail('must reject before reading'); } }, FILE_LIMIT), /10 MiB/);
-  validateSavedPages([{ kind: 'pdf', blob: new Blob([new Uint8Array(FILE_LIMIT)]) }, { html: 'HTML' }]);
+  await assert.rejects(readPDFFile({ size: FILE_LIMIT + 1, arrayBuffer() { assert.fail('must reject before reading'); } }, FILE_LIMIT), /50 MiB/);
+  validateSavedPages([{ kind: 'pdf', blob: { size: FILE_LIMIT } }, { html: 'HTML' }]);
   assert.throws(() => validateSavedPages([
-    { kind: 'pdf', blob: new Blob([new Uint8Array(FILE_LIMIT)]) },
-    { kind: 'pdf', blob: new Blob([new Uint8Array(FILE_LIMIT)]) }, { html: 'x' }
-  ]), /20 MiB/);
+    { kind: 'pdf', blob: { size: FILE_LIMIT } },
+    { kind: 'pdf', blob: { size: FILE_LIMIT } }, { html: 'x' }
+  ]), /100 MiB/);
 });
 
 test('queued PDF automatically replaces its failed URL, commits before acknowledgement and persists exact original bytes', async () => {
@@ -120,11 +120,11 @@ test('local PDF chooser keeps failures intact on invalid input and replaces only
   assert.deepEqual(app.fetched, ['https://example.org/one', 'https://example.org/two', 'https://example.org/one']);
 });
 
-test('manually selected PDF above 10 MiB imports with the larger extraction allowance and exports exact original', async () => {
+test('manually selected PDF above 10 MiB imports and exports exact original', async () => {
   globalThis.indexedDB = new IDBFactory();
   const bytes = new Uint8Array(15690948); bytes.set(pdf);
   const app = await workspace('large', { fetch: async () => { throw new Error('HTTP 403'); }, extractor: async (data, type, options) => {
-    assert.equal(data.length, bytes.length); assert.equal(options.localPDF, true);
+    assert.equal(data.length, bytes.length);
     return { ...extracted('Large PDF text'), format: 'pdf' };
   } });
   await app.input('urls', 'https://example.org/L15.pdf'); await app.click('start');

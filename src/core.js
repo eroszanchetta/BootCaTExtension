@@ -1,6 +1,12 @@
 // Browser-independent functions: also exercised by the Node tests.
-export const FILE_LIMIT = 10 * 1024 * 1024;
-export const PDF_IMPORT_LIMIT = 50 * 1024 * 1024;
+export const FILE_LIMIT = 50 * 1024 * 1024;
+export const PDF_IMPORT_LIMIT = FILE_LIMIT;
+export class DownloadSizeError extends Error {
+  constructor(limit) {
+    super(`File exceeds the ${limit / 1024 / 1024} MiB download limit. Download stopped; no file was saved.`);
+    this.name = 'DownloadSizeError'; this.code = 'DOWNLOAD_TOO_LARGE'; this.limitBytes = limit;
+  }
+}
 export const URL_WARNING_THRESHOLD = 500;
 export function urlListWarning(count) {
   return count > URL_WARNING_THRESHOLD ? `This project has ${count.toLocaleString()} URLs. Large lists may take longer to download, review and export, and use substantial browser storage. You can continue.` : '';
@@ -49,7 +55,7 @@ export async function fetchFile(url, signal, limit = FILE_LIMIT, { credentials =
       const { done, value } = await reader.read();
       if (done) break;
       size += value.byteLength;
-      if (size > limit) throw new Error("File or remaining batch size limit exceeded");
+      if (size > limit) throw new DownloadSizeError(limit);
       chunks.push(value);
     }
   } catch (error) {

@@ -5,6 +5,7 @@ import * as storage from '../src/project-store.js';
 import { database } from '../src/storage-db.js';
 import { savePage, readSavedPages } from '../src/page-store.js';
 import { workspace, extracted, waitFor } from './helpers/workspace.js';
+import { DownloadSizeError, FILE_LIMIT } from '../src/core.js';
 
 const fresh = () => { globalThis.indexedDB = new IDBFactory(); };
 const document = (url, filename, text = 'Stored corpus text') => ({ url, filename, textFilename: filename.replace('pages/', 'corpus/').replace('.html', '.txt'), extraction: extracted(text) });
@@ -24,6 +25,40 @@ test('database v1 capture inbox upgrades without losing queued pages', async () 
   await storage.ensureStoredProject('project');
   assert.equal((await readSavedPages()).length, 1);
   const db = await database(); assert.equal(db.version, 2); db.close();
+});
+
+test('PDF raw and formatted text persist as separate Blobs without bodies in metadata, export separately and delete together', async () => {
+  fresh();
+  const app = await workspace('raw', { extractor: async () => ({ ...extracted('Line one Line two'), rawText: 'Line one\nLine two', format: 'pdf', formatting: { version: '1', joinedLines: 1 } }) });
+  await app.input('urls', 'https://example.org/doc.pdf'); await app.click('start');
+  let entry = (await storage.loadWorkspace('raw')).entries[0];
+  assert.equal(entry.doc.extraction.rawText, undefined); assert.equal(entry.doc.extraction.text, undefined);
+  assert.match(entry.doc.rawTextFilename, /^raw-pdf\//);
+  assert.equal(await (await storage.readRawText('raw', entry.url)).text(), 'Line one\nLine two');
+  assert.equal(await (await storage.readText('raw', entry.url)).text(), 'Line one Line two');
+  const reopened = await workspace('raw');
+  await reopened.click('export'); let zip = await reopened.archive().text();
+  assert.ok(zip.includes(entry.doc.rawTextFilename)); assert.ok(zip.includes('Line one\nLine two'));
+  assert.ok(zip.includes(entry.doc.textFilename)); assert.ok(zip.includes('Line one Line two'));
+  await storage.setIncluded('raw', entry.url, false); await reopened.focus(); await reopened.click('export');
+  zip = await reopened.archive().text(); assert.ok(zip.includes(entry.doc.rawTextFilename));
+  await storage.removeDocument('raw', entry.url);
+  assert.equal(await storage.readRawText('raw', entry.url), null);
+  assert.equal(await storage.readText('raw', entry.url), null);
+});
+
+test('size-limit failures persist explicit download status without suggesting CAPTCHA recovery or saving originals', async () => {
+  fresh();
+  const app = await workspace('size', { fetch: async () => { throw new DownloadSizeError(FILE_LIMIT); } });
+  await app.input('urls', 'https://example.org/huge.pdf'); await app.click('start');
+  const entry = (await storage.loadWorkspace('size')).entries[0];
+  assert.equal(entry.record.errorCode, 'DOWNLOAD_TOO_LARGE'); assert.equal(entry.record.limitBytes, FILE_LIMIT);
+  assert.equal(entry.fileNames.length, 0); assert.equal(entry.doc, null);
+  const row = app.get('results').children[0];
+  assert.match(row.children[2].textContent, /50 MiB download limit/);
+  assert.ok(!row.children[2].textContent.includes('CAPTCHA'));
+  assert.equal(row.children[1].children.some(item => item.className === 'secondary import-pdf-button'), false);
+  const reopened = await workspace('size'); assert.match(reopened.get('results').children[0].children[2].textContent, /50 MiB download limit/);
 });
 
 test('originals and text persist separately; metadata has no body; inclusion/deletion/reset are durable', async () => {
