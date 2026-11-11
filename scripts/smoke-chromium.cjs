@@ -1,7 +1,7 @@
 // Optional developer smoke test. Requires Playwright and a Chromium binary.
 const { chromium } = require('playwright');
 const assert = require('node:assert/strict');
-const { mkdtemp, rm, readFile } = require('node:fs/promises');
+const { mkdtemp, rm, readFile, writeFile } = require('node:fs/promises');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 const { createServer } = require('node:http');
@@ -11,17 +11,6 @@ const { createServer } = require('node:http');
   let context, pdfServer;
   try {
     const extension = await build('chromium', { outputRoot: join(root, 'build'), includeTests: true });
-    context = await chromium.launchPersistentContext(join(root, 'profile'), {
-      executablePath: process.env.CHROMIUM_EXECUTABLE_PATH || undefined,
-      headless: true,
-      channel: 'chromium',
-      ignoreDefaultArgs: ['--disable-extensions'],
-      args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`, ...(process.env.BOOTCAT_NO_SANDBOX === '1' ? ['--no-sandbox'] : [])]
-    });
-    const errors = [];
-    context.on('page', page => page.on('pageerror', error => errors.push(error.message)));
-    const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
-    const origin = worker.url().slice(0, worker.url().lastIndexOf('/'));
     const paragraph = 'Renewable energy requires careful planning and reliable electricity networks. Technical terminology describes generation capacity, storage systems and distribution. Translators need clear examples of these expressions in context. These paragraphs provide a realistic corpus extraction fixture without involving a remote website.';
     const { pdfFixture, docxFiles } = await import('../tests/browser-tests.fixtures.js');
     const bigPDF = Buffer.from(pdfFixture({ paddingBytes: 15 * 1024 * 1024 }));
@@ -29,6 +18,9 @@ const { createServer } = require('node:http');
     // A real server verifies extension-worker fetches and cookie behavior without
     // relying on Playwright interception of protected PDF viewer requests.
     pdfServer = createServer((request, response) => {
+      if (request.url.startsWith('/search-fixture')) {
+        response.writeHead(200, { 'Content-Type': 'text/html' }); response.end('<p>Local search results fixture</p>'); return;
+      }
       if (request.url === '/oversized.pdf') {
         response.writeHead(200, { 'Content-Type': 'application/pdf' }); response.end(Buffer.alloc(50 * 1024 * 1024 + 1)); return;
       }
@@ -43,6 +35,23 @@ const { createServer } = require('node:http');
     });
     await new Promise(resolve => pdfServer.listen(0, '127.0.0.1', resolve));
     const pdfOrigin = `http://127.0.0.1:${pdfServer.address().port}`;
+    // Extension-created tabs can navigate before Playwright attaches its routing
+    // hooks. Point the batch-search provider at our real local server in this
+    // temporary test build only. Production provider URLs are covered by unit tests.
+    const enginesPath = join(extension, 'engines.js'), engineSource = await readFile(enginesPath, 'utf8');
+    assert.ok(engineSource.includes('searchURL: "https://duckduckgo.com/"'));
+    await writeFile(enginesPath, engineSource.replace('searchURL: "https://duckduckgo.com/"', `searchURL: "${pdfOrigin}/search-fixture"`));
+    context = await chromium.launchPersistentContext(join(root, 'profile'), {
+      executablePath: process.env.CHROMIUM_EXECUTABLE_PATH || undefined,
+      headless: true,
+      channel: 'chromium',
+      ignoreDefaultArgs: ['--disable-extensions'],
+      args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`, ...(process.env.BOOTCAT_NO_SANDBOX === '1' ? ['--no-sandbox'] : [])]
+    });
+    const errors = [];
+    context.on('page', page => page.on('pageerror', error => errors.push(error.message)));
+    const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
+    const origin = worker.url().slice(0, worker.url().lastIndexOf('/'));
     const { makeZIP } = await import('../src/zip.js');
     const docxBytes = Buffer.from(await makeZIP(docxFiles).arrayBuffer());
     const article = `<!doctype html><html lang="en"><head><title>Energy terminology</title></head><body><nav>MENU_SENTINEL</nav><article><h1>Energy terminology</h1>${Array.from({ length: 4 }, () => `<p>${paragraph}</p>`).join('')}</article><footer>FOOTER_SENTINEL</footer></body></html>`;
@@ -67,7 +76,52 @@ const { createServer } = require('node:http');
     console.log(output);
     await page.goto(origin + '/downloader.html');
     await page.waitForFunction(() => document.querySelector('#collection-status').textContent.includes('0 unique URLs'));
-    page.on('dialog', dialog => dialog.accept().catch(() => {}));
+    let acceptDialogs = true; const dialogMessages = [];
+    page.on('dialog', dialog => { dialogMessages.push(dialog.message()); return (acceptDialogs ? dialog.accept() : dialog.dismiss()).catch(() => {}); });
+    assert.equal(await page.evaluate(() => document.querySelector('[aria-labelledby="project-heading"]').nextElementSibling.id), 'seeds-section');
+    assert.equal(await page.inputValue('#tuple-length'), '3');
+    await page.fill('#seeds', 'one\ntwo\nthree\nfour'); await page.click('#generate-tuples');
+    await page.waitForFunction(() => document.querySelector('#tuple-status').textContent.includes('at least 5 distinct seeds'));
+    await page.fill('#seeds', 'renewable energy\nstorage\nelectricity network\ngeneration\ncapacity');
+    await page.click('#generate-tuples');
+    await page.waitForFunction(() => document.querySelector('#tuple-status').textContent.startsWith('10 unique tuples generated'));
+    const generated = (await page.inputValue('#tuples')).split('\n');
+    assert.equal(new Set(generated).size, 10); assert.ok(generated.some(line => line.includes('"renewable energy"')));
+    await page.fill('#tuple-length', '10'); await page.click('#generate-tuples');
+    await page.waitForFunction(() => document.querySelector('#tuple-status').textContent.includes('needs at least 10 distinct seeds'));
+    assert.equal((await page.inputValue('#tuples')).split('\n').length, 10, 'invalid generation must preserve edits');
+    await page.fill('#tuple-length', '1'); await page.click('#generate-tuples');
+    await page.waitForFunction(() => document.querySelector('#tuple-status').textContent.includes('Only 5 distinct combinations'));
+    await page.fill('#tuple-length', '3');
+    const tabCount = context.pages().length;
+    await page.fill('#tuples', '"custom phrase" energy\nstorage generation\nstorage generation');
+    await page.click('#prepare-queries'); await page.selectOption('#engine', 'duckduckgo');
+    assert.equal(await page.locator('#prepared-queries a').count(), 2); assert.equal(context.pages().length, tabCount);
+    const queryURL = await page.locator('#prepared-queries a').first().getAttribute('href');
+    assert.equal(new URL(queryURL).origin, pdfOrigin); assert.equal(new URL(queryURL).pathname, '/search-fixture');
+    assert.equal(new URL(queryURL).searchParams.get('q'), '"custom phrase" energy');
+    await page.waitForFunction(() => document.querySelector('#storage-status').textContent.startsWith('Saved in this browser'));
+    await page.reload();
+    await page.waitForFunction(() => document.querySelectorAll('#prepared-queries a').length === 2);
+    assert.equal(await page.inputValue('#engine'), 'duckduckgo'); assert.ok((await page.inputValue('#seeds')).includes('renewable energy'));
+    assert.equal(await page.inputValue('#tuples'), '"custom phrase" energy\nstorage generation\nstorage generation');
+    const individualEvent = context.waitForEvent('page'); await page.locator('#prepared-queries a').first().click();
+    const individual = await individualEvent; await individual.waitForLoadState('domcontentloaded');
+    assert.equal(individual.url(), queryURL); await individual.close(); await page.bringToFront();
+    acceptDialogs = false; await page.click('#open-all-queries'); acceptDialogs = true;
+    assert.equal(context.pages().length, tabCount); assert.ok(dialogMessages.at(-1).includes('refuse automated batch queries'));
+    const batchPages = [], recordQueryPage = tab => batchPages.push(tab); context.on('page', recordQueryPage);
+    const allBatchCreated = context.waitForEvent('page', { predicate: () => batchPages.length >= 2 });
+    await page.click('#open-all-queries');
+    await allBatchCreated;
+    await page.waitForFunction(() => document.querySelector('#query-status').textContent.startsWith('2 of 2 search tabs opened'));
+    await Promise.all(batchPages.map(tab => tab.waitForLoadState('domcontentloaded'))); context.off('page', recordQueryPage);
+    assert.equal(batchPages.length, 2);
+    assert.deepEqual(batchPages.map(tab => new URL(tab.url()).searchParams.get('q')), ['"custom phrase" energy', 'storage generation']);
+    for (const tab of batchPages) await tab.close();
+    await page.selectOption('#engine', 'google');
+    assert.equal(new URL(await page.locator('#prepared-queries a').first().getAttribute('href')).hostname, 'www.google.com');
+    console.log('Seed validation, unique tuples, phrase quoting, edits, query links, engine switching, batch confirmation and persistence passed.');
     const search = await context.newPage();
     await search.goto('https://www.google.com/search?q=energy');
     const tabId = await worker.evaluate(async () => (await (globalThis.browser ?? chrome).tabs.query({})).find(tab => tab.url?.includes('www.google.com/search')).id);
@@ -244,6 +298,9 @@ const { createServer } = require('node:http');
     await page.waitForFunction(() => document.querySelector('#project-name')?.value === 'Untitled project' && !document.querySelector('#new-project').disabled);
     await page.waitForFunction(() => document.querySelector('#collection-status').textContent.includes('0 unique URLs'));
     assert.equal(await page.inputValue('#urls'), '');
+    assert.equal(await page.inputValue('#seeds'), ''); assert.equal(await page.inputValue('#tuples'), '');
+    assert.equal(await page.inputValue('#tuple-length'), '3'); assert.equal(await page.inputValue('#tuple-count'), '10');
+    assert.equal(await page.locator('#prepared-queries a').count(), 0);
     assert.equal(await page.inputValue('#preview-text'), '');
     assert.equal(await page.locator('#results tr').count(), 0);
     assert.equal(await page.locator('#export').isDisabled(), true);

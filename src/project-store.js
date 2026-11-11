@@ -1,6 +1,6 @@
 import { transaction, STORES } from './storage-db.js';
 import { parseURLs } from './core.js';
-const initialDraft = () => ({ key: 'draft', urls: '', query: '', engine: '', extractor: 'readability', seenCollections: [] });
+const initialDraft = () => ({ key: 'draft', urls: '', query: '', engine: '', extractor: 'readability', seenCollections: [], seeds: '', tupleLength: '3', tupleCount: '10', tuples: '', preparedQueries: [] });
 const initialBatch = () => ({ key: 'batch', startedAt: null, state: 'idle', processed: 0, total: 0, nextFileIndex: 0, storedBytes: 0, lastStatus: 'Ready when you are.' });
 function seed(tx, projectId) {
   const store = tx.objectStore('meta');
@@ -48,7 +48,7 @@ export function saveDraft(projectId, patch) {
     const store = tx.objectStore('meta'), request = store.get('draft');
     request.onsuccess = () => {
       const next = { ...request.result };
-      for (const key of ['urls', 'query', 'engine', 'extractor', 'seenCollections']) if (Object.hasOwn(patch, key)) next[key] = patch[key];
+      for (const key of ['urls', 'query', 'engine', 'extractor', 'seenCollections', 'seeds', 'tupleLength', 'tupleCount', 'tuples', 'preparedQueries']) if (Object.hasOwn(patch, key)) next[key] = patch[key];
       store.put(next);
     };
   });
