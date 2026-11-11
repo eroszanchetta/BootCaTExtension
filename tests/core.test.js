@@ -5,7 +5,7 @@ import { writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
-import { parseURLs, filenameFor, fetchFile, urlListWarning } from "../src/core.js";
+import { parseURLs, filenameFor, fetchFile, urlListWarning, FILE_LIMIT } from "../src/core.js";
 import { makeZIP } from "../src/zip.js";
 
 test("URL validation, deduplication, fragments and credentials", () => {
@@ -33,12 +33,33 @@ test("downloads preserve bytes, follow redirects, reject HTTP failures, bound st
     assert.deepEqual([...result.bytes], [0, 255, 10, 128]);
     assert.equal(result.finalURL, `${base}/binary`);
     await assert.rejects(fetchFile(`${base}/fail`), /HTTP 404/);
-    await assert.rejects(fetchFile(`${base}/binary`, undefined, 2), /limit exceeded/);
+    await assert.rejects(fetchFile(`${base}/binary`, undefined, 2), error => error.code === 'DOWNLOAD_TOO_LARGE' && error.limitBytes === 2);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 50);
     await assert.rejects(fetchFile(`${base}/slow`, controller.signal), { name: "AbortError" });
     clearTimeout(timer);
   } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+});
+
+test('default 50 MiB download limit accepts the boundary and cancels a larger stream with an explicit error', async () => {
+  const original = globalThis.fetch, chunk = new Uint8Array(1024 * 1024);
+  assert.equal(FILE_LIMIT, 50 * 1024 * 1024);
+  try {
+    for (const extra of [false, true]) {
+      let sent = 0, cancelled = false;
+      globalThis.fetch = async () => new Response(new ReadableStream({
+        pull(controller) {
+          if (sent < 50) { sent++; controller.enqueue(chunk); }
+          else if (extra) controller.enqueue(new Uint8Array([1]));
+          else controller.close();
+        }, cancel() { cancelled = true; }
+      }), { headers: { 'content-length': '1' } });
+      if (extra) {
+        await assert.rejects(fetchFile('https://example.org/large.pdf'), error => error.code === 'DOWNLOAD_TOO_LARGE' && /50 MiB download limit/.test(error.message));
+        assert.equal(cancelled, true);
+      } else assert.equal((await fetchFile('https://example.org/large.pdf')).bytes.length, FILE_LIMIT);
+    }
+  } finally { globalThis.fetch = original; }
 });
 
 test("ZIP passes independent Python CRC and binary/Unicode roundtrip checks", async () => {

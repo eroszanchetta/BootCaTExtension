@@ -58,11 +58,12 @@
         <p class="hint">The choice applies to HTML pages. PDF, DOCX and plain-text files use their own extraction with either setting.</p>
       </div>
       <div class="actions"><button id="start">Download URLs</button><button id="stop" class="secondary" disabled>Stop</button></div>
-      <p class="hint">Keep this tab open. Public pages only; login cookies are not sent. Up to 10 MiB per file. Completed pages are saved in this browser; interrupted downloads can be resumed.</p>
+      <p class="hint">Keep this tab open. Public pages only; login cookies are not sent. Up to 50 MiB per file. Completed pages are saved in this browser; interrupted downloads can be resumed.</p>
     </section>
     <section id="review-section" aria-labelledby="results-heading" tabindex="-1">
       <h2 id="results-heading">Review and download</h2>
       <p class="hint" id="pdf-notice">PDF reading order, columns, headers and line breaks may need review. OCR is not performed.</p>
+      <p class="hint">New PDF extractions use conservative line and whitespace cleanup. Hyphens are preserved. Raw PDF text is retained in the ZIP's raw-pdf folder for comparison.</p>
       <p id="status" role="status" aria-live="polite">Ready when you are.</p>
       <progress id="progress" value="0" max="1" aria-label="URLs processed"></progress>
       <p id="saved-status" role="status" aria-live="polite"></p>

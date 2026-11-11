@@ -24,15 +24,20 @@ const { createServer } = require('node:http');
     const origin = worker.url().slice(0, worker.url().lastIndexOf('/'));
     const paragraph = 'Renewable energy requires careful planning and reliable electricity networks. Technical terminology describes generation capacity, storage systems and distribution. Translators need clear examples of these expressions in context. These paragraphs provide a realistic corpus extraction fixture without involving a remote website.';
     const { pdfFixture, docxFiles } = await import('../tests/browser-tests.fixtures.js');
+    const bigPDF = Buffer.from(pdfFixture({ paddingBytes: 15 * 1024 * 1024 }));
+    const wrappedPDF = Buffer.from(pdfFixture({ wrapped: true, paddingBytes: 15 * 1024 * 1024 }));
     // A real server verifies extension-worker fetches and cookie behavior without
     // relying on Playwright interception of protected PDF viewer requests.
     pdfServer = createServer((request, response) => {
+      if (request.url === '/oversized.pdf') {
+        response.writeHead(200, { 'Content-Type': 'application/pdf' }); response.end(Buffer.alloc(50 * 1024 * 1024 + 1)); return;
+      }
       if (request.url === '/login') {
         response.writeHead(200, { 'Content-Type': 'text/html', 'Set-Cookie': 'pdfSession=allowed; Path=/; SameSite=Lax' });
         response.end('<p>Manual sign-in complete</p>'); return;
       }
       if (request.url === '/session-document' && request.headers.cookie?.includes('pdfSession=allowed')) {
-        response.writeHead(200, { 'Content-Type': 'application/pdf' }); response.end(Buffer.from(pdfFixture())); return;
+        response.writeHead(200, { 'Content-Type': 'application/pdf' }); response.end(bigPDF); return;
       }
       response.writeHead(403, { 'Content-Type': 'text/html' }); response.end('CAPTCHA required');
     });
@@ -47,6 +52,7 @@ const { createServer } = require('node:http');
       if (url.origin === pdfOrigin) return route.continue();
       if (url.hostname === 'www.google.com') return route.fulfill({ contentType: 'text/html', body: '<div id="search"><a href="https://corpus.test/article"><h3>Energy article</h3></a></div>' });
       if (url.hostname === 'corpus.test' && url.pathname === '/document.pdf') return route.fulfill({ contentType: 'application/pdf', body: Buffer.from(pdfFixture()) });
+      if (url.hostname === 'corpus.test' && url.pathname === '/wrapped.pdf') return route.fulfill({ contentType: 'application/pdf', body: wrappedPDF });
       if (url.hostname === 'corpus.test' && url.pathname === '/empty.pdf') return route.fulfill({ contentType: 'application/pdf', body: Buffer.from(pdfFixture({ empty: true })) });
       if (url.hostname === 'corpus.test' && url.pathname === '/document.docx') return route.fulfill({ contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', body: docxBytes });
       if (url.hostname === 'corpus.test' && url.pathname === '/blocked' && !route.request().isNavigationRequest()) return route.fulfill({ status: 403, body: 'CAPTCHA required' });
@@ -117,6 +123,33 @@ const { createServer } = require('node:http');
     await (await documentsDownload).saveAs(join(root, 'documents.zip'));
     console.log('PDF/DOCX download, local extraction, preview and ZIP passed.');
     await deleteAllRows();
+    await page.fill('#urls', 'https://corpus.test/wrapped.pdf');
+    await page.click('#start');
+    await page.waitForFunction(() => !document.querySelector('#start').disabled && document.querySelector('#status').textContent.startsWith('Finished.'));
+    assert.match(await page.locator('#status').innerText(), /0 download errors, 0 extraction failures/);
+    await page.click('#results .preview-button');
+    await page.waitForFunction(() => document.querySelector('#preview-text').value.includes('This is the final line.'));
+    assert.equal(await page.inputValue('#preview-text'), 'These are words on a long line of corpus text. Other new words on a long line of corpus text. This is the final line.');
+    const rawPDF = await page.evaluate(async () => {
+      const storage = await import('./project-store.js');
+      const { project } = await (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'get-project' });
+      const entry = (await storage.loadWorkspace(project.id)).entries[0];
+      return { name: entry.doc.rawTextFilename, text: await (await storage.readRawText(project.id, entry.url)).text(), joinedLines: entry.doc.extraction.formatting.joinedLines };
+    });
+    assert.equal(rawPDF.joinedLines, 2); assert.match(rawPDF.name, /^raw-pdf\//);
+    assert.ok(rawPDF.text.includes('text.\nOther new'));
+    const rawDownload = page.waitForEvent('download'); await page.click('#export');
+    const rawPath = join(root, 'raw-formatted.zip'); await (await rawDownload).saveAs(rawPath);
+    const rawZip = await readFile(rawPath); assert.ok(rawZip.includes(wrappedPDF));
+    assert.ok(rawZip.includes(Buffer.from(rawPDF.name))); assert.ok(rawZip.includes(Buffer.from(rawPDF.text)));
+    await deleteAllRows();
+    await page.fill('#urls', pdfOrigin + '/oversized.pdf'); await page.click('#start');
+    await page.waitForFunction(() => !document.querySelector('#start').disabled && document.querySelector('#status').textContent.startsWith('Finished.'));
+    assert.match(await page.locator('#results').innerText(), /50 MiB download limit/);
+    assert.ok(!(await page.locator('#results').innerText()).includes('CAPTCHA'));
+    assert.equal(await page.locator('#results .import-pdf-button').count(), 0);
+    await deleteAllRows();
+    console.log('Large PDF batch download, layout cleanup, raw-text ZIP backup and explicit 50 MiB failure passed.');
     await page.fill('#urls', 'https://corpus.test/empty.pdf');
     await page.click('#start');
     await page.waitForFunction(() => !document.querySelector('#start').disabled && document.querySelector('#status').textContent.startsWith('Finished.'));

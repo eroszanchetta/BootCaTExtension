@@ -50,6 +50,16 @@ test('real PDF.js extracts text/page boundaries and preserves the original byte 
   assert.deepEqual(bytes, original, 'PDF.js must receive a copy, not detach the original');
 });
 
+test('real PDF.js provides geometry for paragraph cleanup and retains baseline text separately', async () => {
+  const result = await extractDownloadedDocument(pdfFixture({ wrapped: true }), 'application/pdf', options);
+  assert.equal(result.status, 'ok', result.warnings.join(' '));
+  assert.equal(result.formatting.joinedLines, 2);
+  assert.equal(result.text, 'These are words on a long line of corpus text. Other new words on a long line of corpus text. This is the final line.');
+  assert.equal(result.rawText, 'These are words on a long line of corpus text.\nOther new words on a long line of corpus text.\nThis is the final line.');
+  assert.equal(result.formatting.hyphenation, 'preserved');
+  assert.equal(extractionMetadata([{ url: 'https://example.org/', extraction: result }])[0].rawText, undefined);
+});
+
 test('textless and malformed PDFs produce no included corpus text', async () => {
   const empty = await extractDownloadedDocument(pdfFixture({ empty: true }), 'application/pdf', options);
   assert.equal(empty.status, 'failed'); assert.equal(empty.included, false); assert.match(empty.warnings.join(' '), /OCR/);
@@ -57,11 +67,11 @@ test('textless and malformed PDFs produce no included corpus text', async () => 
   assert.equal(invalid.status, 'failed'); assert.equal(invalid.text, '');
 });
 
-test('larger local PDF imports extract with the 50 MiB allowance while ordinary PDF inputs stay bounded', async () => {
+test('PDF downloads and local imports above the former 10 MiB cap both extract successfully', async () => {
   const bytes = pdfFixture({ paddingBytes: 15 * 1024 * 1024 });
   const ordinary = await extractDownloadedDocument(bytes, 'application/pdf', options);
-  assert.equal(ordinary.status, 'failed'); assert.match(ordinary.warnings.join(' '), /10 MiB/);
-  const local = await extractDownloadedDocument(bytes, 'application/pdf', { ...options, localPDF: true });
+  assert.equal(ordinary.status, 'ok', ordinary.warnings.join(' '));
+  const local = await extractDownloadedDocument(bytes, 'application/pdf', options);
   assert.equal(local.status, 'ok', local.warnings.join(' ')); assert.match(local.text, /Renewable energy corpus/);
 });
 

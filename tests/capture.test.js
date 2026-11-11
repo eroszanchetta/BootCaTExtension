@@ -9,7 +9,8 @@ import { corpusFiles, extractionMetadata } from '../src/corpus.js';
 test('snapshot queue bounds use UTF-8 bytes and number of pages', () => {
   validateSavedPages([{ html: 'caffè 中文' }]);
   assert.throws(() => validateSavedPages(Array.from({ length: 21 }, () => ({ html: '' }))), /20/);
-  assert.throws(() => validateSavedPages([{ html: '中'.repeat(7 * 1024 * 1024) }]), /20 MiB/);
+  // Mixed inbox totals count UTF-8 HTML bytes and PDF Blob sizes.
+  assert.throws(() => validateSavedPages([{ kind: 'pdf', blob: { size: 100 * 1024 * 1024 - 2 } }, { html: '中' }]), /100 MiB/);
 });
 
 test('injected capture rejects restricted pages without module closure', () => {

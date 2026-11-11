@@ -1,9 +1,11 @@
 import { extractDOCX, DOCX_MIME, zipDirectory } from './docx.js';
 import { extractDocument, normaliseText } from './extraction.js';
 import { PDFJS_VERSION } from './pdfjs-version.js';
-import { FILE_LIMIT, PDF_IMPORT_LIMIT } from './core.js';
+import { FILE_LIMIT } from './core.js';
+import { formatPDFPage, PDF_TEXT_LIMIT } from './pdf-layout.js';
+export { pdfPageText } from './pdf-layout.js';
 export { PDFJS_VERSION } from './pdfjs-version.js';
-export const TEXT_LIMIT = 2_000_000;
+export const TEXT_LIMIT = PDF_TEXT_LIMIT;
 const GENERIC = new Set(['', 'application/octet-stream', 'binary/octet-stream', 'application/zip']);
 export function documentType(bytes, contentType) {
   const mime = contentType.split(';')[0].trim().toLowerCase();
@@ -29,27 +31,6 @@ function abortable(promise, signal) {
     Promise.resolve(promise).then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
   });
 }
-export function pdfPageText(items) {
-  const parts = []; let previous = null, length = 0;
-  for (const item of items) {
-    if (typeof item.str !== 'string') continue;
-    if (previous && item.str && previous.str && !/\s$/.test(previous.str) && !/^\s/.test(item.str)) {
-      const height = Math.max(Math.abs(item.height || 0), 1);
-      const x = item.transform?.[4], y = item.transform?.[5];
-      const px = previous.transform?.[4], py = previous.transform?.[5];
-      if (Number.isFinite(y) && Number.isFinite(py) && Math.abs(y - py) > height * 0.5) parts.push('\n');
-      else {
-        const gap = item.dir === 'rtl' ? px - x - (item.width || 0) : x - px - (previous.width || 0);
-        if (gap > Math.max(0.5, height * 0.12)) parts.push(' ');
-      }
-    }
-    parts.push(item.str); length += item.str.length;
-    if (length > TEXT_LIMIT) throw new Error('PDF text exceeds the 2 million character limit');
-    previous = item;
-    if (item.hasEOL) { parts.push('\n'); previous = null; }
-  }
-  return normaliseText(parts.join(''));
-}
 async function extractPDF(bytes, { signal, loadPDF = () => import('./vendor/pdfjs/pdf.mjs') }) {
   const pdfjs = await abortable(loadPDF(), signal);
   if (pdfjs.version !== PDFJS_VERSION) throw new Error(`PDF.js version mismatch: expected ${PDFJS_VERSION}, loaded ${pdfjs.version || 'unknown'}. Rebuild and reload the extension.`);
@@ -70,21 +51,23 @@ async function extractPDF(bytes, { signal, loadPDF = () => import('./vendor/pdfj
     });
     const doc = await abortable(task.promise, signal);
     if (doc.numPages > 300) throw new Error('PDF exceeds the 300-page extraction limit');
-    const pages = [], pageMetadata = []; let characters = 0;
+    const pages = [], rawPages = [], pageMetadata = []; let characters = 0, joinedLines = 0;
     for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber++) {
       const page = await abortable(doc.getPage(pageNumber), signal);
       try {
         const content = await abortable(page.getTextContent(), signal);
-        const text = pdfPageText(content.items);
-        characters += text.length;
+        const formatted = formatPDFPage(content.items), { text, rawText } = formatted;
+        characters += Math.max(text.length, rawText.length); joinedLines += formatted.joinedLines;
         if (characters > TEXT_LIMIT) throw new Error('PDF text exceeds the 2 million character limit');
-        pages.push(text); pageMetadata.push({ page: pageNumber, characters: Array.from(text).length });
+        pages.push(text); rawPages.push(rawText); pageMetadata.push({ page: pageNumber, characters: Array.from(text).length, rawCharacters: Array.from(rawText).length, joinedLines: formatted.joinedLines });
       } finally { page.cleanup(); }
     }
     const metadata = await abortable(doc.getMetadata(), signal);
     const empty = pageMetadata.filter(page => !page.characters).length;
     return {
-      text: pages.join('\n\n'), title: String(metadata.info?.Title || ''),
+      text: pages.join('\n\n'), rawText: rawPages.join('\n\n'),
+      formatting: { version: '1', rules: ['normalize-whitespace', 'join-wrapped-lines'], joinedLines, hyphenation: 'preserved' },
+      title: String(metadata.info?.Title || ''),
       pageCount: doc.numPages, pages: pageMetadata,
       warnings: empty ? [`${empty} page(s) contain no extractable text; scans may require OCR.`] : []
     };
@@ -104,7 +87,7 @@ export async function extractDownloadedDocument(bytes, contentType, options = {}
     extractorVersion: format === 'pdf' ? PDFJS_VERSION : '1', format,
     encoding: 'unicode', title: '', language: '', characters: 0, included: false, warnings: [], text: ''
   };
-  const inputLimit = format === 'pdf' && options.localPDF ? PDF_IMPORT_LIMIT : FILE_LIMIT;
+  const inputLimit = FILE_LIMIT;
   if (bytes.length > inputLimit) return { ...meta, warnings: [`Document exceeds the ${inputLimit / 1024 / 1024} MiB extraction limit. Original file retained.`] };
   const signal = options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(30000)]) : AbortSignal.timeout(30000);
   try {

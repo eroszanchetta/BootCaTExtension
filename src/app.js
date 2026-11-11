@@ -83,6 +83,7 @@ async function preview(doc) {
   } catch (error) { if (previewFilename === selected) ui['preview-text'].value = ''; report(error); }
 }
 function errorTip(record) {
+  if (record.errorCode === 'DOWNLOAD_TOO_LARGE') return record.error;
   return record.outcome === 'cancelled' ? 'Stopped by user. Click Resume downloads to try again.' : `Could not download this page. Click its URL to open it in a new tab. Complete any CAPTCHA or sign-in, then click the BootCaT toolbar icon → Add page to corpus. The page will appear here automatically. For a PDF that still fails, download it with the browser viewer and use Choose downloaded PDF here. (${record.error || 'Download interrupted'})`;
 }
 function renderRow(entry) {
@@ -114,7 +115,7 @@ function renderRow(entry) {
   // A PDF may have an extensionless URL. Offer recovery only when the download
   // failed; a downloaded document with failed extraction already has its original.
   let importPDF, importFeedback;
-  if (!doc && record.outcome === 'error') {
+  if (!doc && record.outcome === 'error' && record.errorCode !== 'DOWNLOAD_TOO_LARGE') {
     importPDF = document.createElement('button'); importPDF.type = 'button'; importPDF.className = 'secondary import-pdf-button'; importPDF.textContent = 'Choose downloaded PDF';
     importPDF.addEventListener('click', () => {
       if (running || resetting || pickingPDF) return;
@@ -260,7 +261,7 @@ ui.start.addEventListener('click', () => work(async () => {
         // Storage failures must stop the run, not masquerade as network errors.
         if (downloaded || error.name === 'QuotaExceededError') throw error;
         const message = stopping ? 'Stopped by user' : timedOut ? 'Timed out after 30 seconds' : error.message;
-        remember(await storage.saveFailure(projectId, { url, outcome: stopping ? 'cancelled' : 'error', error: message }));
+        remember(await storage.saveFailure(projectId, { url, outcome: stopping ? 'cancelled' : 'error', error: message, ...(error.code === 'DOWNLOAD_TOO_LARGE' ? { errorCode: error.code, limitBytes: error.limitBytes } : {}) }));
       } finally { clearTimeout(timer); controller = null; }
       processed++; ui.progress.value = processed;
       if (!stopping) await new Promise(resolve => setTimeout(resolve, 500));
@@ -276,7 +277,7 @@ async function storeCapture({ url, finalURL, bytes, contentType, source, capture
   const index = await storage.allocateFileIndex(projectId);
   const filename = filenameFor(url, contentType, index).replace(/^pages\//, 'pages/captured/');
   const extraction = contentType === 'application/pdf'
-    ? await extractDownloadedDocument(bytes, contentType, { sourceURL: finalURL, localPDF: source === 'local-file' })
+    ? await extractDownloadedDocument(bytes, contentType, { sourceURL: finalURL })
     : extractDocument(bytes, contentType, { extractor: ui.extractor.value, sourceURL: finalURL });
   if (resetting) return;
   const doc = { url, filename, textFilename: filename.replace(/^pages\//, 'corpus/').replace(/\.[^.]+$/, '.txt'), extraction, captureId, source, capturedAt };
@@ -325,6 +326,11 @@ ui.export.addEventListener('click', () => work(async () => {
             const blob = await storage.readText(projectId, entry.url);
             if (!blob) throw new Error('An extracted text is missing from browser storage');
             yield { name: entry.doc.textFilename, blob: new Blob([blob, '\n']) };
+          }
+          if (entry.doc?.rawTextFilename) {
+            const blob = await storage.readRawText(projectId, entry.url);
+            if (!blob) throw new Error('A raw PDF extraction is missing from browser storage');
+            yield { name: entry.doc.rawTextFilename, blob: new Blob([blob, '\n']) };
           }
         }
         const json = [
