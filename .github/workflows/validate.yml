@@ -27,13 +27,20 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser > browser-test.log 2>&1
       - name: Report browser failure
+        id: browser_report
         if: failure()
         run: |
           python3 - <<'PYCODE'
           from pathlib import Path
+          import os
           path = Path('browser-test.log')
           if path.exists():
               log = path.read_text()[-16000:]
               escaped = log.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
               print('::error title=Browser smoke test::' + escaped)
+              with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+                  output.write('message=' + ' | '.join(log.splitlines()[-35:])[:3000] + '\n')
           PYCODE
+      - name: "Browser failure: ${{ steps.browser_report.outputs.message }}"
+        if: failure() && steps.browser_report.outputs.message != ''
+        run: exit 1

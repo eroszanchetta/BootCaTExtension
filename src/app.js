@@ -153,10 +153,13 @@ async function work(task) {
     try { await task(); return true; }
     catch (error) { report(error); return false; }
     finally {
-      running = false; if (!resetting) { updateControls(); searchUI?.flush(); if (capturesPending) { capturesPending = false; queueMicrotask(importSavedPages); } }
+      running = false; if (!resetting) { updateControls(); searchUI?.flush(); }
     }
   };
-  return navigator.locks ? navigator.locks.request('bootcat-project-work', { ifAvailable: true }, execute) : execute({});
+  const result = await (navigator.locks ? navigator.locks.request('bootcat-project-work', { ifAvailable: true }, execute) : execute({}));
+  // Drain the inbox only after the cross-window lock has actually been released.
+  if (capturesPending && !resetting) { capturesPending = false; queueMicrotask(importSavedPages); }
+  return result;
 }
 ui.stop.addEventListener('click', () => { stopping = true; controller?.abort(); ui.stop.disabled = true; ui.status.textContent = 'Stopping… Completed pages are saved in this browser.'; });
 ui.start.addEventListener('click', () => work(async () => {
