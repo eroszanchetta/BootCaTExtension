@@ -23,6 +23,7 @@ td { overflow-wrap: anywhere; }
 #results td:nth-child(2) { width: 45%; }
 #results input[type="checkbox"] { width: auto; accent-color: #007aa6; }
 .preview-button { display: block; padding: 5px 10px; margin-top: 8px; font-size: .8rem; }
+.import-pdf-button { display: block; padding: 5px 10px; margin-top: 8px; font-size: .8rem; }
 #preview-text { min-height: 350px; font-family: system-ui, sans-serif; }
 #preview-meta { overflow-wrap: anywhere; }
 .error { color: #a22d25; }

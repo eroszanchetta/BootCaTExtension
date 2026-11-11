@@ -1,7 +1,10 @@
 // Passed to scripting.executeScript: keep this function self-contained.
 export function captureCurrentPage() {
+  if (/^https?:$/.test(location.protocol) && document.contentType === 'application/pdf') {
+    return { pdf: true, url: location.href };
+  }
   if (!/^https?:$/.test(location.protocol) || !['text/html', 'application/xhtml+xml'].includes(document.contentType)) {
-    return { error: 'Open an HTTP or HTTPS HTML page first. Browser pages and PDFs cannot be captured.' };
+    return { error: 'Open an HTTP or HTTPS HTML page first. Browser pages cannot be captured.' };
   }
   if (document.querySelectorAll('*').length > 60000) return { error: 'This page is too complex to save.' };
   const url = new URL(location.href);

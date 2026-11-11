@@ -5,6 +5,7 @@ import * as pages from '../../src/page-store.js';
 import { parseURLs, filenameFor, FILE_LIMIT, urlListWarning } from '../../src/core.js';
 import { makeStoredZIP } from '../../src/zip-blob.js';
 import { extractionMetadata } from '../../src/corpus.js';
+import { fileWarnings, readPDFFile } from '../../src/pdf-recovery.js';
 class Element {
   constructor() { this.value = ''; this.textContent = ''; this.children = []; this.handlers = {}; this.disabled = false; }
   querySelector() { return new Element(); }
@@ -34,7 +35,7 @@ export async function workspace(projectId, options = {}) {
     getExtensionAPI: () => ({ storage: { onChanged: { addListener(fn) { listeners.push(fn); } } } }),
     initProjectUI: callbacks => { reset = callbacks.onReset; return { ready: Promise.resolve(), snapshot: () => ({ id: projectId, name: 'Test corpus' }) }; },
     initSearchUI: () => ({ flush() {} }), readCollections: async () => [], projectFilename: name => name,
-    DEFUDDLE_AVAILABLE: true, storage: options.storage || storage, ...pages, parseURLs, filenameFor, FILE_LIMIT, urlListWarning, makeStoredZIP, extractionMetadata,
+    DEFUDDLE_AVAILABLE: true, storage: options.storage || storage, ...pages, parseURLs, filenameFor, FILE_LIMIT, urlListWarning, makeStoredZIP, extractionMetadata, fileWarnings, readPDFFile,
     extractionContentType: (bytes, type) => type,
     extractDownloadedDocument: options.extractor || (async () => extracted('Downloaded corpus text')),
     extractDocument: () => extracted('Captured corpus text'),

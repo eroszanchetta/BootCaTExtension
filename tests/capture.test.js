@@ -12,11 +12,16 @@ test('snapshot queue bounds use UTF-8 bytes and number of pages', () => {
   assert.throws(() => validateSavedPages([{ html: '中'.repeat(7 * 1024 * 1024) }]), /20 MiB/);
 });
 
-test('injected capture rejects restricted pages and PDF viewers without module closure', () => {
-  for (const [protocol, contentType] of [['chrome:', 'text/html'], ['https:', 'application/pdf']]) {
+test('injected capture rejects restricted pages without module closure', () => {
+  for (const [protocol, contentType] of [['chrome:', 'text/html']]) {
     const result = vm.runInNewContext(`(${captureCurrentPage.toString()})()`, { location: { protocol }, document: { contentType } });
     assert.match(result.error, /HTML page/);
   }
+});
+
+test('injected capture identifies a PDF without capturing viewer HTML', () => {
+  const result = vm.runInNewContext(`(${captureCurrentPage.toString()})()`, { location: { protocol: 'https:', href: 'https://example.org/pdf' }, document: { contentType: 'application/pdf' } });
+  assert.equal(result.pdf, true); assert.equal(result.url, 'https://example.org/pdf'); assert.equal(result.html, undefined);
 });
 
 class Element {

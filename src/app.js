@@ -1,4 +1,5 @@
 import { extractDownloadedDocument, extractionContentType } from './binary-extraction.js';
+import { fileWarnings, readPDFFile } from './pdf-recovery.js';
 import { initProjectUI, projectFilename } from './project-ui.js';
 import { listSavedPages, readSavedPage, removeSavedPage } from './page-store.js';
 import * as storage from './project-store.js';
@@ -57,7 +58,7 @@ function updateControls() {
   ui.start.disabled = !ready || running; ui.export.disabled = !ready || running || !entries.length;
   ui.urls.disabled = ui.extractor.disabled = running;
   ui.start.textContent = !running && ready && ['running', 'stopped'].includes(state.batch.state) && pendingURLs().length ? 'Resume downloads' : 'Download URLs';
-  for (const items of controls.values()) { items.trash.disabled = running; if (items.checkbox) items.checkbox.disabled = running || items.failed; }
+  for (const items of controls.values()) { items.trash.disabled = running; if (items.importPDF) items.importPDF.disabled = running; if (items.checkbox) items.checkbox.disabled = running || items.failed; }
 }
 function updateCounts() {
   const documents = entries.filter(entry => entry.doc?.extraction.status === 'ok');
@@ -71,8 +72,9 @@ function clearPreview() {
 }
 async function preview(doc) {
   const e = doc.extraction;
+  const warnings = fileWarnings(e);
   previewURL = doc.url; previewFilename = doc.filename; const selected = doc.filename;
-  ui['preview-meta'].textContent = `${e.title ? e.title + ' · ' : ''}${doc.url} · ${e.extractor || 'Unsupported format'} · ${e.characters.toLocaleString()} characters${e.pageCount ? ` · ${e.pageCount} pages` : ''}${e.warnings.length ? ` · ${e.warnings.join(' ')}` : ''}`;
+  ui['preview-meta'].textContent = `${e.title ? e.title + ' · ' : ''}${doc.url} · ${e.extractor || 'Unsupported format'} · ${e.characters.toLocaleString()} characters${e.pageCount ? ` · ${e.pageCount} pages` : ''}${warnings.length ? ` · ${warnings.join(' ')}` : ''}`;
   ui['preview-text'].value = 'Loading text…';
   try {
     const blob = await storage.readText(projectId, doc.url), text = blob ? await blob.text() : '';
@@ -80,7 +82,7 @@ async function preview(doc) {
   } catch (error) { if (previewFilename === selected) ui['preview-text'].value = ''; report(error); }
 }
 function errorTip(record) {
-  return record.outcome === 'cancelled' ? 'Stopped by user. Click Resume downloads to try again.' : `Could not download this page. Click its URL to open it in a new tab. Complete any CAPTCHA or sign-in, then click the BootCaT toolbar icon → Add page to corpus. The page will appear here automatically. (${record.error || 'Download interrupted'})`;
+  return record.outcome === 'cancelled' ? 'Stopped by user. Click Resume downloads to try again.' : `Could not download this page. Click its URL to open it in a new tab. Complete any CAPTCHA or sign-in, then click the BootCaT toolbar icon → Add page to corpus. The page will appear here automatically. For a PDF that still fails, download it with the browser viewer and use Choose downloaded PDF here. (${record.error || 'Download interrupted'})`;
 }
 function renderRow(entry) {
   const { url, record, doc } = entry;
@@ -101,10 +103,31 @@ function renderRow(entry) {
       checkbox.checked = e.included;
     });
     selection.append(checkbox);
-    result.append(document.createTextNode(`${record.outcome === 'captured' ? 'Saved from browser tab' : 'Downloaded'} · ${e.status === 'ok' ? `${e.characters.toLocaleString()} characters` : e.status === 'unsupported' ? 'Unsupported extraction format' : 'Extraction failed'}`));
+    const origin = record.source === 'local-file' ? 'Imported PDF' : record.source === 'browser-session' ? 'PDF saved using browser session' : record.outcome === 'captured' ? 'Saved from browser tab' : 'Downloaded';
+    result.append(document.createTextNode(`${origin} · ${e.status === 'ok' ? `${e.characters.toLocaleString()} characters` : e.status === 'unsupported' ? 'Unsupported extraction format' : 'Extraction failed'}`));
     const button = document.createElement('button'); button.className = 'secondary preview-button'; button.textContent = e.status === 'ok' ? 'Preview text' : 'Details';
     button.addEventListener('click', () => preview(doc)); result.append(button);
-    if (e.warnings.length) { const warning = document.createElement('p'); warning.className = 'hint'; warning.textContent = e.warnings.join(' '); result.append(warning); }
+    const warnings = fileWarnings(e);
+    if (warnings.length) { const warning = document.createElement('p'); warning.className = 'hint'; warning.textContent = warnings.join(' '); result.append(warning); }
+  }
+  // Failed URLs may be extensionless, so offer this fallback for every failed
+  // download as well as a PDF whose extraction failed (e.g. an unlocked copy).
+  let importPDF;
+  if (!doc || (doc.extraction.format === 'pdf' && doc.extraction.status !== 'ok')) {
+    importPDF = document.createElement('button'); importPDF.type = 'button'; importPDF.className = 'secondary import-pdf-button'; importPDF.textContent = 'Choose downloaded PDF';
+    const picker = document.createElement('input'); picker.type = 'file'; picker.accept = '.pdf,application/pdf'; picker.hidden = true;
+    picker.setAttribute('aria-label', `Choose a downloaded PDF for ${url}`);
+    importPDF.addEventListener('click', () => { picker.value = ''; picker.click(); });
+    picker.addEventListener('change', () => {
+      const file = picker.files?.[0]; if (!file) return;
+      return work(async () => {
+        await flushWrites();
+        const bytes = await readPDFFile(file);
+        await storeCapture({ url, finalURL: record.finalURL || url, bytes, contentType: 'application/pdf', source: 'local-file', capturedAt: new Date().toISOString() });
+        ui['saved-status'].textContent = 'Downloaded PDF added to the review list. Review its text before saving your corpus.';
+      });
+    });
+    source.append(importPDF, picker);
   }
   const trash = document.createElement('button'); trash.type = 'button'; trash.className = 'delete-button'; trash.title = 'Delete page'; trash.setAttribute('aria-label', `Delete ${doc?.extraction.title || url}`);
   const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -121,7 +144,8 @@ function renderRow(entry) {
   }));
   actions.append(trash); tr.append(selection, source, result, actions);
   const old = rows.get(url); if (old) old.replaceWith(tr); else ui.results.append(tr);
-  rows.set(url, tr); controls.set(url, { trash, checkbox, failed: doc?.extraction.status !== 'ok' });
+  rows.set(url, tr); controls.set(url, { trash, checkbox, importPDF, failed: doc?.extraction.status !== 'ok' });
+  if (importPDF) importPDF.disabled = running;
   trash.disabled = running; if (checkbox) checkbox.disabled = running || doc.extraction.status !== 'ok';
 }
 function remember(entry) {
@@ -214,6 +238,18 @@ ui.start.addEventListener('click', () => work(async () => {
     }
   } finally { ui.stop.disabled = true; }
 }));
+async function storeCapture({ url, finalURL, bytes, contentType, source, capturedAt, captureId }) {
+  const index = await storage.allocateFileIndex(projectId);
+  const filename = filenameFor(url, contentType, index).replace(/^pages\//, 'pages/captured/');
+  const extraction = contentType === 'application/pdf'
+    ? await extractDownloadedDocument(bytes, contentType, { sourceURL: finalURL })
+    : extractDocument(bytes, contentType, { extractor: ui.extractor.value, sourceURL: finalURL });
+  if (resetting) return;
+  const doc = { url, filename, textFilename: filename.replace(/^pages\//, 'corpus/').replace(/\.[^.]+$/, '.txt'), extraction, captureId, source, capturedAt };
+  const record = { url, finalURL, outcome: 'captured', source, capturedAt, captureId, filename, contentType, bytes: bytes.length };
+  remember(await storage.saveDocument(projectId, record, doc, bytes));
+  if (!state.batch.startedAt) { state.batch.startedAt = new Date().toISOString(); await storage.saveBatch(projectId, { startedAt: state.batch.startedAt }, await readCollections()); }
+}
 async function importSavedPages() {
   if (!ready || resetting) return;
   if (running) { capturesPending = true; return; }
@@ -226,14 +262,11 @@ async function importSavedPages() {
       const page = await readSavedPage(item.url); if (!page) continue;
       if (entries.some(entry => entry.doc?.captureId === page.id)) { await removeSavedPage(page); continue; }
       const previous = entries.find(entry => entry.url === page.url || entry.record.finalURL === page.url);
-      const url = previous?.url || page.url, bytes = new TextEncoder().encode(page.html);
-      const index = await storage.allocateFileIndex(projectId);
-      const filename = filenameFor(page.url, 'text/html', index).replace(/^pages\//, 'pages/captured/');
-      const extraction = extractDocument(bytes, 'text/html; charset=utf-8', { extractor: ui.extractor.value, sourceURL: page.url });
-      const doc = { url, filename, textFilename: filename.replace(/^pages\//, 'corpus/').replace(/\.[^.]+$/, '.txt'), extraction, captureId: page.id, source: 'browser-tab', capturedAt: page.capturedAt };
-      const record = { url, finalURL: page.url, outcome: 'captured', source: 'browser-tab', capturedAt: page.capturedAt, captureId: page.id, filename, contentType: 'text/html; charset=utf-8', bytes: bytes.length };
-      remember(await storage.saveDocument(projectId, record, doc, bytes));
-      if (!state.batch.startedAt) { state.batch.startedAt = new Date().toISOString(); await storage.saveBatch(projectId, { startedAt: state.batch.startedAt }, await readCollections()); }
+      const url = previous?.url || page.url;
+      const bytes = page.kind === 'pdf' ? await readPDFFile(page.blob) : new TextEncoder().encode(page.html);
+      await storeCapture({ url, finalURL: page.finalURL || page.url, bytes,
+        contentType: page.kind === 'pdf' ? 'application/pdf' : 'text/html; charset=utf-8',
+        source: page.source || 'browser-tab', capturedAt: page.capturedAt, captureId: page.id });
       await removeSavedPage(page); count++;
     }
     if (count) ui['saved-status'].textContent = `${count} saved page${count === 1 ? '' : 's'} added to the review list. Review the text before saving your corpus.`;

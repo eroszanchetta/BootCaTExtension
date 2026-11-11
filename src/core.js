@@ -31,9 +31,9 @@ export function filenameFor(url, type, index) {
   return `pages/${String(index + 1).padStart(4, "0")}-${host}.${extension}`;
 }
 
-export async function fetchFile(url, signal, limit = FILE_LIMIT) {
+export async function fetchFile(url, signal, limit = FILE_LIMIT, { credentials = 'omit' } = {}) {
   const response = await fetch(url, {
-    signal, credentials: "omit", redirect: "follow", referrerPolicy: "no-referrer"
+    signal, credentials, redirect: "follow", referrerPolicy: "no-referrer"
   });
   if (!response.ok) {
     await response.body?.cancel();

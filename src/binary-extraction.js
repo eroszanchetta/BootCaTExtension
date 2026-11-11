@@ -85,7 +85,7 @@ async function extractPDF(bytes, { signal, loadPDF = () => import('./vendor/pdfj
     return {
       text: pages.join('\n\n'), title: String(metadata.info?.Title || ''),
       pageCount: doc.numPages, pages: pageMetadata,
-      warnings: ['PDF reading order, columns, headers and line breaks may need review. OCR is not performed.', ...(empty ? [`${empty} page(s) contain no extractable text; scans may require OCR.`] : [])]
+      warnings: empty ? [`${empty} page(s) contain no extractable text; scans may require OCR.`] : []
     };
   } finally {
     if (task) {
