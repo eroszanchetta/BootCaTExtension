@@ -128,7 +128,7 @@ The PDF.js dependency is pinned to **6.5.438**, above the 6.2.108 fix for [GHSA-
 
 Package generation and runtime loading share a single expected version in `src/pdfjs-version.js`. The build rejects a mismatched installed dependency, and extraction refuses a stale/mismatched PDF module before parsing bytes. The build packages only the parser and worker modules, not the PDF viewer or scripting sandbox. The extension retains its restrictive CSP; no PDF viewer scripting manager is instantiated. `enableScripting` is a viewer setting, not a `getDocument` option, so it is not passed to the parser as a purported workaround.
 
-GitHub Actions installs dependencies on Node 24, runs the high-severity npm audit check, the full test suite and both browser packages for pull requests and main pushes. This does not replace live browser worker/CSP verification. Local registry access in the development assistant's environment is blocked; the 6.x integration needs this clean dependency-install validation or the equivalent local commands before merging.
+GitHub Actions installs dependencies on Node 24, runs the high-severity npm audit check, the full test suite and both browser packages for pull requests and main pushes. The 6.5.438 upgrade passed all these clean-install checks in [validation run 42987320430](https://github.com/eroszanchetta/BootCaTExtension/actions/runs/42987320430). This does not replace live browser worker/CSP verification.
 
 ## PDF and DOCX extraction
 
