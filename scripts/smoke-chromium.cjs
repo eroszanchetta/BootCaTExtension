@@ -74,7 +74,6 @@ const { join } = require('node:path');
       assert.equal(await page.inputValue('#preview-text'), '');
       assert.equal(await page.locator('#preview-title').innerText(), 'Preview text');
       await page.click('#results .preview-button');
-    await page.waitForFunction(() => document.querySelector('#preview-text').value.includes('Renewable energy'));
       await page.waitForFunction(() => document.querySelector('#preview-text').value.includes('Renewable energy'));
       assert.ok((await page.inputValue('#preview-text')).includes('Renewable energy'));
       assert.ok(!(await page.inputValue('#preview-text')).includes('MENU_SENTINEL'));

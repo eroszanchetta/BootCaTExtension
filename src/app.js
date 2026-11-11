@@ -204,7 +204,7 @@ ui.start.addEventListener('click', () => work(async () => {
       if (!stopping) await new Promise(resolve => setTimeout(resolve, 500));
     }
     if (!resetting) {
-      const message = `${stopping ? 'Stopped' : 'Finished'}. ${entries.filter(item => item.doc).length} saved pages, ${entries.filter(item => item.record.outcome === 'error').length} download errors. Changes are saved in this browser.`;
+      const message = `${stopping ? 'Stopped' : 'Finished'}. ${entries.filter(item => item.doc).length} saved pages, ${entries.filter(item => item.record.outcome === 'error').length} download errors, ${entries.filter(item => item.doc?.extraction.status === 'failed').length} extraction failures. Changes are saved in this browser.`;
       await storage.saveBatch(projectId, { state: stopping ? 'stopped' : 'idle', processed, lastStatus: message });
       state.batch.state = stopping ? 'stopped' : 'idle'; ui.status.textContent = message;
     }
