@@ -1,7 +1,7 @@
 // Optional developer smoke test. Requires Playwright and a Chromium binary.
 const { chromium } = require('playwright');
 const assert = require('node:assert/strict');
-const { mkdtemp, rm, readFile } = require('node:fs/promises');
+const { mkdtemp, rm, readFile, writeFile } = require('node:fs/promises');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 const { createServer } = require('node:http');
@@ -11,17 +11,6 @@ const { createServer } = require('node:http');
   let context, pdfServer;
   try {
     const extension = await build('chromium', { outputRoot: join(root, 'build'), includeTests: true });
-    context = await chromium.launchPersistentContext(join(root, 'profile'), {
-      executablePath: process.env.CHROMIUM_EXECUTABLE_PATH || undefined,
-      headless: true,
-      channel: 'chromium',
-      ignoreDefaultArgs: ['--disable-extensions'],
-      args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`, ...(process.env.BOOTCAT_NO_SANDBOX === '1' ? ['--no-sandbox'] : [])]
-    });
-    const errors = [];
-    context.on('page', page => page.on('pageerror', error => errors.push(error.message)));
-    const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
-    const origin = worker.url().slice(0, worker.url().lastIndexOf('/'));
     const paragraph = 'Renewable energy requires careful planning and reliable electricity networks. Technical terminology describes generation capacity, storage systems and distribution. Translators need clear examples of these expressions in context. These paragraphs provide a realistic corpus extraction fixture without involving a remote website.';
     const { pdfFixture, docxFiles } = await import('../tests/browser-tests.fixtures.js');
     const bigPDF = Buffer.from(pdfFixture({ paddingBytes: 15 * 1024 * 1024 }));
@@ -29,6 +18,9 @@ const { createServer } = require('node:http');
     // A real server verifies extension-worker fetches and cookie behavior without
     // relying on Playwright interception of protected PDF viewer requests.
     pdfServer = createServer((request, response) => {
+      if (request.url.startsWith('/search-fixture')) {
+        response.writeHead(200, { 'Content-Type': 'text/html' }); response.end('<p>Local search results fixture</p>'); return;
+      }
       if (request.url === '/oversized.pdf') {
         response.writeHead(200, { 'Content-Type': 'application/pdf' }); response.end(Buffer.alloc(50 * 1024 * 1024 + 1)); return;
       }
@@ -43,6 +35,23 @@ const { createServer } = require('node:http');
     });
     await new Promise(resolve => pdfServer.listen(0, '127.0.0.1', resolve));
     const pdfOrigin = `http://127.0.0.1:${pdfServer.address().port}`;
+    // Extension-created tabs can navigate before Playwright attaches its routing
+    // hooks. Point the batch-search provider at our real local server in this
+    // temporary test build only. Production provider URLs are covered by unit tests.
+    const enginesPath = join(extension, 'engines.js'), engineSource = await readFile(enginesPath, 'utf8');
+    assert.ok(engineSource.includes('searchURL: "https://duckduckgo.com/"'));
+    await writeFile(enginesPath, engineSource.replace('searchURL: "https://duckduckgo.com/"', `searchURL: "${pdfOrigin}/search-fixture"`));
+    context = await chromium.launchPersistentContext(join(root, 'profile'), {
+      executablePath: process.env.CHROMIUM_EXECUTABLE_PATH || undefined,
+      headless: true,
+      channel: 'chromium',
+      ignoreDefaultArgs: ['--disable-extensions'],
+      args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`, ...(process.env.BOOTCAT_NO_SANDBOX === '1' ? ['--no-sandbox'] : [])]
+    });
+    const errors = [];
+    context.on('page', page => page.on('pageerror', error => errors.push(error.message)));
+    const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
+    const origin = worker.url().slice(0, worker.url().lastIndexOf('/'));
     const { makeZIP } = await import('../src/zip.js');
     const docxBytes = Buffer.from(await makeZIP(docxFiles).arrayBuffer());
     const article = `<!doctype html><html lang="en"><head><title>Energy terminology</title></head><body><nav>MENU_SENTINEL</nav><article><h1>Energy terminology</h1>${Array.from({ length: 4 }, () => `<p>${paragraph}</p>`).join('')}</article><footer>FOOTER_SENTINEL</footer></body></html>`;
@@ -51,7 +60,6 @@ const { createServer } = require('node:http');
       const url = new URL(route.request().url());
       if (url.origin === pdfOrigin) return route.continue();
       if (url.hostname === 'www.google.com') return route.fulfill({ contentType: 'text/html', body: '<div id="search"><a href="https://corpus.test/article"><h3>Energy article</h3></a></div>' });
-      if (['duckduckgo.com', 'www.ecosia.org'].includes(url.hostname)) return route.fulfill({ contentType: 'text/html', body: '<a data-testid="result-title-a" href="https://corpus.test/article">Energy article</a>' });
       if (url.hostname === 'corpus.test' && url.pathname === '/document.pdf') return route.fulfill({ contentType: 'application/pdf', body: Buffer.from(pdfFixture()) });
       if (url.hostname === 'corpus.test' && url.pathname === '/wrapped.pdf') return route.fulfill({ contentType: 'application/pdf', body: wrappedPDF });
       if (url.hostname === 'corpus.test' && url.pathname === '/empty.pdf') return route.fulfill({ contentType: 'application/pdf', body: Buffer.from(pdfFixture({ empty: true })) });
@@ -90,7 +98,8 @@ const { createServer } = require('node:http');
     await page.click('#prepare-queries'); await page.selectOption('#engine', 'duckduckgo');
     assert.equal(await page.locator('#prepared-queries a').count(), 2); assert.equal(context.pages().length, tabCount);
     const queryURL = await page.locator('#prepared-queries a').first().getAttribute('href');
-    assert.equal(new URL(queryURL).hostname, 'duckduckgo.com'); assert.equal(new URL(queryURL).searchParams.get('q'), '"custom phrase" energy');
+    assert.equal(new URL(queryURL).origin, pdfOrigin); assert.equal(new URL(queryURL).pathname, '/search-fixture');
+    assert.equal(new URL(queryURL).searchParams.get('q'), '"custom phrase" energy');
     await page.waitForFunction(() => document.querySelector('#storage-status').textContent.startsWith('Saved in this browser'));
     await page.reload();
     await page.waitForFunction(() => document.querySelectorAll('#prepared-queries a').length === 2);
