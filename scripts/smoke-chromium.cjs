@@ -56,6 +56,10 @@ const { join } = require('node:path');
     await page.fill('#project-name', 'Energy corpus');
     assert.equal(await page.inputValue('#urls'), 'https://corpus.test/article');
     for (const extractor of ['readability', 'defuddle']) {
+      if (extractor === 'defuddle') {
+        await page.click('#results .delete-button');
+        await page.fill('#urls', 'https://corpus.test/article');
+      }
       await page.selectOption('#extractor', extractor);
       await page.click('#start');
       await page.waitForFunction(() => !document.querySelector('#start').disabled && document.querySelector('#status').textContent.startsWith('Finished.'));
@@ -70,6 +74,7 @@ const { join } = require('node:path');
       assert.equal(await download.failure(), null);
       console.log(`${extractor}: search collection → download → extraction → ZIP passed`);
     }
+    while (await page.locator('#results .delete-button').count()) await page.locator('#results .delete-button').first().click();
     await page.fill('#urls', 'https://corpus.test/document.pdf\nhttps://corpus.test/document.docx');
     await page.click('#start');
     await page.waitForFunction(() => !document.querySelector('#start').disabled && document.querySelector('#status').textContent.startsWith('Finished.'));
@@ -82,6 +87,7 @@ const { join } = require('node:path');
     const documentsDownload = page.waitForEvent('download'); await page.click('#export');
     await (await documentsDownload).saveAs(join(root, 'documents.zip'));
     console.log('PDF/DOCX download, local extraction, preview and ZIP passed.');
+    while (await page.locator('#results .delete-button').count()) await page.locator('#results .delete-button').first().click();
     await page.fill('#urls', 'https://corpus.test/blocked');
     await page.click('#start');
     await page.waitForFunction(() => !document.querySelector('#start').disabled && document.querySelector('#status').textContent.startsWith('Finished.'));
@@ -102,6 +108,11 @@ const { join } = require('node:path');
     assert.ok(snapshots[0].html.includes('charset="utf-8"') && !snapshots[0].html.includes('windows-1252'));
     await page.waitForFunction(() => document.querySelector('#saved-status').textContent.startsWith('1 saved page added'));
     assert.equal(await page.locator('#results tr').count(), 1);
+    assert.equal(await page.inputValue('#preview-text'), '');
+    await page.click('#results .preview-button');
+    assert.ok((await page.inputValue('#preview-text')).includes('Renewable energy'));
+    await page.reload();
+    await page.waitForFunction(() => document.querySelectorAll('#results tr').length === 1 && !document.querySelector('#start').disabled);
     assert.equal(await page.inputValue('#preview-text'), '');
     await page.click('#results .preview-button');
     assert.ok((await page.inputValue('#preview-text')).includes('Renewable energy'));

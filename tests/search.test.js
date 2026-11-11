@@ -1,3 +1,6 @@
+import { IDBFactory } from 'fake-indexeddb';
+import { loadWorkspace } from '../src/project-store.js';
+import { savePage, readSavedPages } from '../src/page-store.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
@@ -72,21 +75,7 @@ for (const namespace of ['chrome', 'browser']) test(`${namespace}: background se
   let releaseInjection, injectionStarted;
   const started = new Promise(resolve => { injectionStarted = resolve; });
   const gate = new Promise(resolve => { releaseInjection = resolve; });
-  let clearedSnapshots = 0;
-  globalThis.indexedDB = { open() {
-    const request = {};
-    queueMicrotask(() => {
-      request.result = {
-        close() {},
-        transaction() {
-          const tx = { objectStore: () => ({ clear() { clearedSnapshots++; queueMicrotask(() => tx.oncomplete()); } }) };
-          return tx;
-        }
-      };
-      request.onsuccess();
-    });
-    return request;
-  } };
+  globalThis.indexedDB = new IDBFactory();
   let workspaceExists = true, opened = 0, focused = 0;
   globalThis[namespace] = {
     runtime: { id: 'test', getURL: path => `${origin}${path}`, onMessage: { addListener: fn => { listener = fn; } } },
@@ -131,18 +120,26 @@ for (const namespace of ['chrome', 'browser']) test(`${namespace}: background se
     assert.equal((await request({ type: 'rename-project', projectId: project.id, name: 'Energy corpus' })).ok, true);
     assert.equal(stored.project.name, 'Energy corpus');
     stored.unrelatedOldState = 'must clear';
+    await savePage({ url: 'https://pending.test/', id: 'pending', html: '<p>Saved page</p>' });
     const oldCollection = request({ type: 'collect', tabId: 4 });
     await started;
     const reset = await request({ type: 'new-project' });
     assert.equal(reset.ok, true); assert.notEqual(reset.project.id, project.id);
     assert.equal(reset.project.name, 'Untitled project');
-    assert.equal(clearedSnapshots, 1); assert.equal(stored.unrelatedOldState, undefined);
+    assert.equal((await readSavedPages()).length, 0);
+    assert.equal((await loadWorkspace(reset.project.id)).entries.length, 0); assert.equal(stored.unrelatedOldState, undefined);
     assert.equal(collections.length, 0);
     releaseInjection();
     const stale = await oldCollection;
     assert.equal(stale.ok, false); assert.match(stale.error, /project changed/);
     assert.equal(collections.length, 0, 'old collection must not reappear after reset');
     assert.equal((await request({ type: 'rename-project', projectId: project.id, name: 'Old name' })).ok, false);
+    // Simulate a crash after database reset but before storage.local notification.
+    stored.project = project; collections = [{ id: 'old-collection', results: [] }];
+    const recovered = await request({ type: 'get-project' });
+    assert.equal(recovered.project.id, reset.project.id);
+    assert.equal(collections.length, 0, 'old search metadata must not survive a recovered reset');
+
 
   } finally { delete globalThis[namespace]; delete globalThis.indexedDB; }
 });

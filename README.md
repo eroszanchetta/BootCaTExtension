@@ -53,7 +53,7 @@ npm run dev:firefox
 
 Google, DuckDuckGo and Ecosia use separate adapters. In the Google layouts tested so far, sign-in was necessary to expose usable destination URLs. Opaque redirects are skipped with a warning. Switching providers retains earlier collections and provenance.
 
-The ZIP retains originals in `pages/`, selected UTF-8 texts in `corpus/`, and `results.json`, `extraction.json` and `searches.json`. Search collections persist locally; downloaded bodies, extracted texts and the editable URL list remain in memory. Keep the workspace open until the ZIP is saved. PDF and DOCX extraction is included; see document-format notes below.
+The ZIP retains originals in `pages/`, selected UTF-8 texts in `corpus/`, and `results.json`, `extraction.json` and `searches.json`. Project drafts, originals, extracted texts, review metadata and inclusion decisions persist locally in this browser. Reopen the workspace to restore them; export a ZIP backup before clearing browser data or uninstalling the extension. PDF and DOCX extraction is included; see document-format notes below.
 
 ## Source layout
 
@@ -110,10 +110,10 @@ node scripts/build.mjs all --with-tests
 
 After loading a generated extension, open the workspace and replace `downloader.html` at the end of its address with `tests/browser-tests.html`. Twelve offline checks exercise both real extractors, Unicode, structural boundaries and script inertness. Standard builds omit this page.
 
-An optional automated Chromium smoke test uses Playwright. Install the developer-only tooling when needed:
+The automated Chromium smoke test uses the pinned Playwright development dependency. Install its browser when needed:
 
 ```sh
-npm install --no-save --package-lock=false playwright
+npm install
 npx playwright install chromium
 npm run test:browser
 ```
@@ -141,13 +141,23 @@ Limits: 10 MiB input per document, 30 seconds per binary extraction, 2 million o
 
 The toolbar's **Add page to corpus** action still captures HTML pages, not the browser's built-in PDF viewer. Supply a direct document URL in the download list for PDF/DOCX extraction.
 
+## Persistent project storage
+
+All batch sizes use IndexedDB for originals (Blobs), extracted text (separate Blobs), document metadata, URL drafts and run progress. Search collection metadata and project-name notifications remain in extension-local storage for the popup. Only the current download/extraction, selected preview and lightweight document metadata need to be loaded into JavaScript memory. Previously completed pages are skipped when downloading again; new URLs are added to the existing project. Failed or interrupted work can be retried with the existing download/resume button. Use **New project** to clear the corpus rather than starting a download to replace it.
+
+The former 500-URL and 100 MiB batch caps are removed. Above 500 URLs, an inline warning explains that downloading, reviewing, exporting and browser-storage use may suffer. Per-file and extraction limits remain. Browser storage capacity is finite; if a write fails, processing stops with a useful message and previously committed documents remain intact. Stored originals, text, metadata and progress are committed atomically. A full reset also fences off writes from an old project. Queued pages from the old capture database migrate without loss; content held only in a pre-upgrade workspace's RAM cannot be recovered after reloading, so export it before updating.
+
+Closing the workspace stops active network work. Reopening restores completed results and offers Resume downloads; it does not silently start downloads. One cross-window lock prevents competing download/import/export runs. The preview starts blank and reads only its chosen text from storage. Trash removes all stored versions of a page, and New project clears the database and extension-local project state.
+
+ZIP export reads stored files one at a time for CRC calculation and assembles native Blob references, rather than making an array of all document buffers/texts in JavaScript. It supports ZIP64 counts/offsets. Browsers still impose native Blob, memory and storage limits, so very large exports can fail; the stored project remains intact. Export is a corpus backup, not yet an importable project-backup format. IndexedDB data remains local to the browser profile, may be cleared/evicted, and is removed when the extension is uninstalled; it is not cloud-synced or guaranteed permanent.
+
 ## Projects and review
 
-The **Project name** field at the top is saved locally and used in the corpus ZIP filename, `project.json`, and export metadata. BootCaT currently has one active project; downloaded content and selections still live in the workspace tab, so export before closing it.
+The **Project name** field at the top is saved locally and used in the corpus ZIP filename, `project.json`, and export metadata. BootCaT currently has one active project. Its URL list, search controls, completed documents and inclusion choices are saved in browser storage and restored when the workspace is reopened.
 
 **New project** asks for confirmation, then clears all extension-local project data: the name, saved search collections, URL list, pending snapshots, downloaded files, corpus texts, selections, progress and preview. Open workspaces and popups reset to the new project. Active downloads are cancelled; search/capture requests from the old project cannot populate the new one. Previously exported files on your computer are unaffected.
 
-**Collect results from this tab** adds collected URLs to the download list automatically and opens a background workspace if needed. New URLs wait until an active batch finishes, and duplicates are skipped. Existing manual edits are preserved. The download list retains its 500-URL limit; saved searches can still be exported if a collection would exceed it.
+**Collect results from this tab** adds collected URLs to the download list automatically and opens a background workspace if needed. New URLs wait until an active batch finishes, and duplicates are skipped. Existing manual edits are preserved. There is no hard URL-count limit. Lists above 500 URLs display a performance/storage warning, with no extra setting or confirmation required. Search collection metadata retains its separate provider-neutral limits.
 
 **Preview text** stays blank until a Preview text button is clicked. The section heading remains fixed and the selected page is identified below it.
 
@@ -163,7 +173,7 @@ The snapshot is added to the review list automatically, using the selected Reada
 
 Snapshots contain the rendered top-level HTML, with scripts, frames, editable controls and event handlers removed. They are UTF-8 and are not complete offline copies: external assets, shadow DOM and embedded frames are not bundled. Review the extracted text before including it. The extension does not solve CAPTCHAs or determine whether a challenge is complete. Browser-protected pages and PDFs cannot be captured.
 
-A local IndexedDB inbox retains snapshots until the workspace imports them, then removes each imported snapshot automatically. Limits: 2 MiB / 60,000 elements per snapshot; 20 pages and 20 MiB awaiting import; 100 MiB per workspace batch. If import fails, remaining snapshots stay available for retry when the workspace regains focus or a new batch finishes. Export before closing the workspace or starting another batch: the review list, extracted texts and selection state are held only in that tab.
+A local IndexedDB inbox retains snapshots until the workspace imports them, then removes each imported snapshot automatically. Limits: 2 MiB / 60,000 elements per snapshot; 20 pages and 20 MiB awaiting import. If import fails, remaining snapshots stay available for retry when the workspace regains focus or a new batch finishes. Imported pages, their texts and selections remain saved after closing the workspace. Reopening does not automatically restart downloads: use Resume downloads to continue unfinished work.
 
 The optional Chromium smoke test also checks failed-download recovery, snapshot cleanup and automatic import. Native browser execution remains blocked in this build environment; these checks must be run locally.
 

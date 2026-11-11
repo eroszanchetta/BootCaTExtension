@@ -1,5 +1,6 @@
+import { ensureStoredProject, resetStoredProject, storedProjectId } from './project-store.js';
 import { captureCurrentPage } from './page-capture.js';
-import { savePage, clearSavedPages } from './page-store.js';
+import { savePage } from './page-store.js';
 import { getExtensionAPI } from './extension-api.js';
 const ext = getExtensionAPI();
 import { adapterForURL, extractResults } from "./engines.js";
@@ -14,10 +15,19 @@ function serialize(task) {
 }
 async function ensureProject() {
   let { project } = await ext.storage.local.get('project');
+  const storedId = await storedProjectId();
+  if (storedId && project?.id !== storedId) {
+    // Recover a reset interrupted between the atomic database clear and the
+    // storage.local notification. Never attach an old project's collections.
+    project = { id: storedId, name: 'Untitled project' };
+    await ext.storage.local.clear();
+    await ext.storage.local.set({ project, collections: [], captureRevision: crypto.randomUUID() });
+  }
   if (!project) {
     project = { id: crypto.randomUUID(), name: 'Untitled project' };
     await ext.storage.local.set({ project });
   }
+  await ensureStoredProject(project.id);
   return project;
 }
 async function assertProject(id) {
@@ -37,9 +47,9 @@ async function handle(message) {
   });
   if (message.type === 'new-project') return serialize(async () => {
     // Serialize with collection/capture writes so stale work cannot survive reset.
-    await clearSavedPages();
-    await ext.storage.local.clear();
     const project = { id: crypto.randomUUID(), name: 'Untitled project' };
+    await resetStoredProject(project.id);
+    await ext.storage.local.clear();
     await ext.storage.local.set({ project, collections: [], captureRevision: crypto.randomUUID() });
     return { project };
   });

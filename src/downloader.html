@@ -50,14 +50,15 @@
       <h2 id="input-heading">URL list</h2>
       <label for="urls">One URL per line. URLs collect from search engines will be added here. You can also add them manually</label>
       <textarea id="urls" spellcheck="false" placeholder="https://example.com/&#10;https://www.iana.org/help/example-domains"></textarea>
-      <p class="hint">Blank lines are ignored. Duplicates and URL fragments are removed. Maximum 500 URLs.</p>
+      <p class="hint">Blank lines are ignored. Duplicates and URL fragments are removed. Large URL lists may take longer to process.</p>
+      <p id="urls-warning" class="hint performance-warning" role="status" aria-live="polite"></p>
       <div class="extractor-setting">
         <label for="extractor">Text extractor for the next batch</label>
         <select id="extractor"><option value="readability" selected>Mozilla Readability (default)</option><option value="defuddle">Defuddle</option></select>
         <p class="hint">The choice applies to HTML pages. PDF, DOCX and plain-text files use their own extraction with either setting.</p>
       </div>
       <div class="actions"><button id="start">Download URLs</button><button id="stop" class="secondary" disabled>Stop</button></div>
-      <p class="hint">Keep this tab open. Public pages only; login cookies are not sent. Up to 10 MiB per file and 100 MiB per batch.</p>
+      <p class="hint">Keep this tab open. Public pages only; login cookies are not sent. Up to 10 MiB per file. Completed pages are saved in this browser; interrupted downloads can be resumed.</p>
     </section>
     <section id="review-section" aria-labelledby="results-heading" tabindex="-1">
       <h2 id="results-heading">Review and download</h2>
@@ -68,6 +69,7 @@
       <button id="export" disabled>Save Corpus</button>
       <p class="hint">Includes all original downloaded files, selected corpus text files, search sources and extraction metadata.</p>
       <div class="table-wrap"><table><thead><tr><th scope="col">Include</th><th scope="col">URL</th><th scope="col">Download / extraction</th><th scope="col">Delete</th></tr></thead><tbody id="results"></tbody></table></div>
+      <p id="storage-status" class="hint" role="status" aria-live="polite">Loading saved project…</p>
       <p id="corpus-status" role="status" aria-live="polite">Download pages to extract corpus text.</p>
     </section>
     <section id="preview-section" aria-labelledby="preview-title" tabindex="-1">

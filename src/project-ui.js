@@ -4,7 +4,7 @@ export function initProjectUI({ onReset, onRename }) {
   const name = document.getElementById('project-name');
   const button = document.getElementById('new-project');
   const status = document.getElementById('project-status');
-  let project = null;
+  let project = null, saving = 0;
   name.disabled = button.disabled = true;
   function apply(next) {
     if (!next) return;
@@ -24,10 +24,12 @@ export function initProjectUI({ onReset, onRename }) {
     if (!project) return;
     const value = name.value;
     project = { ...project, name: value }; onRename();
+    saving++;
     try {
       const reply = await ext.runtime.sendMessage({ type: 'rename-project', projectId: project.id, name: value });
       if (!reply?.ok) throw new Error(reply?.error || 'Could not save project name');
     } catch (error) { status.textContent = error.message; }
+    finally { saving--; }
   });
   button.addEventListener('click', async () => {
     if (!window.confirm('Create a new project? This clears the current project name, saved searches, URL list, downloaded pages, corpus texts, selections, pending page saves and preview everywhere in BootCaT. Export your corpus first if you want to keep it.')) return;
@@ -39,7 +41,7 @@ export function initProjectUI({ onReset, onRename }) {
       status.textContent = error.message; name.disabled = button.disabled = false;
     }
   });
-  return { ready, snapshot: () => project ? { ...project, name: name.value.trim() || 'Untitled project' } : { name: 'Untitled project' } };
+  return { ready, isSaving: () => saving > 0, snapshot: () => project ? { ...project, name: name.value.trim() || 'Untitled project' } : { name: 'Untitled project' } };
 }
 export function projectFilename(name) {
   return (name.normalize('NFKC').replace(/[<>:"/\\|?*\u0000-\u001f]/g, '-').replace(/[. ]+$/g, '').trim().slice(0, 80) || 'bootcat-corpus');

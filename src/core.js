@@ -1,6 +1,9 @@
 // Browser-independent functions: also exercised by the Node tests.
 export const FILE_LIMIT = 10 * 1024 * 1024;
-export const BATCH_LIMIT = 100 * 1024 * 1024;
+export const URL_WARNING_THRESHOLD = 500;
+export function urlListWarning(count) {
+  return count > URL_WARNING_THRESHOLD ? `This project has ${count.toLocaleString()} URLs. Large lists may take longer to download, review and export, and use substantial browser storage. You can continue.` : '';
+}
 
 export function parseURLs(text) {
   const urls = new Set();
@@ -17,7 +20,6 @@ export function parseURLs(text) {
       errors.push(`Line ${index + 1}: ${error.message}`);
     }
   });
-  if (urls.size > 500) errors.push("Maximum 500 unique URLs per batch.");
   return { urls: [...urls], errors };
 }
 

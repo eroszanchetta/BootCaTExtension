@@ -13,7 +13,7 @@ Search collections persist locally in this extension's Chrome profile, across wo
 
 Result positions describe extraction order on the page, not absolute rankings across pagination. They can contain gaps when candidates were duplicated or skipped. Selectors attempt to exclude common ad containers, but result filtering is heuristic: review the URL list.
 
-The same URL found by multiple engines/queries appears once in the unique-URL preview while retaining all source occurrences. Recollecting the exact same engine/page URL replaces its previous snapshot. Different pages and queries are kept separately. There is a limit of 100 saved pages / 5,000 result occurrences, and at most 200 usable results per collection. The preview displays the first 200 unique URLs; exports contain all saved records. Download batches remain limited to 500 unique URLs, so larger collections need manual selection.
+The same URL found by multiple engines/queries appears once in the unique-URL preview while retaining all source occurrences. Recollecting the exact same engine/page URL replaces its previous snapshot. Different pages and queries are kept separately. There is a limit of 100 saved pages / 5,000 result occurrences, and at most 200 usable results per collection. The preview displays the first 200 unique URLs; exports contain all saved records. The editable download list has no hard count cap; above 500 URLs it displays a performance warning.
 
 **Export searches JSON** saves both the original collections and a merged list with provenance, without downloading the linked pages. **Clear searches** asks for confirmation and clears saved collection metadata only; URLs already added to the download list remain there. Uninstalling the extension removes its stored collections. JSON export is a backup for inspection/reuse; this version does not yet import backups.
 
@@ -23,9 +23,9 @@ The download ZIP contains:
 - `corpus/`: selected extracted texts, one UTF-8 `.txt` file per document. There are no source headers or metadata injected into the text.
 - `results.json`: download outcomes, final response URLs, content types and errors.
 - `extraction.json`: extraction status, extractor/version, input encoding, title, language if reported, character count, warnings and inclusion decisions. Metadata contains no duplicate full text.
-- `searches.json`: a snapshot of all saved collections when the batch started, including any results you subsequently excluded from the download list. Match source URLs to `results.json` when analysing provenance.
+- `searches.json`: all currently saved search collections at export time, including any results you subsequently excluded from the download list. Match source URLs to `results.json` when analysing provenance.
 
-Downloaded file bodies, extracted texts, inclusion decisions and the editable download list are still in memory, not persistent. **Keep the workspace tab open until the ZIP is saved.** Reloading the extension or page loses that batch. The saved search collections are separate and will survive normal reloads.
+Original Blobs, extracted-text Blobs, document metadata, inclusion decisions, URL drafts and progress persist in IndexedDB. Reopening restores the project; the existing Resume downloads button retries unfinished URLs and skips completed pages. A document commit atomically saves original, text, metadata and progress. Search collections remain in extension-local storage. Export before clearing browser data/uninstalling; only pre-upgrade RAM-only batches need to be exported before updating.
 
 ## Text extraction and review
 
@@ -37,11 +37,11 @@ A detached DOM is passed to the chosen extractor with a 60,000-element limit. Re
 
 Neither extractor always finds the right content. Technical lists, glossaries, tables and multi-column pages deserve particular attention. Empty or failed extractions are excluded with a message; there is no automatic whole-page-text fallback. Successful texts below 200 characters are flagged but included for review. A few common login/access-check titles are heuristically flagged and excluded by default. These are warnings and rules, not confidence scores or a comprehensive CAPTCHA detector. A returned nonempty text can still contain boilerplate.
 
-HTML/plain-text responses above **3 MiB** skip extraction to limit memory and UI stalls; their originals remain in the ZIP. The download limits are still 10 MiB per response / 100 MiB per batch. Parsing is synchronous in the workspace tab and may briefly pause the interface; Stop takes effect between synchronous HTML extraction operations; PDF/DOCX extraction also observes cancellation. Additional memory is needed for decoded strings, DOMs, texts and ZIP creation.
+HTML/plain-text responses above **3 MiB** skip extraction to limit memory and UI stalls; their originals remain in the ZIP. The download limits are still 10 MiB per response, with no fixed total batch ceiling. Browser quota errors stop processing without deleting completed results. Parsing is synchronous in the workspace tab and may briefly pause the interface; Stop takes effect between synchronous HTML extraction operations; PDF/DOCX extraction also observes cancellation. Decoded strings/DOMs for the current document still require working memory. ZIP export streams CRC calculation over stored Blobs and assembles native Blob references; native browser export limits still apply.
 
 Use each row's **Include** checkbox to choose the corpus output. Original files are retained even when excluded or unsupported. Changing inclusion invalidates the cached ZIP, so the next save reflects your decisions. **Preview text** is read only; edit the exported `.txt` files if manual corrections are needed. No combined corpus file is generated: separate documents preserve document boundaries for concordancers.
 
-The extension never inserts downloaded HTML or extracted HTML into its live interface. Preview uses a textarea value. A content security policy permits bundled images for the logo and blocks remote image/frame/object resource loads; page scripts are not executed. Both extractors are bundled locally, with their licences and source hashes in `src/vendor/`. Users do not install dependencies or download library code at runtime.
+The extension never inserts downloaded HTML or extracted HTML into its live interface. Preview uses a textarea value. A content security policy permits bundled images for the logo and blocks remote image/frame/object resource loads; page scripts are not executed. The HTML extractors are bundled locally, with their licences and source hashes in `src/vendor/`. Users do not install dependencies or download library code at runtime.
 
 ## Document extraction
 
@@ -85,3 +85,9 @@ To add a new page-based provider, add its registry entry plus host/path detectio
 
 A future Brave API or saved-file importer can emit this same collection format and use the collection layer without any DOM scraping. API key configuration, request quotas and import validation would be separate provider-specific work. There is no automatic engine failover in this prototype: the user switches explicitly, sees what was collected and retains control of the source.
 
+
+## Persistence schema and concurrency
+
+`bootcat-saved-pages` version 2 retains the version-1 `pages` inbox and adds `meta`, `documents`, `files` and `texts`. A small active-project identity guards every read/write. Form drafts, run counters and search-source snapshots use separate metadata records so saving a document does not rewrite the entire URL list. Document metadata never contains full raw bodies or extracted text; previews load their text Blob on demand. Each document owns all original filenames retained by previous attempts; deletion removes those files and its text in one transaction. Duplicate original filenames abort rather than overwrite existing data.
+
+Reset clears all stores and creates a new identity in one transaction, then broadcasts the new project through extension-local storage. Startup reconciles a reset interrupted between those two operations without reattaching old search metadata. `navigator.locks` serializes project processing across open workspaces. Pending UI edits are saved as they happen, and the unload prompt appears only while work or writes are pending. Storage failures are explicit; there is no silent RAM-only fallback.
