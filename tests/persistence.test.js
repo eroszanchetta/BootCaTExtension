@@ -127,3 +127,20 @@ test('Stop persists completed pages and resume retries only unfinished URLs', as
   assert.deepEqual(resumed.fetched, ['https://stop.test/two']);
   assert.equal((await storage.loadWorkspace('one')).entries.length, 2);
 });
+
+test('pending browser lock acquisition disables edits immediately so deletion cannot erase a subsequent edit', async () => {
+  fresh();
+  const navigator = { locks: { request: async (name, options, callback) => {
+    await new Promise(resolve => setImmediate(resolve));
+    return callback({});
+  } } };
+  const app = await workspace('one', { navigator });
+  await app.input('urls', 'https://race.test/'); await app.click('start');
+  const trash = app.get('results').children[0].children[3].children[0];
+  const deletion = trash.handlers.click();
+  assert.equal(app.get('urls').disabled, true, 'edits must be blocked before the lock callback starts');
+  assert.equal(app.get('start').disabled, true);
+  await deletion;
+  await app.input('urls', 'https://race.test/');
+  assert.equal((await storage.loadWorkspace('one')).draft.urls, 'https://race.test/');
+});

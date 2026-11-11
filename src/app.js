@@ -147,10 +147,14 @@ async function restore({ draft = true } = {}) {
 }
 async function work(task) {
   if (!ready || running || resetting) return false;
+  // Reserve this window immediately; Web Lock acquisition is asynchronous.
+  // Otherwise a quick follow-up edit could race a pending deletion/download.
+  running = true; updateControls();
   const execute = async lock => {
-    if (!lock) { ui.status.textContent = 'Another BootCaT window is processing this project. Return here when it finishes.'; return false; }
-    running = true; updateControls();
-    try { await task(); return true; }
+    try {
+      if (!lock) { ui.status.textContent = 'Another BootCaT window is processing this project. Return here when it finishes.'; return false; }
+      await task(); return true;
+    }
     catch (error) { report(error); return false; }
     finally {
       running = false; if (!resetting) { updateControls(); searchUI?.flush(); }

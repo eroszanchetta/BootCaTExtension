@@ -26,7 +26,7 @@ export async function workspace(projectId, options = {}) {
   const get = id => elements.get(id) || (elements.set(id, new Element()), elements.get(id));
   let archive, confirm = true, reset, fetched = [];
   const context = vm.createContext({
-    console, navigator: {}, Blob, URL: { createObjectURL: value => { archive = value; return 'blob:test'; }, revokeObjectURL() {} },
+    console, navigator: options.navigator || {}, Blob, URL: { createObjectURL: value => { archive = value; return 'blob:test'; }, revokeObjectURL() {} },
     AbortController, TextEncoder, Date, queueMicrotask,
     setTimeout: (fn, delay) => { if (delay < 1000) { queueMicrotask(fn); return 0; } return setTimeout(fn, delay); }, clearTimeout,
     document: { getElementById: get, createElement: () => new Element(), createElementNS: () => new Element(), createTextNode: text => ({ textContent: text }), body: new Element() },
