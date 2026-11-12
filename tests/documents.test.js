@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { extractDownloadedDocument, documentType, extractionContentType, pdfPageText, PDFJS_VERSION } from '../src/binary-extraction.js';
-import { DOCX_MIME } from '../src/docx.js';
+import { DOCX_MIME, XML_LIMIT, ZIP_LIMIT, XML_NODE_LIMIT } from '../src/docx.js';
 import { filenameFor } from '../src/core.js';
 import { makeZIP } from '../src/zip.js';
 import { corpusFiles, extractionMetadata } from '../src/corpus.js';
@@ -19,7 +19,7 @@ def node(e):
  return {'nodeType':1,'namespaceURI':name[0][1:] if len(name)==2 else '', 'localName':name[-1], 'attrs':e.attrib, 'textContent':''.join(e.itertext()), 'childNodes':[node(c) for c in e]}
 try: print(json.dumps(node(ET.fromstring(sys.stdin.read()))))
 except ET.ParseError: print(json.dumps({'parseError': True}))
-`], { input: xml, encoding: 'utf8' }));
+`], { input: xml, encoding: 'utf8', maxBuffer: 128 * 1024 * 1024 }));
   if (tree.parseError) throw new Error('Malformed DOCX XML');
   function hydrate(node) {
     node.getAttribute = name => node.attrs[name] ?? null;
@@ -46,18 +46,24 @@ test('real PDF.js extracts text/page boundaries and preserves the original byte 
   assert.equal(result.status, 'ok', result.warnings.join(' '));
   assert.equal(result.extractor, 'pdfjs'); assert.equal(result.extractorVersion, pdfjs.version);
   assert.equal(result.pageCount, 2); assert.equal(result.pages.length, 2);
-  assert.ok(result.text.includes('Renewable energy corpus.\nSecond line.\n\nRenewable energy corpus.'));
+  assert.ok(result.text.includes('Renewable energy corpus.\nSecond line.\nRenewable energy corpus.'));
   assert.deepEqual(bytes, original, 'PDF.js must receive a copy, not detach the original');
 });
 
-test('real PDF.js provides geometry for paragraph cleanup and retains baseline text separately', async () => {
-  const result = await extractDownloadedDocument(pdfFixture({ wrapped: true }), 'application/pdf', options);
+test('real PDF.js applies dot-based cleanup and retains baseline text separately', async () => {
+  const result = await extractDownloadedDocument(pdfFixture({ wrapped: true, unpunctuated: true }), 'application/pdf', options);
   assert.equal(result.status, 'ok', result.warnings.join(' '));
   assert.equal(result.formatting.joinedLines, 2);
-  assert.equal(result.text, 'These are words on a long line of corpus text. Other new words on a long line of corpus text. This is the final line.');
-  assert.equal(result.rawText, 'These are words on a long line of corpus text.\nOther new words on a long line of corpus text.\nThis is the final line.');
+  assert.equal(result.text, 'These are words on a long line of corpus text Other new words on a long line of corpus text This is the final line');
+  assert.equal(result.rawText, 'These are words on a long line of corpus text\nOther new words on a long line of corpus text\nThis is the final line');
   assert.equal(result.formatting.hyphenation, 'preserved');
   assert.equal(extractionMetadata([{ url: 'https://example.org/', extraction: result }])[0].rawText, undefined);
+});
+
+test('PDF cleanup applies to the assembled document including non-dot page boundaries', async () => {
+  const result = await extractDownloadedDocument(pdfFixture({ wrapped: true, unpunctuated: true, twoPages: true }), 'application/pdf', options);
+  assert.equal(result.status, 'ok', result.warnings.join(' ')); assert.ok(!result.text.includes('\n')); assert.ok(result.rawText.includes('\n\n'));
+  assert.equal(result.formatting.version, '2'); assert.equal(result.formatting.joinedLines, 6);
 });
 
 test('textless and malformed PDFs produce no included corpus text', async () => {
@@ -97,12 +103,36 @@ test('binary detection handles generic MIME types without mistaking other ZIP/HT
 });
 
 test('DOCX failures keep originals and exclude partial text: bad ZIP, excessive expansion, XML entities and malformed XML', async () => {
-  const candidates = [new Uint8Array([1, 2, 3]), await docx([{ name: 'word/document.xml', data: 'x'.repeat(3 * 1024 * 1024 + 1) }]), await docx([{ name: 'word/document.xml', data: '<!DOCTYPE x [<!ENTITY e "bad">]>' + wordXML }]), await docx([{ name: 'word/document.xml', data: '<broken>' }])];
+  function declaredSize(bytes, size) {
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const directory = view.getUint32(bytes.length - 22 + 16, true); view.setUint32(directory + 24, size, true); return bytes;
+  }
+  const tiny = () => docx([{ name: 'word/document.xml', data: '<x/>' }]);
+  const candidates = [new Uint8Array([1, 2, 3]), declaredSize(await tiny(), XML_LIMIT + 1), declaredSize(await tiny(), ZIP_LIMIT + 1), await docx([{ name: 'word/document.xml', data: '<!DOCTYPE x [<!ENTITY e "bad">]>' + wordXML }]), await docx([{ name: 'word/document.xml', data: '<broken>' }])];
   for (const bytes of candidates) {
     const result = await extractDownloadedDocument(bytes, DOCX_MIME, options);
     assert.equal(result.status, 'failed'); assert.equal(result.included, false); assert.equal(result.text, '');
     assert.ok(result.warnings.includes('Original file retained.'));
   }
+});
+
+test('compressed DOCX above the old XML and text limits extracts a larger body', async () => {
+  const large = 'Larger DOCX corpus text. '.repeat(140000);
+  const files = docxFiles.map(file => file.name === 'word/document.xml' ? { ...file, data: wordXML.replace('Caffè 中文 corpus.', large) } : file);
+  const bytes = await docx(files, true);
+  assert.ok(bytes.length < 100000, 'compressed input is small despite its larger XML body');
+  const result = await extractDownloadedDocument(bytes, DOCX_MIME, options);
+  assert.equal(result.status, 'ok', result.warnings.join(' ')); assert.ok(result.characters > 3 * 1024 * 1024);
+  assert.ok(result.text.startsWith('Larger DOCX corpus text.')); assert.ok(result.text.includes('Left cell Right cell'));
+});
+
+test('DOCX documents above 60,000 elements extract, but the 500,000-element preflight is still enforced', async () => {
+  const xml = count => '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p>' + '<w:r><w:t>word </w:t></w:r>'.repeat(count) + '</w:p></w:body></w:document>';
+  const valid = await extractDownloadedDocument(await docx([{ name: 'word/document.xml', data: xml(31000) }], true), DOCX_MIME, options);
+  assert.equal(valid.status, 'ok', valid.warnings.join(' '));
+  let parsed = false;
+  const oversized = await extractDownloadedDocument(await docx([{ name: 'word/document.xml', data: '<w:x>'.repeat(XML_NODE_LIMIT + 1) }], true), DOCX_MIME, { parseXML() { parsed = true; throw new Error('must reject before DOM parsing'); } });
+  assert.equal(parsed, false); assert.equal(oversized.status, 'failed'); assert.match(oversized.warnings.join(' '), /500,000 elements/);
 });
 
 test('cancelled extraction and protected PDFs report a useful failure without including text', async () => {

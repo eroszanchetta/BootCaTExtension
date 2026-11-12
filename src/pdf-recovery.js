@@ -1,24 +1,17 @@
 import { fetchFile, FILE_LIMIT, PDF_IMPORT_LIMIT } from './core.js';
 import { captureCurrentPage } from './page-capture.js';
+import { hasPDFSignature, readDocumentFile } from './document-formats.js';
+export { hasPDFSignature } from './document-formats.js';
 
 export const PDF_REVIEW_NOTICE = 'PDF reading order, columns, headers and line breaks may need review. OCR is not performed.';
 // Also hide the generic warning in projects saved by older versions.
 export const fileWarnings = extraction => extraction.warnings.filter(warning => warning !== PDF_REVIEW_NOTICE);
-export function hasPDFSignature(bytes) {
-  return new TextDecoder('latin1').decode(bytes.subarray(0, 1024)).includes('%PDF-');
-}
 function webURL(value) {
   const url = new URL(value);
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('Open an HTTP or HTTPS page without URL credentials first.');
   url.hash = ''; return url.href;
 }
-export async function readPDFFile(file, limit = PDF_IMPORT_LIMIT) {
-  if (!file || !file.size) throw new Error('Choose a non-empty PDF file.');
-  if (file.size > limit) throw new Error(`PDF exceeds the ${limit / 1024 / 1024} MiB file limit.`);
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  if (!hasPDFSignature(bytes)) throw new Error('This file does not contain a PDF. Download the PDF itself, rather than an HTML sign-in or CAPTCHA page.');
-  return bytes;
-}
+export const readPDFFile = (file, limit = PDF_IMPORT_LIMIT) => readDocumentFile(file, 'pdf', limit);
 export async function captureTabDocument(tab, scripting) {
   const url = webURL(tab.url);
   let pdfURL = url;

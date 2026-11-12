@@ -9,10 +9,11 @@ export const docxFiles = [
   { name: '_rels/.rels', data: '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>' },
   { name: 'word/document.xml', data: wordXML }
 ];
-export function pdfFixture({ empty = false, twoPages = false, javascript = false, paddingBytes = 0, wrapped = false } = {}) {
+export function pdfFixture({ empty = false, twoPages = false, javascript = false, paddingBytes = 0, wrapped = false, unpunctuated = false } = {}) {
   // Minimal valid PDF with offsets computed from its ASCII bytes.
   const text = 'BT /F1 12 Tf 50 750 Td (Renewable energy corpus.) Tj 0 -20 Td (Second line.) Tj ET';
-  const stream = empty ? '' : wrapped ? 'BT /F1 12 Tf 50 750 Td (These are words on a long line of corpus text.) Tj 0 -14 Td (Other new words on a long line of corpus text.) Tj 0 -14 Td (This is the final line.) Tj ET' : text;
+  let stream = empty ? '' : wrapped ? 'BT /F1 12 Tf 50 750 Td (These are words on a long line of corpus text.) Tj 0 -14 Td (Other new words on a long line of corpus text.) Tj 0 -14 Td (This is the final line.) Tj ET' : text;
+  if (unpunctuated) stream = stream.replace(/\.\)/g, ')');
   const objects = [
     `<< /Type /Catalog /Pages 2 0 R${javascript ? ' /OpenAction << /S /JavaScript /JS (globalThis.bootcatPDFScriptRan = true;) >>' : ''} >>`,
     `<< /Type /Pages /Kids [3 0 R${twoPages ? ' 6 0 R' : ''}] /Count ${twoPages ? 2 : 1} >>`,

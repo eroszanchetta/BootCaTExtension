@@ -1,5 +1,6 @@
 import { extractDownloadedDocument, extractionContentType } from './binary-extraction.js';
 import { fileWarnings, readPDFFile } from './pdf-recovery.js';
+import { recoveryFormat, formatById, formatByMIME, formatAccept, readDocumentFile } from './document-formats.js';
 import { initProjectUI, projectFilename } from './project-ui.js';
 import { listSavedPages, readSavedPage, removeSavedPage } from './page-store.js';
 import * as storage from './project-store.js';
@@ -14,11 +15,11 @@ import { extractionMetadata } from './corpus.js';
 import { DEFUDDLE_AVAILABLE } from './defuddle-loader.js';
 
 const ext = getExtensionAPI(), VERSION = '0.4.0';
-const ui = Object.fromEntries(['urls', 'start', 'stop', 'export', 'status', 'progress', 'results', 'corpus-status', 'preview-title', 'preview-meta', 'preview-text', 'extractor', 'urls-warning', 'storage-status', 'saved-status', 'query', 'engine', 'import-pdf-picker', 'pdf-import-status'].map(id => [id, document.getElementById(id)]));
+const ui = Object.fromEntries(['urls', 'start', 'stop', 'export', 'status', 'progress', 'results', 'corpus-status', 'preview-title', 'preview-meta', 'preview-text', 'extractor', 'urls-warning', 'storage-status', 'saved-status', 'query', 'engine', 'import-document-picker', 'document-import-status'].map(id => [id, document.getElementById(id)]));
 let ready = false, running = false, stopping = false, resetting = false, controller = null;
 let projectId, state, entries = [], searchUI, seedsUI, projectTabsUI, archiveURL = null, previewURL = null, previewFilename = null;
 let writes = Promise.resolve(), pendingWrites = 0, writeError = null, capturesPending = false, refreshing = false;
-let pickingPDF = false, pdfImportTarget = null, pdfImportStatus = { url: null, message: '' };
+let pickingDocument = false, documentImportTarget = null, documentImportStatus = { url: null, message: '' };
 const rows = new Map(), controls = new Map();
 ui.start.disabled = ui.export.disabled = true;
 ui.extractor.querySelector('option[value="defuddle"]').disabled = !DEFUDDLE_AVAILABLE;
@@ -61,7 +62,7 @@ function updateControls() {
   ui.start.disabled = !ready || running; ui.export.disabled = !ready || running || !entries.length;
   ui.urls.disabled = ui.extractor.disabled = running;
   ui.start.textContent = !running && ready && ['running', 'stopped'].includes(state.batch.state) && pendingURLs().length ? 'Resume downloads' : 'Download URLs';
-  for (const items of controls.values()) { items.trash.disabled = running; if (items.importPDF) items.importPDF.disabled = running; if (items.checkbox) items.checkbox.disabled = running || items.failed; }
+  for (const items of controls.values()) { items.trash.disabled = running; if (items.importDocument) items.importDocument.disabled = running; if (items.checkbox) items.checkbox.disabled = running || items.failed; }
 }
 function updateCounts() {
   const documents = entries.filter(entry => entry.doc?.extraction.status === 'ok');
@@ -86,7 +87,10 @@ async function preview(doc) {
 }
 function errorTip(record) {
   if (record.errorCode === 'DOWNLOAD_TOO_LARGE') return record.error;
-  return record.outcome === 'cancelled' ? 'Stopped by user. Click Resume downloads to try again.' : `Could not download this page. Click its URL to open it in a new tab. Complete any CAPTCHA or sign-in, then click the BootCaT toolbar icon → Add page to corpus. The page will appear here automatically. For a PDF that still fails, download it with the browser viewer and use Choose downloaded PDF here. (${record.error || 'Download interrupted'})`;
+  if (record.outcome === 'cancelled') return 'Stopped by user. Click Resume downloads to try again.';
+  const format = recoveryFormat(record);
+  return format ? `Could not download this ${format.label}. Open its URL and complete any CAPTCHA or sign-in, then download the file using your browser and click Choose downloaded ${format.label} here. (${record.error || 'Download interrupted'})`
+    : `Could not download this page. Click its URL to open it in a new tab. Complete any CAPTCHA or sign-in, then click the BootCaT toolbar icon → Add page to corpus. The page will appear here automatically. (${record.error || 'Download interrupted'})`;
 }
 function renderRow(entry) {
   const { url, record, doc } = entry;
@@ -107,30 +111,32 @@ function renderRow(entry) {
       checkbox.checked = e.included;
     });
     selection.append(checkbox);
-    const origin = record.source === 'local-file' ? 'Imported PDF' : record.source === 'browser-session' ? 'PDF saved using browser session' : record.outcome === 'captured' ? 'Saved from browser tab' : 'Downloaded';
+    const origin = record.source === 'local-file' ? `Imported ${formatByMIME(record.contentType)?.label || 'document'}` : record.source === 'browser-session' ? 'PDF saved using browser session' : record.outcome === 'captured' ? 'Saved from browser tab' : 'Downloaded';
     result.append(document.createTextNode(`${origin} · ${e.status === 'ok' ? `${e.characters.toLocaleString()} characters` : e.status === 'unsupported' ? 'Unsupported extraction format' : 'Extraction failed'}`));
     const button = document.createElement('button'); button.className = 'secondary preview-button'; button.textContent = e.status === 'ok' ? 'Preview text' : 'Details';
     button.addEventListener('click', () => preview(doc)); result.append(button);
     const warnings = fileWarnings(e);
     if (warnings.length) { const warning = document.createElement('p'); warning.className = 'hint'; warning.textContent = warnings.join(' '); result.append(warning); }
   }
-  // A PDF may have an extensionless URL. Offer recovery only when the download
-  // failed; a downloaded document with failed extraction already has its original.
-  let importPDF, importFeedback;
-  if (!doc && record.outcome === 'error' && record.errorCode !== 'DOWNLOAD_TOO_LARGE') {
-    importPDF = document.createElement('button'); importPDF.type = 'button'; importPDF.className = 'secondary import-pdf-button'; importPDF.textContent = 'Choose downloaded PDF';
-    importPDF.addEventListener('click', () => {
-      if (running || resetting || pickingPDF) return;
-      pdfImportTarget = { url, finalURL: record.finalURL || url, projectId };
-      pickingPDF = true;
-      pdfImportMessage(url, 'Choose the PDF downloaded for this URL (up to 50 MiB).');
+  // Offer a format-specific picker only when there is evidence of a supported
+  // document type. Unknown and HTML failures must not be labelled as PDFs.
+  const format = recoveryFormat(record);
+  let importDocument, importFeedback;
+  if (!doc && format && record.outcome === 'error' && record.errorCode !== 'DOWNLOAD_TOO_LARGE') {
+    importDocument = document.createElement('button'); importDocument.type = 'button'; importDocument.className = 'secondary import-document-button'; importDocument.textContent = `Choose downloaded ${format.label}`;
+    importDocument.addEventListener('click', () => {
+      if (running || resetting || pickingDocument) return;
+      documentImportTarget = { url, finalURL: record.finalURL || url, projectId, formatId: format.id };
+      pickingDocument = true;
+      documentImportMessage(url, `Choose the ${format.label} downloaded for this URL (up to 50 MiB).`);
       // Keep the input outside the table: focus/storage updates may rebuild rows
       // while the native file chooser is open, before its change event arrives.
-      ui['import-pdf-picker'].value = ''; ui['import-pdf-picker'].click();
+      ui['import-document-picker'].accept = formatAccept(format);
+      ui['import-document-picker'].value = ''; ui['import-document-picker'].click();
     });
-    importFeedback = document.createElement('p'); importFeedback.className = 'hint pdf-import-feedback'; importFeedback.setAttribute('role', 'status');
-    importFeedback.textContent = pdfImportStatus.url === url ? pdfImportStatus.message : '';
-    source.append(importPDF, importFeedback);
+    importFeedback = document.createElement('p'); importFeedback.className = 'hint document-import-feedback'; importFeedback.setAttribute('role', 'status');
+    importFeedback.textContent = documentImportStatus.url === url ? documentImportStatus.message : '';
+    source.append(importDocument, importFeedback);
   }
   const trash = document.createElement('button'); trash.type = 'button'; trash.className = 'delete-button'; trash.title = 'Delete page'; trash.setAttribute('aria-label', `Delete ${doc?.extraction.title || url}`);
   const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -147,43 +153,44 @@ function renderRow(entry) {
   }));
   actions.append(trash); tr.append(selection, source, result, actions);
   const old = rows.get(url); if (old) old.replaceWith(tr); else ui.results.append(tr);
-  rows.set(url, tr); controls.set(url, { trash, checkbox, importPDF, importFeedback, failed: doc?.extraction.status !== 'ok' });
-  if (importPDF) importPDF.disabled = running;
+  rows.set(url, tr); controls.set(url, { trash, checkbox, importDocument, importFeedback, failed: doc?.extraction.status !== 'ok' });
+  if (importDocument) importDocument.disabled = running;
   trash.disabled = running; if (checkbox) checkbox.disabled = running || doc.extraction.status !== 'ok';
 }
-function pdfImportMessage(url, message) {
-  pdfImportStatus = { url, message };
-  ui['pdf-import-status'].textContent = `${url} · ${message}`;
+function documentImportMessage(url, message) {
+  documentImportStatus = { url, message };
+  ui['document-import-status'].textContent = `${url} · ${message}`;
   const feedback = controls.get(url)?.importFeedback;
   if (feedback) feedback.textContent = message;
 }
-ui['import-pdf-picker'].addEventListener('cancel', () => {
-  pickingPDF = false;
-  if (pdfImportTarget) pdfImportMessage(pdfImportTarget.url, 'PDF selection cancelled.');
-  pdfImportTarget = null;
+ui['import-document-picker'].addEventListener('cancel', () => {
+  pickingDocument = false;
+  if (documentImportTarget) documentImportMessage(documentImportTarget.url, `${formatById(documentImportTarget.formatId).label} selection cancelled.`);
+  documentImportTarget = null;
 });
-ui['import-pdf-picker'].addEventListener('change', async () => {
-  const target = pdfImportTarget, file = ui['import-pdf-picker'].files?.[0];
-  pickingPDF = false;
-  if (!target || !file || resetting || target.projectId !== projectId) { pdfImportTarget = null; return; }
+ui['import-document-picker'].addEventListener('change', async () => {
+  const target = documentImportTarget, file = ui['import-document-picker'].files?.[0];
+  pickingDocument = false;
+  if (!target || !file || resetting || target.projectId !== projectId) { documentImportTarget = null; return; }
+  const format = formatById(target.formatId);
   let started = false;
   await work(async () => {
     started = true;
     try {
-      pdfImportMessage(target.url, 'Importing PDF… Reading and extracting text may take up to 30 seconds.');
+      documentImportMessage(target.url, `Importing ${format.label}… Reading and extracting text may take up to 30 seconds.`);
       await flushWrites();
-      const bytes = await readPDFFile(file);
-      await storeCapture({ ...target, bytes, contentType: 'application/pdf', source: 'local-file', capturedAt: new Date().toISOString() });
+      const bytes = await readDocumentFile(file, format.id);
+      await storeCapture({ ...target, bytes, contentType: format.mime, source: 'local-file', capturedAt: new Date().toISOString() });
       if (resetting) return;
-      pdfImportMessage(target.url, 'PDF imported. Original file saved; review its extraction result below.');
-      ui['saved-status'].textContent = 'Downloaded PDF added to the review list. Review its text before saving your corpus.';
+      documentImportMessage(target.url, `${format.label} imported. Original file saved; review its extraction result below.`);
+      ui['saved-status'].textContent = `Downloaded ${format.label} added to the review list. Review its text before saving your corpus.`;
     } catch (error) {
-      pdfImportMessage(target.url, `PDF not imported: ${error.message}`);
+      documentImportMessage(target.url, `${format.label} not imported: ${error.message}`);
       throw error;
     }
   });
-  if (!started && !resetting) pdfImportMessage(target.url, 'PDF not imported: another operation is running. Choose the file again when it finishes.');
-  pdfImportTarget = null; ui['import-pdf-picker'].value = '';
+  if (!started && !resetting) documentImportMessage(target.url, `${format.label} not imported: another operation is running. Choose the file again when it finishes.`);
+  documentImportTarget = null; ui['import-document-picker'].value = '';
 });
 function remember(entry) {
   const index = entries.findIndex(item => item.url === entry.url);
@@ -264,7 +271,7 @@ ui.start.addEventListener('click', () => work(async () => {
         // Storage failures must stop the run, not masquerade as network errors.
         if (downloaded || error.name === 'QuotaExceededError') throw error;
         const message = stopping ? 'Stopped by user' : timedOut ? 'Timed out after 30 seconds' : error.message;
-        remember(await storage.saveFailure(projectId, { url, outcome: stopping ? 'cancelled' : 'error', error: message, ...(error.code === 'DOWNLOAD_TOO_LARGE' ? { errorCode: error.code, limitBytes: error.limitBytes } : {}) }));
+        remember(await storage.saveFailure(projectId, { url, outcome: stopping ? 'cancelled' : 'error', error: message, ...(error.contentType ? { contentType: error.contentType } : {}), ...(error.finalURL ? { finalURL: error.finalURL } : {}), ...(error.code === 'DOWNLOAD_TOO_LARGE' ? { errorCode: error.code, limitBytes: error.limitBytes } : {}) }));
       } finally { clearTimeout(timer); controller = null; }
       processed++; ui.progress.value = processed;
       if (!stopping) await new Promise(resolve => setTimeout(resolve, 500));
@@ -279,7 +286,7 @@ ui.start.addEventListener('click', () => work(async () => {
 async function storeCapture({ url, finalURL, bytes, contentType, source, capturedAt, captureId }) {
   const index = await storage.allocateFileIndex(projectId);
   const filename = filenameFor(url, contentType, index).replace(/^pages\//, 'pages/captured/');
-  const extraction = contentType === 'application/pdf'
+  const extraction = formatByMIME(contentType)
     ? await extractDownloadedDocument(bytes, contentType, { sourceURL: finalURL })
     : extractDocument(bytes, contentType, { extractor: ui.extractor.value, sourceURL: finalURL });
   if (resetting) return;
@@ -356,7 +363,7 @@ for (const [id, key, type] of [['urls', 'urls', 'input'], ['query', 'query', 'in
 }
 ext.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes.captureRevision) importSavedPages(); });
 window.addEventListener('focus', async () => {
-  if (!ready || running || seedsUI?.isBusy() || pickingPDF || pendingWrites || refreshing || resetting) return;
+  if (!ready || running || seedsUI?.isBusy() || pickingDocument || pendingWrites || refreshing || resetting) return;
   refreshing = true;
   try { await restore(); await importSavedPages(); } catch (error) { report(error); } finally { refreshing = false; }
 });

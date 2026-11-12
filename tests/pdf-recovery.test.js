@@ -97,9 +97,9 @@ test('queued PDF automatically replaces its failed URL, commits before acknowled
 test('local PDF chooser keeps failures intact on invalid input and replaces only the selected URL on success', async () => {
   globalThis.indexedDB = new IDBFactory();
   const app = await workspace('local', { fetch: async () => { throw new Error('HTTP 403'); } });
-  await app.input('urls', 'https://example.org/one\nhttps://example.org/two'); await app.click('start');
-  const button = app.get('results').children[1].children[1].children.find(item => item.className === 'secondary import-pdf-button');
-  const input = app.get('import-pdf-picker');
+  await app.input('urls', 'https://example.org/one.pdf\nhttps://example.org/two.pdf'); await app.click('start');
+  const button = app.get('results').children[1].children[1].children.find(item => item.className === 'secondary import-document-button');
+  const input = app.get('import-document-picker');
   button.handlers.click();
   const row = app.get('results').children[1];
   await app.focus();
@@ -107,17 +107,17 @@ test('local PDF chooser keeps failures intact on invalid input and replaces only
   input.files = [new Blob(['Not PDF'])]; await input.handlers.change();
   assert.equal((await storage.loadWorkspace('local')).entries.filter(entry => entry.doc).length, 0);
   assert.match(app.get('status').textContent, /does not contain a PDF/);
-  assert.match(app.get('pdf-import-status').textContent, /PDF not imported/);
+  assert.match(app.get('document-import-status').textContent, /PDF not imported/);
   await app.focus();
-  assert.match(app.get('results').children[1].children[1].children.find(item => item.className === 'hint pdf-import-feedback').textContent, /PDF not imported/);
-  app.get('results').children[1].children[1].children.find(item => item.className === 'secondary import-pdf-button').handlers.click();
+  assert.match(app.get('results').children[1].children[1].children.find(item => item.className === 'hint document-import-feedback').textContent, /PDF not imported/);
+  app.get('results').children[1].children[1].children.find(item => item.className === 'secondary import-document-button').handlers.click();
   input.files = [new Blob([pdf])]; await input.handlers.change();
   const entries = (await storage.loadWorkspace('local')).entries;
-  assert.equal(entries.length, 2); assert.equal(entries.find(entry => entry.url.endsWith('/one')).doc, null);
-  const imported = entries.find(entry => entry.url.endsWith('/two'));
+  assert.equal(entries.length, 2); assert.equal(entries.find(entry => entry.url.endsWith('/one.pdf')).doc, null);
+  const imported = entries.find(entry => entry.url.endsWith('/two.pdf'));
   assert.equal(imported.record.source, 'local-file'); assert.match(imported.doc.filename, /\.pdf$/);
   await app.click('start');
-  assert.deepEqual(app.fetched, ['https://example.org/one', 'https://example.org/two', 'https://example.org/one']);
+  assert.deepEqual(app.fetched, ['https://example.org/one.pdf', 'https://example.org/two.pdf', 'https://example.org/one.pdf']);
 });
 
 test('manually selected PDF above 10 MiB imports and exports exact original', async () => {
@@ -128,11 +128,11 @@ test('manually selected PDF above 10 MiB imports and exports exact original', as
     return { ...extracted('Large PDF text'), format: 'pdf' };
   } });
   await app.input('urls', 'https://example.org/L15.pdf'); await app.click('start');
-  app.get('results').children[0].children[1].children.find(item => item.className === 'secondary import-pdf-button').handlers.click();
-  app.get('import-pdf-picker').files = [new Blob([bytes])]; await app.get('import-pdf-picker').handlers.change();
+  app.get('results').children[0].children[1].children.find(item => item.className === 'secondary import-document-button').handlers.click();
+  app.get('import-document-picker').files = [new Blob([bytes])]; await app.get('import-document-picker').handlers.change();
   const entry = (await storage.loadWorkspace('large')).entries[0];
   assert.equal(entry.record.bytes, 15690948); assert.equal(entry.doc.extraction.status, 'ok');
-  assert.match(app.get('pdf-import-status').textContent, /PDF imported/);
+  assert.match(app.get('document-import-status').textContent, /PDF imported/);
   assert.deepEqual(new Uint8Array(await (await storage.readOriginal('large', entry.doc.filename)).arrayBuffer()), bytes);
   await app.click('export'); assert.ok(app.archive().size > bytes.length);
 });
@@ -144,20 +144,20 @@ test('successful downloads with failed PDF or HTML extraction do not offer PDF r
     await app.input('urls', `https://example.org/document.${format}`); await app.click('start');
     const entry = app.state().entries[0]; assert.ok(entry.doc);
     assert.ok(await storage.readOriginal('failed-extraction', entry.doc.filename));
-    assert.equal(app.get('results').children[0].children[1].children.some(item => item.className === 'secondary import-pdf-button'), false);
+    assert.equal(app.get('results').children[0].children[1].children.some(item => item.className === 'secondary import-document-button'), false);
   }
 });
 
 test('cancelling the native PDF chooser allows focus refresh and a subsequent selection', async () => {
   globalThis.indexedDB = new IDBFactory();
   const app = await workspace('cancel', { fetch: async () => { throw new Error('HTTP 403'); } });
-  await app.input('urls', 'https://example.org/failed'); await app.click('start');
-  app.get('results').children[0].children[1].children.find(item => item.className === 'secondary import-pdf-button').handlers.click();
-  app.get('import-pdf-picker').handlers.cancel();
+  await app.input('urls', 'https://example.org/failed.pdf'); await app.click('start');
+  app.get('results').children[0].children[1].children.find(item => item.className === 'secondary import-document-button').handlers.click();
+  app.get('import-document-picker').handlers.cancel();
   await app.focus();
-  assert.match(app.get('pdf-import-status').textContent, /selection cancelled/);
-  app.get('results').children[0].children[1].children.find(item => item.className === 'secondary import-pdf-button').handlers.click();
-  app.get('import-pdf-picker').files = [new Blob([pdf])]; await app.get('import-pdf-picker').handlers.change();
+  assert.match(app.get('document-import-status').textContent, /selection cancelled/);
+  app.get('results').children[0].children[1].children.find(item => item.className === 'secondary import-document-button').handlers.click();
+  app.get('import-document-picker').files = [new Blob([pdf])]; await app.get('import-document-picker').handlers.change();
   assert.ok(app.state().entries[0].doc);
 });
 
