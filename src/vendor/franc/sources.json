@@ -1,0 +1,57 @@
+[
+  {
+    "name": "index.js",
+    "url": "https://raw.githubusercontent.com/wooorm/franc/6.2.0/packages/franc/index.js",
+    "sha256": "1f0545b3f6a146fe0e832a648e346c247dd834c0f597bddb3a5b43330e4c5a17"
+  },
+  {
+    "name": "data.js",
+    "url": "https://raw.githubusercontent.com/wooorm/franc/6.2.0/packages/franc/data.js",
+    "sha256": "53a9437f23ce1086bed82730ef376c807d081bec836e4ac368bb0bece4a2ded6"
+  },
+  {
+    "name": "expressions.js",
+    "url": "https://raw.githubusercontent.com/wooorm/franc/6.2.0/packages/franc/expressions.js",
+    "sha256": "65d0c6abc9e69f42620e559bd12ed5bbea673a9986ea6ec822266acfbc1c7908"
+  },
+  {
+    "name": "README-franc.md",
+    "url": "https://raw.githubusercontent.com/wooorm/franc/6.2.0/packages/franc/readme.md",
+    "sha256": "18bca68a3c8e37dd994ec5dfa6a07f749f8a1f828241d1549e3db6ca163e789b"
+  },
+  {
+    "name": "LICENSE-franc",
+    "url": "https://raw.githubusercontent.com/wooorm/franc/6.2.0/license",
+    "sha256": "24c7d64611e39a289be09c1c8388ecfae6391eb901776a9b2970b521043cf3db"
+  },
+  {
+    "name": "trigram-utils.js",
+    "url": "https://raw.githubusercontent.com/wooorm/trigram-utils/2.0.0/index.js",
+    "sha256": "0e7b209a0b21b7612bd15cc4d44cf90a67afceae3af9952479d71d479ad452fd"
+  },
+  {
+    "name": "LICENSE-trigram-utils",
+    "url": "https://raw.githubusercontent.com/wooorm/trigram-utils/2.0.0/license",
+    "sha256": "e8ad5059d20ee9d762f62954e93a4af3eaf9126194a3c7307cc2f45a5b51d384"
+  },
+  {
+    "name": "collapse-white-space.js",
+    "url": "https://raw.githubusercontent.com/wooorm/collapse-white-space/2.1.0/index.js",
+    "sha256": "feece31a52bdbd0565cd5d11e7fe998a73d4d6482935f426c55e94e80d2861d6"
+  },
+  {
+    "name": "LICENSE-collapse-white-space",
+    "url": "https://raw.githubusercontent.com/wooorm/collapse-white-space/2.1.0/license",
+    "sha256": "b066db14ea601eff4ed095c7cb760cbc012953a0a99958d54f4519a85997f0b8"
+  },
+  {
+    "name": "n-gram.js",
+    "url": "https://raw.githubusercontent.com/words/n-gram/2.0.2/index.js",
+    "sha256": "a6f685a295bf368a2a99cb52c439f8fe66f0858c83614528cb5cdc357d08e6bc"
+  },
+  {
+    "name": "LICENSE-n-gram",
+    "url": "https://raw.githubusercontent.com/words/n-gram/2.0.2/license",
+    "sha256": "e8ad5059d20ee9d762f62954e93a4af3eaf9126194a3c7307cc2f45a5b51d384"
+  }
+]

@@ -1,3 +1,4 @@
+import { hasLanguageWarning } from './language-detection.js';
 import { transaction, STORES } from './storage-db.js';
 import { parseURLs } from './core.js';
 const initialDraft = () => ({ key: 'draft', urls: '', query: '', engine: '', extractor: 'readability', seenCollections: [], seeds: '', tupleLength: '3', tupleCount: '10', tuples: '', preparedQueries: [] });
@@ -137,8 +138,22 @@ export function setIncluded(projectId, url, included) {
     request.onsuccess = () => {
       if (!request.result?.doc) { fail(new Error('Document not found')); return; }
       const entry = request.result;
-      entry.doc.extraction.included = entry.doc.extraction.status === 'ok' && included;
+      entry.doc.extraction.included = entry.doc.extraction.status === 'ok' && !hasLanguageWarning(entry.doc.extraction) && included;
+      if (entry.doc.extraction.languageCheck && !hasLanguageWarning(entry.doc.extraction)) entry.doc.extraction.languageCheck.inclusionBeforeCheck = included;
       store.put(entry);
+    };
+  });
+}
+// Compare the original filename to avoid attaching a result to a replaced document.
+export function saveLanguageCheck(projectId, url, filename, languageCheck, included) {
+  return projectTransaction(projectId, ['documents'], 'readwrite', (tx, done, fail) => {
+    const store = tx.objectStore('documents'), request = store.get(url);
+    request.onsuccess = () => {
+      const entry = request.result;
+      if (!entry?.doc || entry.doc.filename !== filename) { fail(new Error('Document changed. Recheck its language again.')); return; }
+      entry.doc.extraction.languageCheck = languageCheck;
+      entry.doc.extraction.included = entry.doc.extraction.status === 'ok' && included;
+      store.put(entry); done(entry);
     };
   });
 }

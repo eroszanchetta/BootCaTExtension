@@ -1,3 +1,4 @@
+import { checkLanguage, hasLanguageWarning, languageMessage } from './language-detection.js';
 import { initWorkspaceSections, openWorkspaceSection } from './workspace-sections.js';
 import { extractDownloadedDocument, extractionContentType } from './binary-extraction.js';
 import { fileWarnings, readPDFFile } from './pdf-recovery.js';
@@ -17,7 +18,7 @@ import { DEFUDDLE_AVAILABLE } from './defuddle-loader.js';
 
 initWorkspaceSections();
 const ext = getExtensionAPI(), VERSION = '0.4.0';
-const ui = Object.fromEntries(['urls', 'start', 'stop', 'export', 'status', 'progress', 'results', 'problem-results', 'attention-section', 'attention-count', 'corpus-status', 'preview-title', 'preview-meta', 'preview-text', 'extractor', 'urls-warning', 'storage-status', 'saved-status', 'engine', 'import-document-picker', 'document-import-status'].map(id => [id, document.getElementById(id)]));
+const ui = Object.fromEntries(['urls', 'start', 'stop', 'export', 'status', 'progress', 'results', 'problem-results', 'attention-section', 'attention-count', 'project-language', 'recheck-language', 'language-status', 'corpus-status', 'preview-title', 'preview-meta', 'preview-text', 'extractor', 'urls-warning', 'storage-status', 'saved-status', 'engine', 'import-document-picker', 'document-import-status'].map(id => [id, document.getElementById(id)]));
 let ready = false, running = false, stopping = false, resetting = false, controller = null;
 let projectId, state, entries = [], searchUI, seedsUI, projectTabsUI, archiveURL = null, previewURL = null, previewFilename = null;
 let writes = Promise.resolve(), pendingWrites = 0, writeError = null, capturesPending = false, refreshing = false;
@@ -63,10 +64,11 @@ function pendingURLs() {
 function updateControls() {
   ui.start.disabled = !ready || running; ui.export.disabled = !ready || running || !entries.length;
   ui.urls.disabled = ui.extractor.disabled = running;
+  ui['project-language'].disabled = !ready || running; ui['recheck-language'].disabled = !ready || running || !entries.some(entry => entry.doc?.extraction.status === 'ok');
   ui.start.textContent = !running && ready && ['running', 'stopped'].includes(state.batch.state) && pendingURLs().length ? 'Resume downloads' : 'Download URLs';
-  for (const items of controls.values()) { items.trash.disabled = running; if (items.importDocument) items.importDocument.disabled = running; if (items.checkbox) items.checkbox.disabled = running || items.failed; }
+  for (const items of controls.values()) { items.trash.disabled = running; if (items.importDocument) items.importDocument.disabled = running; if (items.acceptLanguage) items.acceptLanguage.disabled = running; if (items.checkbox) items.checkbox.disabled = running || items.failed; }
 }
-const needsAttention = entry => !entry.doc || entry.doc.extraction.status !== 'ok';
+const needsAttention = entry => !entry.doc || entry.doc.extraction.status !== 'ok' || hasLanguageWarning(entry.doc.extraction);
 function markPreviewRow(url, row) {
   const selected = url === previewURL;
   row.classList.toggle('preview-selected', selected);
@@ -91,7 +93,7 @@ function clearPreview() {
 async function preview(doc) {
   openWorkspaceSection('preview-section', { scroll: true });
   const e = doc.extraction;
-  const warnings = fileWarnings(e);
+  const warnings = [...fileWarnings(e), languageMessage(e)].filter(Boolean);
   previewURL = doc.url; previewFilename = doc.filename; const selected = doc.filename; updatePreviewSelection();
   ui['preview-meta'].textContent = `${e.title ? e.title + ' · ' : ''}${doc.url} · ${e.extractor || 'Unsupported format'} · ${e.characters.toLocaleString()} characters${e.pageCount ? ` · ${e.pageCount} pages` : ''}${warnings.length ? ` · ${warnings.join(' ')}` : ''}`;
   ui['preview-text'].value = 'Loading text…';
@@ -129,7 +131,20 @@ function renderRow(entry) {
     const button = document.createElement('button'); button.className = 'secondary preview-button'; button.textContent = e.status === 'ok' ? 'Preview text' : 'Details';
     button.addEventListener('click', () => preview(doc)); result.append(button);
     const warnings = fileWarnings(e);
+    const languageStatus = languageMessage(e);
+    if (languageStatus) { const languageHint = document.createElement('p'); languageHint.className = 'hint'; languageHint.textContent = languageStatus; result.append(languageHint); }
     if (warnings.length) { const warning = document.createElement('p'); warning.className = 'hint'; warning.textContent = warnings.join(' '); result.append(warning); }
+  }
+  let acceptLanguage;
+  if (doc && hasLanguageWarning(doc.extraction)) {
+    acceptLanguage = document.createElement('button'); acceptLanguage.type = 'button'; acceptLanguage.className = 'secondary accept-language'; acceptLanguage.textContent = 'Include anyway';
+    acceptLanguage.addEventListener('click', () => work(async () => {
+      const current = (await storage.loadWorkspace(projectId)).entries.find(entry => entry.url === url);
+      if (!current?.doc || current.doc.extraction.status !== 'ok') return;
+      const check = { ...current.doc.extraction.languageCheck, accepted: true, acceptedAt: new Date().toISOString(), inclusionBeforeCheck: true };
+      remember(await storage.saveLanguageCheck(projectId, url, current.doc.filename, check, true)); updateControls();
+    }));
+    acceptLanguage.disabled = running; result.append(acceptLanguage);
   }
   // A failed request cannot establish the format: inspect only selected file bytes.
   let importDocument, importFeedback;
@@ -167,9 +182,9 @@ function renderRow(entry) {
   const old = rows.get(url);
   if (old?.parentNode === target) old.replaceWith(tr);
   else { old?.remove(); target.append(tr); }
-  rows.set(url, tr); markPreviewRow(url, tr); controls.set(url, { trash, checkbox, importDocument, importFeedback, failed: doc?.extraction.status !== 'ok' });
+  rows.set(url, tr); markPreviewRow(url, tr); controls.set(url, { trash, checkbox, acceptLanguage, importDocument, importFeedback, failed: doc?.extraction.status !== 'ok' || hasLanguageWarning(doc?.extraction) });
   if (importDocument) importDocument.disabled = running;
-  trash.disabled = running; if (checkbox) checkbox.disabled = running || doc.extraction.status !== 'ok';
+  trash.disabled = running; if (checkbox) checkbox.disabled = running || doc.extraction.status !== 'ok' || hasLanguageWarning(doc.extraction);
 }
 function documentImportMessage(url, message) {
   documentImportStatus = { url, message };
@@ -278,7 +293,8 @@ ui.start.addEventListener('click', () => work(async () => {
         const extraction = await extractDownloadedDocument(response.bytes, response.contentType, { extractor: ui.extractor.value, sourceURL: response.finalURL || url, signal: controller.signal });
         if (resetting) return;
         const record = { url, finalURL: response.finalURL, outcome: 'downloaded', httpStatus: response.status, contentType: response.contentType, bytes: response.bytes.length, filename, processingIncomplete: controller.signal.aborted, downloadedAt: new Date().toISOString() };
-        const doc = { url, filename, textFilename: filename.replace(/^pages\//, 'corpus/').replace(/\.[^.]+$/, '.txt'), extraction };
+        const checkedExtraction = await checkLanguage(extraction, projectUI.snapshot().language || 'none');
+        const doc = { url, filename, textFilename: filename.replace(/^pages\//, 'corpus/').replace(/\.[^.]+$/, '.txt'), extraction: checkedExtraction };
         remember(await storage.saveDocument(projectId, record, doc, response.bytes, { advance: true }));
       } catch (error) {
         if (resetting) return;
@@ -304,7 +320,8 @@ async function storeCapture({ url, finalURL, bytes, contentType, source, capture
     ? await extractDownloadedDocument(bytes, contentType, { sourceURL: finalURL })
     : extractDocument(bytes, contentType, { extractor: ui.extractor.value, sourceURL: finalURL });
   if (resetting) return;
-  const doc = { url, filename, textFilename: filename.replace(/^pages\//, 'corpus/').replace(/\.[^.]+$/, '.txt'), extraction, captureId, source, capturedAt };
+  const checkedExtraction = await checkLanguage(extraction, projectUI.snapshot().language || 'none');
+  const doc = { url, filename, textFilename: filename.replace(/^pages\//, 'corpus/').replace(/\.[^.]+$/, '.txt'), extraction: checkedExtraction, captureId, source, capturedAt };
   const record = { url, finalURL, outcome: 'captured', source, capturedAt, captureId, filename, contentType, bytes: bytes.length };
   remember(await storage.saveDocument(projectId, record, doc, bytes));
   if (!state.batch.startedAt) { state.batch.startedAt = new Date().toISOString(); await storage.saveBatch(projectId, { startedAt: state.batch.startedAt }, await readCollections()); }
@@ -331,6 +348,28 @@ async function importSavedPages() {
     if (count) ui['saved-status'].textContent = `${count} saved page${count === 1 ? '' : 's'} added to the review list. Review the text before saving your corpus.`;
   });
 }
+ui['project-language'].addEventListener('change', () => work(async () => {
+  const value = ui['project-language'].value;
+  await projectUI.setLanguage(value); invalidateArchive();
+  ui['language-status'].textContent = 'Language setting saved. Click Recheck saved texts to apply it to existing documents. Manual overrides and exclusions are preserved.';
+}));
+ui['recheck-language'].addEventListener('click', () => work(async () => {
+  await flushWrites(); const target = projectUI.snapshot().language || 'none';
+  const saved = await storage.loadWorkspace(projectId), documents = saved.entries.filter(entry => entry.doc?.extraction.status === 'ok');
+  stopping = false; ui.stop.disabled = false; let checked = 0;
+  try {
+    for (const entry of documents) {
+      if (resetting || stopping) break;
+      const blob = await storage.readText(projectId, entry.url);
+      const result = await checkLanguage({ ...entry.doc.extraction, text: blob ? await blob.text() : '' }, target);
+      if (resetting) return;
+      remember(await storage.saveLanguageCheck(projectId, entry.url, entry.doc.filename, result.languageCheck, result.included));
+      checked++; ui['language-status'].textContent = `Rechecked ${checked} of ${documents.length} saved texts…`;
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+    ui['language-status'].textContent = `${stopping ? 'Stopped. ' : ''}${checked} of ${documents.length} saved texts rechecked. No documents were downloaded again.`;
+  } finally { ui.stop.disabled = true; }
+}));
 ui.export.addEventListener('click', () => work(async () => {
   await flushWrites();
   const saved = await storage.loadWorkspace(projectId), project = projectUI.snapshot();

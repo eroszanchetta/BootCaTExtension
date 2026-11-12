@@ -1,3 +1,4 @@
+import { checkLanguage, hasLanguageWarning, languageMessage } from '../../src/language-detection.js';
 import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
 import * as storage from '../../src/project-store.js';
@@ -27,7 +28,7 @@ export const extracted = text => ({ status: 'ok', included: true, text, characte
 export async function workspace(projectId, options = {}) {
   const elements = new Map(), listeners = [], windowListeners = {};
   const get = id => elements.get(id) || (elements.set(id, new Element()), elements.get(id));
-  let archive, confirm = true, reset, fetched = [];
+  let archive, confirm = true, reset, fetched = [], language = options.language || 'none';
   const context = vm.createContext({
     console, navigator: options.navigator || {}, Blob, URL: { createObjectURL: value => { archive = value; return 'blob:test'; }, revokeObjectURL() {} },
     AbortController, TextEncoder, Date, queueMicrotask,
@@ -35,7 +36,8 @@ export async function workspace(projectId, options = {}) {
     document: { getElementById: get, createElement: () => new Element(), createElementNS: () => new Element(), createTextNode: text => ({ textContent: text }), body: new Element() },
     window: { confirm: () => confirm, location: { reload() {} }, addEventListener(type, fn) { windowListeners[type] = fn; } },
     getExtensionAPI: () => ({ storage: { onChanged: { addListener(fn) { listeners.push(fn); } } } }),
-    initProjectUI: callbacks => { reset = callbacks.onReset; return { ready: Promise.resolve(), snapshot: () => ({ id: projectId, name: 'Test corpus' }) }; },
+    initProjectUI: callbacks => { reset = callbacks.onReset; return { ready: Promise.resolve(), snapshot: () => ({ id: projectId, name: 'Test corpus', language }), setLanguage: async value => { language = value; } }; },
+    checkLanguage, hasLanguageWarning, languageMessage,
     initSearchUI: () => ({ flush() {} }), readCollections: async () => [], projectFilename: name => name,
     initWorkspaceSections() {}, openWorkspaceSection() {},
     initSeedsUI: () => ({ restore() {}, isBusy: () => false, destroy() {} }),
