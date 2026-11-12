@@ -214,7 +214,7 @@ const { createServer } = require('node:http');
       await page.waitForFunction(() => !document.querySelector('#start').disabled && document.querySelector('#status').textContent.startsWith('Finished.'));
       assert.match(await page.locator('#status').innerText(), /0 download errors, 0 extraction failures/);
       assert.equal(await page.inputValue('#preview-text'), '');
-      assert.equal(await page.locator('#preview-title').innerText(), 'Preview text');
+      assert.equal(await page.locator('#preview-title').innerText(), 'Preview Text');
       await page.click('#results .preview-button');
       await page.waitForFunction(() => document.querySelector('#preview-text').value.includes('Renewable energy'));
       assert.ok((await page.inputValue('#preview-text')).includes('Renewable energy'));
