@@ -74,7 +74,7 @@ function updateCounts() {
 }
 function clearPreview() {
   previewURL = previewFilename = null;
-  ui['preview-title'].textContent = 'Preview text'; ui['preview-meta'].textContent = 'Click a Preview text button in the review list to display its text here.'; ui['preview-text'].value = '';
+  ui['preview-title'].textContent = 'Preview Text'; ui['preview-meta'].textContent = 'Click a Preview text button in the review list to display its text here.'; ui['preview-text'].value = '';
 }
 async function preview(doc) {
   openWorkspaceSection('preview-section');
