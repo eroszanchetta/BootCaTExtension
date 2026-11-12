@@ -67,12 +67,13 @@ function updateControls() {
   for (const items of controls.values()) { items.trash.disabled = running; if (items.importDocument) items.importDocument.disabled = running; if (items.checkbox) items.checkbox.disabled = running || items.failed; }
 }
 const needsAttention = entry => !entry.doc || entry.doc.extraction.status !== 'ok';
+function markPreviewRow(url, row) {
+  const selected = url === previewURL;
+  row.classList.toggle('preview-selected', selected);
+  row.setAttribute('aria-current', selected ? 'true' : 'false');
+}
 function updatePreviewSelection() {
-  for (const [url, row] of rows) {
-    const selected = url === previewURL;
-    row.classList.toggle('preview-selected', selected);
-    row.setAttribute('aria-current', selected ? 'true' : 'false');
-  }
+  for (const [url, row] of rows) markPreviewRow(url, row);
 }
 function updateCounts() {
   const problems = entries.filter(needsAttention).length;
@@ -166,7 +167,7 @@ function renderRow(entry) {
   const old = rows.get(url);
   if (old?.parentNode === target) old.replaceWith(tr);
   else { old?.remove(); target.append(tr); }
-  rows.set(url, tr); updatePreviewSelection(); controls.set(url, { trash, checkbox, importDocument, importFeedback, failed: doc?.extraction.status !== 'ok' });
+  rows.set(url, tr); markPreviewRow(url, tr); controls.set(url, { trash, checkbox, importDocument, importFeedback, failed: doc?.extraction.status !== 'ok' });
   if (importDocument) importDocument.disabled = running;
   trash.disabled = running; if (checkbox) checkbox.disabled = running || doc.extraction.status !== 'ok';
 }
