@@ -34,6 +34,6 @@ export async function captureTabDocument(tab, scripting) {
       title: tab.title || '', source: 'browser-session', capturedAt: new Date().toISOString()
     };
   } catch (error) {
-    throw new Error(`Could not retrieve a PDF using this browser session. If a PDF is open, download it using the browser viewer, then use Choose downloaded PDF beside its failed URL in BootCaT. (${error.message})`);
+    throw new Error(`Could not retrieve a PDF using this browser session. If a PDF is open, download it using the browser viewer, then use Import downloaded file beside its failed URL in BootCaT. (${error.message})`);
   }
 }

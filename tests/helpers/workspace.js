@@ -6,7 +6,7 @@ import { parseURLs, filenameFor, FILE_LIMIT, urlListWarning } from '../../src/co
 import { makeStoredZIP } from '../../src/zip-blob.js';
 import { extractionMetadata } from '../../src/corpus.js';
 import { fileWarnings, readPDFFile } from '../../src/pdf-recovery.js';
-import { recoveryFormat, formatById, formatByMIME, formatAccept, readDocumentFile } from '../../src/document-formats.js';
+import { formatByMIME, readImportedDocument } from '../../src/document-formats.js';
 class Element {
   constructor() { this.value = ''; this.textContent = ''; this.children = []; this.handlers = {}; this.disabled = false; }
   querySelector() { return new Element(); }
@@ -38,7 +38,7 @@ export async function workspace(projectId, options = {}) {
     initSearchUI: () => ({ flush() {} }), readCollections: async () => [], projectFilename: name => name,
     initSeedsUI: () => ({ restore() {}, isBusy: () => false, destroy() {} }),
     initProjectTabsUI: () => ({ refresh() {}, destroy() {} }),
-    DEFUDDLE_AVAILABLE: true, storage: options.storage || storage, ...pages, parseURLs, filenameFor, FILE_LIMIT, urlListWarning, makeStoredZIP, extractionMetadata, fileWarnings, readPDFFile, recoveryFormat, formatById, formatByMIME, formatAccept, readDocumentFile,
+    DEFUDDLE_AVAILABLE: true, storage: options.storage || storage, ...pages, parseURLs, filenameFor, FILE_LIMIT, urlListWarning, makeStoredZIP, extractionMetadata, fileWarnings, readPDFFile, formatByMIME, readImportedDocument,
     extractionContentType: (bytes, type) => type,
     extractDownloadedDocument: options.extractor || (async () => extracted('Downloaded corpus text')),
     extractDocument: () => extracted('Captured corpus text'),

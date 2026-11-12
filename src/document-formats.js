@@ -19,23 +19,18 @@ export const DOCUMENT_FORMATS = [
 ];
 export const formatById = id => DOCUMENT_FORMATS.find(format => format.id === id) || null;
 export const formatByMIME = type => DOCUMENT_FORMATS.find(format => format.mime === String(type || '').split(';')[0].trim().toLowerCase()) || null;
-export const formatAccept = format => [...format.extensions.map(extension => `.${extension}`), format.mime].join(',');
-function fromFilename(value) {
-  try { value = decodeURIComponent(value); } catch {}
-  return DOCUMENT_FORMATS.find(format => format.extensions.some(extension => value.toLowerCase().endsWith(`.${extension}`))) || null;
-}
-function fromURL(value) {
-  try {
-    const url = new URL(value), path = fromFilename(url.pathname);
-    if (path) return path;
-    for (const key of ['filename', 'file', 'download', 'name', 'document', 'path', 'url']) {
-      const match = fromFilename(url.searchParams.get(key) || ''); if (match) return match;
-    }
-  } catch {}
-  return null;
-}
-export function recoveryFormat(record) {
-  return formatByMIME(record.contentType) || fromFilename(record.downloadName || '') || fromURL(record.finalURL) || fromURL(record.url);
+// Selected bytes, never URL extensions or response hints, determine recovery format.
+export async function readImportedDocument(file, limit = FILE_LIMIT) {
+  if (!file || !file.size) throw new Error('Choose a non-empty downloaded file.');
+  if (file.size > limit) throw new Error(`File exceeds the ${limit / 1024 / 1024} MiB file limit.`);
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  for (const format of DOCUMENT_FORMATS) {
+    let matches;
+    try { matches = await format.matches(bytes); }
+    catch (error) { throw new Error(`Could not read the selected file: ${error.message}`); }
+    if (matches) return { bytes, format };
+  }
+  throw new Error('Unsupported file contents. Choose the downloaded document itself, rather than a sign-in page or CAPTCHA. This version supports PDF and DOCX documents.');
 }
 export async function readDocumentFile(file, formatId, limit = FILE_LIMIT) {
   const format = formatById(formatId);

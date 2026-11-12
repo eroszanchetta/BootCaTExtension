@@ -1,24 +1,23 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { IDBFactory } from 'fake-indexeddb';
-import { recoveryFormat, readDocumentFile, formatAccept, formatById } from '../src/document-formats.js';
+import { readImportedDocument, readDocumentFile } from '../src/document-formats.js';
 import { DOCX_MIME } from '../src/docx.js';
 import { makeZIP } from '../src/zip.js';
 import { docxFiles, pdfFixture } from './browser-tests.fixtures.js';
 import { workspace, extracted } from './helpers/workspace.js';
 import * as storage from '../src/project-store.js';
 
-test('recovery format requires a supported extension, filename hint or MIME type; HTML and unknown pages have no default', () => {
-  for (const url of ['https://example.org/', 'https://example.org/page.html', 'https://example.org/download?id=42', 'https://example.org/file.pptx', 'https://google.com/search?q=file.pdf']) assert.equal(recoveryFormat({ url }), null);
-  for (const [record, expected] of [
-    [{ url: 'https://example.org/a.PDF?download=1' }, 'pdf'],
-    [{ url: 'https://example.org/a%2Edocx' }, 'docx'],
-    [{ url: 'https://example.org/download?filename=notes.docx' }, 'docx'],
-    [{ url: 'https://example.org/download', finalURL: 'https://files.test/a.pdf' }, 'pdf'],
-    [{ url: 'https://example.org/download', contentType: DOCX_MIME }, 'docx'],
-    [{ url: 'https://example.org/a.docx', contentType: 'text/html' }, 'docx']
-  ]) assert.equal(recoveryFormat(record)?.id, expected);
-  assert.ok(formatAccept(formatById('docx')).includes('.docx'));
+test('recovery detects bytes independently of misleading filenames and MIME labels', async () => {
+  const docx = new File([await makeZIP(docxFiles).arrayBuffer()], 'report.pdf', { type: 'application/pdf' });
+  assert.equal((await readImportedDocument(docx)).format.id, 'docx');
+  assert.equal((await readImportedDocument(new File([pdfFixture()], 'report.docx', { type: DOCX_MIME }))).format.id, 'pdf');
+  assert.equal((await readImportedDocument(new File([pdfFixture()], 'download'))).format.id, 'pdf');
+  await assert.rejects(readImportedDocument(new Blob(['<html>CAPTCHA</html>'])), /Unsupported file contents/);
+  await assert.rejects(readImportedDocument(makeZIP([{ name: 'ppt/presentation.xml', data: '<x/>' }])), /Unsupported file contents/);
+  await assert.rejects(readImportedDocument(new Blob()), /non-empty/);
+  await assert.rejects(readImportedDocument(new Blob(['12345']), 4), /file limit/);
+  await assert.rejects(readImportedDocument(new Blob(['PKbroken'])), /Could not read the selected file/);
 });
 test('selected document validation checks actual PDF or DOCX bytes and rejects HTML and other ZIP formats', async () => {
   const docx = makeZIP(docxFiles);
@@ -31,15 +30,18 @@ test('selected document validation checks actual PDF or DOCX bytes and rejects H
   const alternative = docxFiles.map(file => ({ name: file.name === 'word/document.xml' ? 'content/main.xml' : file.name, data: file.data.replaceAll('word/document.xml', 'content/main.xml') }));
   assert.ok((await readDocumentFile(makeZIP(alternative), 'docx')).length > 0);
 });
-test('failed HTML has no document button; failed PDF and DOCX have the correct labels and picker filters', async () => {
+test('all failed download URLs share generic guidance and an unrestricted picker', async () => {
   globalThis.indexedDB = new IDBFactory();
   const app = await workspace('formats', { fetch: async () => { throw new Error('HTTP 403'); } });
-  await app.input('urls', 'https://example.org/page.html\nhttps://example.org/report.pdf\nhttps://example.org/report.docx'); await app.click('start');
+  await app.input('urls', 'https://example.org/page.html\nhttps://example.org/report.pdf\nhttps://example.org/report.docx\nhttps://example.org/download?id=1'); await app.click('start');
   const rows = app.get('results').children, button = row => row.children[1].children.find(item => item.className === 'secondary import-document-button');
-  assert.equal(button(rows[0]), undefined); assert.ok(!rows[0].children[2].textContent.includes('PDF'));
-  assert.equal(button(rows[1]).textContent, 'Choose downloaded PDF'); assert.equal(button(rows[2]).textContent, 'Choose downloaded DOCX');
-  button(rows[2]).handlers.click(); assert.ok(app.get('import-document-picker').accept.includes('.docx'));
-  assert.ok(!app.get('import-document-picker').accept.includes('.pdf'));
+  for (const row of rows) {
+    assert.equal(button(row).textContent, 'Import downloaded file');
+    assert.match(row.children[2].textContent, /Add page to corpus/);
+    assert.match(row.children[2].textContent, /Import downloaded file/);
+    assert.doesNotMatch(row.children[2].textContent, /PDF|DOCX/);
+  }
+  button(rows[2]).handlers.click(); assert.equal(app.get('import-document-picker').accept, '');
 });
 test('DOCX recovery replaces only its failed row, preserves the original and persists/extracts/exports as DOCX', async () => {
   globalThis.indexedDB = new IDBFactory();
@@ -47,7 +49,7 @@ test('DOCX recovery replaces only its failed row, preserves the original and per
   const app = await workspace('docx-import', { fetch: async () => { throw new Error('HTTP 403'); }, extractor: async (bytes, type) => {
     assert.equal(type, DOCX_MIME); assert.deepEqual(bytes, original); return { ...extracted('Recovered DOCX text'), format: 'docx' };
   } });
-  await app.input('urls', 'https://example.org/blocked.docx'); await app.click('start');
+  await app.input('urls', 'https://example.org/blocked.pdf'); await app.click('start');
   app.get('results').children[0].children[1].children.find(item => item.className === 'secondary import-document-button').handlers.click();
   app.get('import-document-picker').files = [new Blob([original])]; await app.get('import-document-picker').handlers.change();
   const entry = (await storage.loadWorkspace('docx-import')).entries[0];
@@ -59,10 +61,10 @@ test('DOCX recovery replaces only its failed row, preserves the original and per
   assert.equal(reopened.get('preview-text').value, 'Recovered DOCX text'); await reopened.click('export');
   const zip = await reopened.archive().text(); assert.ok(zip.includes(entry.doc.filename)); assert.ok(zip.includes('Recovered DOCX text'));
 });
-test('failed extensionless downloads keep MIME evidence for format-specific recovery', async () => {
+test('response MIME hints do not change generic recovery controls', async () => {
   globalThis.indexedDB = new IDBFactory();
   const app = await workspace('mime', { fetch: async () => { throw Object.assign(new Error('HTTP 403'), { contentType: DOCX_MIME, finalURL: 'https://example.org/resource?id=1' }); } });
   await app.input('urls', 'https://example.org/resource?id=1'); await app.click('start');
   const entry = (await storage.loadWorkspace('mime')).entries[0]; assert.equal(entry.record.contentType, DOCX_MIME);
-  assert.equal(app.get('results').children[0].children[1].children.find(item => item.className === 'secondary import-document-button').textContent, 'Choose downloaded DOCX');
+  assert.equal(app.get('results').children[0].children[1].children.find(item => item.className === 'secondary import-document-button').textContent, 'Import downloaded file');
 });
