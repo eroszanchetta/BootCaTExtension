@@ -1,3 +1,4 @@
+import { validateLanguage } from './language-detection.js';
 import { ensureStoredProject, resetStoredProject, storedProjectId, hasStoredPage } from './project-store.js';
 import { captureTabDocument } from './pdf-recovery.js';
 import { savePage } from './page-store.js';
@@ -78,15 +79,21 @@ async function handle(message) {
   if (message.type === 'get-project') return serialize(async () => ({ project: await ensureProject() }));
   if (message.type === 'rename-project') return serialize(async () => {
     await assertProject(message.projectId);
-    const project = { id: message.projectId, name: String(message.name).slice(0, 120), nameConfirmed: Boolean(String(message.name).trim()) };
+    const current = await ensureProject();
+    const project = { ...current, id: message.projectId, ...(message.language !== undefined ? { language: validateLanguage(message.language) } : {}), name: String(message.name).slice(0, 120), nameConfirmed: Boolean(String(message.name).trim()) };
     await ext.storage.local.set({ project });
     return { project };
+  });
+  if (message.type === 'set-project-language') return serialize(async () => {
+    await assertProject(message.projectId);
+    const project = { ...(await ensureProject()), language: validateLanguage(message.language) };
+    await ext.storage.local.set({ project }); return { project };
   });
   if (message.type === 'new-project') return serialize(async () => {
     // Serialize with collection/capture writes so stale work cannot survive reset.
     if (message.projectId) await assertProject(message.projectId);
     const chosenName = typeof message.name === 'string' ? message.name.trim().slice(0, 120) : '';
-    const project = { id: crypto.randomUUID(), name: chosenName || 'Untitled project', nameConfirmed: Boolean(chosenName) };
+    const project = { language: validateLanguage(message.language ?? 'none'), id: crypto.randomUUID(), name: chosenName || 'Untitled project', nameConfirmed: Boolean(chosenName) };
     await resetStoredProject(project.id);
     await searchTabs.resetInQueue();
     await ext.storage.local.clear();

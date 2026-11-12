@@ -15,6 +15,18 @@ npm run build
 
 The repository root no longer contains a loadable manifest. Edit `src/`, rebuild, and load the matching generated folder below. Do not edit `dist/`: the next build replaces it. Run `npm install` after pulling this update to install the pinned PDF.js dependency. Subsequent builds work offline; PDF.js, its worker, character maps, standard fonts and licences are copied into both extension packages. No CDN is used at runtime.
 
+## Optional language detection
+
+Project creation requires an explicit choice of target language or **No language detection**. Existing projects default to no detection. The Project language selector can be changed later; **Recheck saved texts** applies the choice to existing extracted bodies without downloading pages again. Rechecks can be stopped with Stop; completed checks stay saved. Saved overrides and manual exclusions are preserved.
+
+Franc 6.2.0 and its MIT-licensed model/utilities are bundled locally with pinned source URLs, hashes and licence files in `src/vendor/franc/`. No detector code, model, or corpus text is sent to a remote service. The bundled model supports 178 distinct language codes, with names shown in the selector. The detector is behind a replaceable adapter returning ISO 639-3 codes and common assessments; franc-specific scores remain diagnostic metadata rather than displayed accuracy percentages.
+
+After successful HTML, plain-text, PDF, DOCX or manual-capture extraction, enabled detection checks up to three 2,048-character samples across the document. Samples need at least 120 Unicode letters. A small winning margin (normalized by the candidate score range), an undetermined result or disagreement between samples produces **Language uncertain**. These initial beta heuristics are conservative and are not a guarantee of correctness or a full multilingual segmentation algorithm.
+
+Mismatches and uncertain results retain successful extraction and the original files, but start unchecked in **Documents needing attention**. Preview remains available. **Include anyway** records an explicit override, includes the text and returns the document to the main list. Users can subsequently uncheck it without losing that override. Extraction failures keep their own messages and do not receive a misleading language guess. Detector/version, target, assessment, bounded diagnostic samples, check time and override are retained in `extraction.json`; project settings are in `project.json`.
+
+Language setting changes apply to newly extracted documents immediately. Existing rows keep their previous assessment until an explicit recheck; their messages identify the language they were checked against. Turning detection off and rechecking restores pre-check inclusion choices. Browser or storage failures during a recheck keep already committed results; no original/text Blobs are rewritten.
+
 ## Seeds, tuples and search queries
 
 The first workspace section after Project accepts one seed per line, with at least five distinct seeds and no fixed maximum seed count. A seed may be one word or a phrase. Blank lines and duplicates are ignored after whitespace/Unicode normalization; case is preserved. Existing outer double quotes are accepted; multi-word seeds are automatically quoted in generated tuples. Embedded double quotes are escaped, and query syntax can be edited before searching.

@@ -1,3 +1,4 @@
+import { validateLanguage } from '../src/language-detection.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
@@ -51,7 +52,7 @@ test('project dialog cancels without clearing, requires a name, and submits name
   const requests = [];
   const project = { id: 'one', name: 'Initial project' };
   const context = vm.createContext({
-    document: { getElementById: get }, window: { confirm: () => confirm },
+    fillLanguageSelect: (select, { value }) => { select.value = value; }, validateLanguage, document: { getElementById: get }, window: { confirm: () => confirm },
     onReset: () => { resets++; }, onRename: () => { renamed++; },
     getExtensionAPI: () => ({
       storage: { onChanged: { addListener(fn) { notify = fn; } } },
@@ -73,8 +74,10 @@ test('project dialog cancels without clearing, requires a name, and submits name
   get('project-dialog-name').value = '   '; await get('project-form').handlers.submit({ preventDefault() {} });
   assert.match(get('project-dialog-error').textContent, /Enter a project name/);
   assert.equal(requests.filter(item => item.type === 'new-project').length, 0);
-  get('project-dialog-name').value = '  Fresh corpus  '; await get('project-form').handlers.submit({ preventDefault() {} });
-  assert.equal(requests.at(-1).type, 'new-project'); assert.equal(requests.at(-1).name, 'Fresh corpus'); assert.equal(requests.at(-1).projectId, 'one');
+  get('project-dialog-name').value = 'Fresh corpus'; await get('project-form').handlers.submit({ preventDefault() {} });
+  assert.match(get('project-dialog-error').textContent, /Select a language/);
+  get('project-dialog-language').value = 'none'; get('project-dialog-name').value = '  Fresh corpus  '; await get('project-form').handlers.submit({ preventDefault() {} });
+  assert.equal(requests.at(-1).type, 'new-project'); assert.equal(requests.at(-1).name, 'Fresh corpus'); assert.equal(requests.at(-1).language, 'none'); assert.equal(requests.at(-1).projectId, 'one');
   notify({ project: { newValue: { id: 'two', name: 'Untitled project' } } }, 'local');
   assert.equal(resets, 1); assert.ok(renamed >= 2);
 });
@@ -89,7 +92,7 @@ test('first-use dialog names the existing project without clearing it; confirmed
   const source = (await readFile(new URL('../src/project-ui.js', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '').replace(/^export /gm, '');
   for (const confirmed of [false, true]) {
     const get = fixture(), requests = [];
-    const context = vm.createContext({ document: { getElementById: get }, getExtensionAPI: () => ({
+    const context = vm.createContext({ fillLanguageSelect: (select, { value }) => { select.value = value; }, validateLanguage, document: { getElementById: get }, getExtensionAPI: () => ({
       storage: { onChanged: { addListener() {} } }, runtime: { sendMessage: async request => {
         requests.push(request); return { ok: true, project: { id: 'one', name: request.name || 'Untitled project', nameConfirmed: request.type === 'rename-project' || confirmed } };
       } }
@@ -98,7 +101,7 @@ test('first-use dialog names the existing project without clearing it; confirmed
     await vm.runInContext('ui.ready', context);
     assert.equal(Boolean(get('project-dialog').open), !confirmed);
     if (!confirmed) {
-      get('project-dialog-name').value = 'My first corpus'; await get('project-form').handlers.submit({ preventDefault() {} });
+      get('project-dialog-language').value = 'none'; get('project-dialog-name').value = 'My first corpus'; await get('project-form').handlers.submit({ preventDefault() {} });
       assert.equal(requests.at(-1).type, 'rename-project'); assert.equal(get('project-dialog').open, false);
     }
   }

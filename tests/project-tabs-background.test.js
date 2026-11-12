@@ -32,6 +32,11 @@ for (const namespace of ['chrome', 'browser']) test(`${namespace}: background re
     assert.equal(project.nameConfirmed, false);
     const named = await request({ type: 'rename-project', projectId: project.id, name: 'Initial corpus' });
     assert.equal(named.project.nameConfirmed, true);
+    const language = await request({ type: 'set-project-language', projectId: project.id, language: 'ita' });
+    assert.equal(language.project.language, 'ita');
+    const renamed = await request({ type: 'rename-project', projectId: project.id, name: 'Renamed corpus' });
+    assert.equal(renamed.project.language, 'ita', 'renaming must not discard language choice');
+    assert.equal((await request({ type: 'set-project-language', projectId: project.id, language: 'bad' })).ok, false);
     const good = await request({ type: 'open-project-search', projectId: project.id, engine: 'google', query: 'energy' });
     const captcha = await request({ type: 'open-project-search', projectId: project.id, engine: 'google', query: 'captcha' });
     tabs.set(100, { id: 100, url: 'https://www.google.com/search?q=random', status: 'complete' });
@@ -47,8 +52,8 @@ for (const namespace of ['chrome', 'browser']) test(`${namespace}: background re
     assert.equal(local.collections.length, 1); assert.equal(local.collections[0].query, 'energy');
     const stale = await request({ type: 'new-project', projectId: 'stale', name: 'Must not clear' });
     assert.equal(stale.ok, false); assert.equal(local.collections.length, 1);
-    const reset = await request({ type: 'new-project', projectId: project.id, name: '  Fresh corpus  ' });
-    assert.equal(reset.project.name, 'Fresh corpus'); assert.equal(reset.project.nameConfirmed, true);
+    const reset = await request({ type: 'new-project', projectId: project.id, name: '  Fresh corpus  ', language: 'fra' });
+    assert.equal(reset.project.language, 'fra'); assert.equal(reset.project.name, 'Fresh corpus'); assert.equal(reset.project.nameConfirmed, true);
     assert.equal((await request({ type: 'get-project-search-tabs', projectId: reset.project.id })).count, 0);
     assert.ok(tabs.has(captcha.tabId)); assert.equal((await request({ type: 'collect-project-search-tabs', projectId: project.id })).ok, false);
   } finally { delete globalThis[namespace]; delete globalThis.indexedDB; }

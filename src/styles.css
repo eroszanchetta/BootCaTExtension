@@ -89,3 +89,9 @@ nav a:hover { background: #c7ddeb; }
 #review-lists tr.preview-selected > td { background: #dceef8; }
 #review-lists tr.preview-selected > td:first-child { box-shadow: inset 4px 0 #007aa6; }
 .corpus-export { margin-top: 24px; padding-top: 20px; border-top: 1px solid #dbe7ef; }
+
+.language-settings { margin-top: 18px; display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.language-settings label { margin: 0; }
+.language-settings select { flex: 1; min-width: 180px; }
+.accept-language { margin-top: 10px; font-size: .85rem; padding: 6px 12px; }
+#project-dialog-language { margin-top: 8px; }

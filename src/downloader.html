@@ -28,6 +28,9 @@
       <h2 id="project-heading">Project</h2>
       <label for="project-name">Project name</label>
       <div class="project-controls"><input id="project-name" maxlength="120" value="Untitled project" autocomplete="off"><button id="new-project" class="secondary">New project</button></div>
+      <div class="language-settings"><label for="project-language">Project language</label><select id="project-language" disabled></select>
+      <button id="recheck-language" type="button" class="secondary" disabled>Recheck saved texts</button></div>
+      <p id="language-status" class="hint" role="status" aria-live="polite">Language detection is optional and runs locally. Changing this setting does not recheck existing texts until you click Recheck saved texts.</p>
       <p id="project-status" class="hint" role="status" aria-live="polite"></p>
     </section>
     <section id="seeds-section" aria-labelledby="seeds-heading" tabindex="-1">
@@ -136,6 +139,9 @@
       <p id="project-dialog-warning" class="project-reset-warning" hidden>Creating this project clears the current project's seeds, tuples, searches, tab tracking, URLs, downloaded pages, corpus texts and preview. Export your corpus first if you want to keep it.</p>
       <label for="project-dialog-name">Project name</label>
       <input id="project-dialog-name" maxlength="120" required autocomplete="off" placeholder="e.g. Renewable energy corpus">
+      <label for="project-dialog-language">Project language</label>
+      <select id="project-dialog-language" required></select>
+      <p class="hint">Choose the language you want to collect, or explicitly choose No language detection. Detection is a suggestion; you can include flagged documents manually.</p>
       <p id="project-dialog-error" class="error" role="alert"></p>
       <div class="actions"><button id="project-dialog-submit" type="submit">Save project name</button><button id="project-dialog-cancel" type="button" class="secondary">Cancel</button></div>
     </form>
