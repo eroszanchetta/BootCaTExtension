@@ -4,7 +4,7 @@ import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
 import { IDBFactory } from 'fake-indexeddb';
 import { ENGINES, searchURL } from '../src/engines.js';
-import { parseSeeds, parseQueries, generateTuples } from '../src/tuples.js';
+import { parseSeeds, parseQueries, generateTuples, combinationCount } from '../src/tuples.js';
 import * as storage from '../src/project-store.js';
 
 const source = (await readFile(new URL('../src/seeds-ui.js', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '').replace(/^export /gm, '');
@@ -20,6 +20,7 @@ function fixture(options = {}) {
   const get = id => elements.get(id) || (elements.set(id, new Element()), elements.get(id));
   get('engine').value = 'google';
   const context = vm.createContext({
+    openWorkspaceSection() {}, combinationCount,
     document: { getElementById: get, createElement: () => new Element() },
     window: { confirm(message) { confirmations.push(message); return confirmed; } },
     getExtensionAPI: () => ({ tabs: { create: async value => { if (options.open) await options.open(value, opened.length); opened.push(value); } } }),
@@ -111,4 +112,19 @@ test('seed drafts, edited tuples, parameters and query lists persist and reset w
   await storage.resetStoredProject('new'); const reset = (await storage.loadWorkspace('new')).draft;
   assert.equal(reset.seeds, ''); assert.equal(reset.tuples, ''); assert.equal(reset.preparedQueries.length, 0);
   assert.equal(reset.tupleLength, '3'); assert.equal(reset.tupleCount, '10');
+});
+
+test('counters and exact combination limits follow edits, duplicates, tuple length and large seed sets', () => {
+  const app = fixture(); assert.equal(app.get('seeds-counter').textContent, '0 seeds');
+  app.input('seeds', 'a\nb\nc\nd\ne\na\n');
+  assert.equal(app.get('tuple-length').max, '5'); assert.equal(app.get('tuple-count').max, '10');
+  assert.match(app.get('tuple-length-hint').textContent, /1–5/); assert.equal(app.get('seeds-counter').textContent, '5 seeds');
+  app.input('tuple-length', '2'); assert.equal(app.get('tuple-count').max, '10');
+  app.input('seeds', 'a\nb\nc\nd\ne\nf'); assert.equal(app.get('tuple-count').max, '15');
+  app.input('tuple-count', '999'); app.get('tuple-count').handlers.change(); assert.equal(app.get('tuple-count').value, '15');
+  app.input('tuples', 'a b\na b\n c d\n'); assert.equal(app.get('tuples-counter').textContent, '2 tuples');
+  app.input('seeds', Array.from({length: 10000}, (_, i) => `s${i}`).join('\n')); app.input('tuple-length', '10');
+  assert.equal(app.get('tuple-length').max, '10'); assert.equal(app.get('tuple-count').max, combinationCount(10000, 10).toString());
+  assert.ok(BigInt(app.get('tuple-count').max) > BigInt(Number.MAX_SAFE_INTEGER));
+  assert.match(app.get('tuple-count-hint').textContent, /unique tuples/);
 });

@@ -36,6 +36,7 @@ export async function workspace(projectId, options = {}) {
     getExtensionAPI: () => ({ storage: { onChanged: { addListener(fn) { listeners.push(fn); } } } }),
     initProjectUI: callbacks => { reset = callbacks.onReset; return { ready: Promise.resolve(), snapshot: () => ({ id: projectId, name: 'Test corpus' }) }; },
     initSearchUI: () => ({ flush() {} }), readCollections: async () => [], projectFilename: name => name,
+    initWorkspaceSections() {}, openWorkspaceSection() {},
     initSeedsUI: () => ({ restore() {}, isBusy: () => false, destroy() {} }),
     initProjectTabsUI: () => ({ refresh() {}, destroy() {} }),
     DEFUDDLE_AVAILABLE: true, storage: options.storage || storage, ...pages, parseURLs, filenameFor, FILE_LIMIT, urlListWarning, makeStoredZIP, extractionMetadata, fileWarnings, readPDFFile, formatByMIME, readImportedDocument,

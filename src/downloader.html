@@ -31,14 +31,14 @@
       <p id="project-status" class="hint" role="status" aria-live="polite"></p>
     </section>
     <section id="seeds-section" aria-labelledby="seeds-heading" tabindex="-1">
-      <h2 id="seeds-heading">Seeds and tuples</h2>
+      <details class="workspace-panel"><summary><h2 id="seeds-heading">Seeds &amp; Tuples</h2><span id="seeds-counter" class="section-counter">0 seeds</span><span id="tuples-counter" class="section-counter">0 tuples</span></summary><div class="panel-content">
       <label for="seeds">Seeds, one per line</label>
       <textarea id="seeds" spellcheck="false" disabled placeholder="renewable energy&#10;storage&#10;electricity network&#10;generation&#10;capacity"></textarea>
       <p class="hint">Enter at least 5 distinct seeds. Each seed can be one word or several words. There is no fixed upper limit on seed count. Blank and duplicate lines are ignored.</p>
       <p id="seed-status" role="status" aria-live="polite"></p>
       <div class="tuple-settings">
-        <div><label for="tuple-length">Seeds per tuple (1–10)</label><input id="tuple-length" type="number" min="1" max="10" step="1" value="3" disabled></div>
-        <div><label for="tuple-count">Number of tuples</label><input id="tuple-count" type="number" min="1" step="1" value="10" disabled></div>
+        <div><label for="tuple-length">Seeds per tuple</label><input id="tuple-length" type="number" min="1" max="10" step="1" value="3" disabled><p id="tuple-length-hint" class="hint"></p></div>
+        <div><label for="tuple-count">Number of tuples</label><input id="tuple-count" type="number" min="1" step="1" value="10" disabled><p id="tuple-count-hint" class="hint"></p></div>
       </div>
       <p id="tuple-warning" class="hint performance-warning" role="status" aria-live="polite"></p>
       <div class="actions"><button id="generate-tuples" type="button" disabled>Generate tuples</button><button id="stop-tuples" type="button" class="secondary" hidden>Stop generation</button></div>
@@ -47,11 +47,12 @@
       <label for="tuples">Tuples (editable, one per line)</label>
       <textarea id="tuples" spellcheck="false" disabled placeholder="Generate tuples above, then edit them here."></textarea>
       <p class="hint">Each tuple will become a query to the selected search engine</p>
-      <button id="prepare-queries" type="button" disabled>Create search queries</button></section>
+      <button id="prepare-queries" type="button" disabled>Create search queries</button>
       <p class="hint">Uses the search engine selected below. Queries open only when you click a query link or Open all queries.</p>
+      </div></details>
     </section>
     <section id="search-section" aria-labelledby="search-heading" tabindex="-1">
-      <h2 id="search-heading">Search and collect</h2>
+      <details class="workspace-panel"><summary><h2 id="search-heading">Search</h2></summary><div class="panel-content">
       <label for="engine">Search engine</label>
       <select id="engine"></select>
       <h3 id="query-list-heading">Search queries</h3>
@@ -68,13 +69,6 @@
       <p class="hint">Normal, Ctrl/Cmd and middle clicks on query links are tracked. Tabs opened through the browser's link context menu or duplicated later must be collected manually. Browser or extension restarts clear tab tracking.</p>
       <p id="project-tab-status" role="status" aria-live="polite"></p>
       <details><summary>Project tab collection details</summary><ul id="project-tab-details" class="query-list"></ul></details>
-      <details><summary>Open a single custom search</summary>
-      <form id="search-form" class="search-form">
-        <label for="query">Search query</label>
-        <input id="query" required maxlength="2000" placeholder="e.g. renewable energy terminology">
-        <button type="submit">Open search</button>
-      </form>
-      </details>
       <p class="hint">On the results tab, click the BootCaT toolbar icon → Collect results. Collected URLs appear in the download list automatically. Browse more results and collect again as needed. Switch engine here if one stops working.</p>
       <p id="collection-status" role="status" aria-live="polite">Loading saved searches…</p>
       <div class="actions collection-actions">
@@ -82,9 +76,10 @@
         <button id="clear-searches" class="secondary" disabled>Clear searches</button>
       </div>
       <details><summary>Review saved results</summary><div class="table-wrap"><table><thead><tr><th scope="col">Title / URL</th><th scope="col">Search sources</th></tr></thead><tbody id="collected-results"></tbody></table></div><p class="hint">Preview shows the first 200 unique URLs. Export includes all saved results. Remove unwanted URLs from the download list below.</p></details>
+      </div></details>
     </section>
     <section id="urls-section" aria-labelledby="input-heading" tabindex="-1">
-      <h2 id="input-heading">URL list</h2>
+      <details class="workspace-panel"><summary><h2 id="input-heading">URLs</h2><span id="urls-counter" class="section-counter">0 URLs</span></summary><div class="panel-content">
       <label for="urls">One URL per line. URLs collect from search engines will be added here. You can also add them manually</label>
       <textarea id="urls" spellcheck="false" placeholder="https://example.com/&#10;https://www.iana.org/help/example-domains"></textarea>
       <p class="hint">Blank lines are ignored. Duplicates and URL fragments are removed. Large URL lists may take longer to process.</p>
@@ -96,9 +91,10 @@
       </div>
       <div class="actions"><button id="start">Download URLs</button><button id="stop" class="secondary" disabled>Stop</button></div>
       <p class="hint">Keep this tab open. Public pages only; login cookies are not sent. Up to 50 MiB per file. Completed pages are saved in this browser; interrupted downloads can be resumed.</p>
+      </div></details>
     </section>
     <section id="review-section" aria-labelledby="results-heading" tabindex="-1">
-      <h2 id="results-heading">Review and download</h2>
+      <details class="workspace-panel"><summary><h2 id="results-heading">Review &amp; Download</h2></summary><div class="panel-content">
       <p class="hint" id="pdf-notice">PDF reading order, columns, headers and line breaks may need review. OCR is not performed.</p>
       <p class="hint">New PDF extractions replace newlines with spaces unless the preceding character is a dot. Hyphens are preserved. Raw PDF text is retained in the ZIP's raw-pdf folder for comparison.</p>
       <p id="status" role="status" aria-live="polite">Ready when you are.</p>
@@ -112,18 +108,33 @@
       <div class="table-wrap"><table><thead><tr><th scope="col">Include</th><th scope="col">URL</th><th scope="col">Download / extraction</th><th scope="col">Delete</th></tr></thead><tbody id="results"></tbody></table></div>
       <p id="storage-status" class="hint" role="status" aria-live="polite">Loading saved project…</p>
       <p id="corpus-status" role="status" aria-live="polite">Download pages to extract corpus text.</p>
+      </div></details>
     </section>
     <section id="preview-section" aria-labelledby="preview-title" tabindex="-1">
-      <h2 id="preview-title">Preview text</h2>
+      <details class="workspace-panel"><summary><h2 id="preview-title">Preview Text</h2></summary><div class="panel-content">
       <p id="preview-meta" class="hint">Click a Preview text button in the review list to display its text here.</p>
       <label for="preview-text">Preview text (read only)</label>
       <textarea id="preview-text" readonly spellcheck="false"></textarea>
       <p class="hint">Review the text before export. Extraction may omit useful material or retain boilerplate. HTML, plain text, PDF and DOCX are supported. Scanned PDFs may require OCR; password-protected files are not supported.</p>
+      </div></details>
     </section>
     <footer>Local processing · No BootCaT server · HTML · PDF · DOCX text extraction · No page scripts executed</footer>
   </main>
+  <dialog id="project-dialog" aria-labelledby="project-dialog-title" aria-describedby="project-dialog-description">
+    <form id="project-form">
+      <span class="badge">BootCaT project</span>
+      <h2 id="project-dialog-title">Name your project</h2>
+      <p id="project-dialog-description">Choose a name for your new corpus project.</p>
+      <p id="project-dialog-warning" class="project-reset-warning" hidden>Creating this project clears the current project's seeds, tuples, searches, tab tracking, URLs, downloaded pages, corpus texts and preview. Export your corpus first if you want to keep it.</p>
+      <label for="project-dialog-name">Project name</label>
+      <input id="project-dialog-name" maxlength="120" required autocomplete="off" placeholder="e.g. Renewable energy corpus">
+      <p id="project-dialog-error" class="error" role="alert"></p>
+      <div class="actions"><button id="project-dialog-submit" type="submit">Save project name</button><button id="project-dialog-cancel" type="button" class="secondary">Cancel</button></div>
+    </form>
+  </dialog>
   <script src="vendor/Readability.js"></script>
   <script src="vendor/Defuddle.js"></script>
   <script type="module" src="app.js"></script>
 </body>
 </html>
+

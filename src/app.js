@@ -1,3 +1,4 @@
+import { initWorkspaceSections, openWorkspaceSection } from './workspace-sections.js';
 import { extractDownloadedDocument, extractionContentType } from './binary-extraction.js';
 import { fileWarnings, readPDFFile } from './pdf-recovery.js';
 import { formatByMIME, readImportedDocument } from './document-formats.js';
@@ -14,8 +15,9 @@ import { extractDocument } from './extraction.js';
 import { extractionMetadata } from './corpus.js';
 import { DEFUDDLE_AVAILABLE } from './defuddle-loader.js';
 
+initWorkspaceSections();
 const ext = getExtensionAPI(), VERSION = '0.4.0';
-const ui = Object.fromEntries(['urls', 'start', 'stop', 'export', 'status', 'progress', 'results', 'corpus-status', 'preview-title', 'preview-meta', 'preview-text', 'extractor', 'urls-warning', 'storage-status', 'saved-status', 'query', 'engine', 'import-document-picker', 'document-import-status'].map(id => [id, document.getElementById(id)]));
+const ui = Object.fromEntries(['urls', 'start', 'stop', 'export', 'status', 'progress', 'results', 'corpus-status', 'preview-title', 'preview-meta', 'preview-text', 'extractor', 'urls-warning', 'storage-status', 'saved-status', 'engine', 'import-document-picker', 'document-import-status'].map(id => [id, document.getElementById(id)]));
 let ready = false, running = false, stopping = false, resetting = false, controller = null;
 let projectId, state, entries = [], searchUI, seedsUI, projectTabsUI, archiveURL = null, previewURL = null, previewFilename = null;
 let writes = Promise.resolve(), pendingWrites = 0, writeError = null, capturesPending = false, refreshing = false;
@@ -28,7 +30,7 @@ const projectUI = initProjectUI({
   onRename: invalidateArchive,
   onReset: () => {
     resetting = true; controller?.abort(); seedsUI?.destroy(); projectTabsUI?.destroy(); running = false;
-    invalidateArchive(); ui.urls.value = ''; ui.query.value = ''; clearPreview();
+    invalidateArchive(); ui.urls.value = ''; clearPreview();
     document.getElementById('project-name').value = 'Untitled project';
     window.location.reload();
   }
@@ -46,7 +48,7 @@ function report(error) {
   const full = error?.name === 'QuotaExceededError' || /quota/i.test(error?.message || '');
   ui.status.textContent = full ? 'Browser storage is full. Completed pages remain saved. Export your corpus and free space before continuing.' : `Could not complete the operation: ${error.message}`;
 }
-function warnURLs() { ui['urls-warning'].textContent = urlListWarning(parseURLs(ui.urls.value).urls.length); }
+function warnURLs() { const count = parseURLs(ui.urls.value).urls.length; document.getElementById('urls-counter').textContent = `${count.toLocaleString()} URL${count === 1 ? '' : 's'}`; ui['urls-warning'].textContent = urlListWarning(count); }
 function queueDraft(patch) {
   if (!ready || resetting) return writes;
   invalidateArchive(); Object.assign(state.draft, patch); pendingWrites++; storageMessage();
@@ -75,6 +77,7 @@ function clearPreview() {
   ui['preview-title'].textContent = 'Preview text'; ui['preview-meta'].textContent = 'Click a Preview text button in the review list to display its text here.'; ui['preview-text'].value = '';
 }
 async function preview(doc) {
+  openWorkspaceSection('preview-section');
   const e = doc.extraction;
   const warnings = fileWarnings(e);
   previewURL = doc.url; previewFilename = doc.filename; const selected = doc.filename;
@@ -200,7 +203,7 @@ async function restore({ draft = true } = {}) {
   if (resetting) return;
   const saved = await storage.loadWorkspace(projectId); if (resetting) return;
   invalidateArchive(); state = saved; entries = saved.entries;
-  if (draft) { ui.urls.value = saved.draft.urls; ui.query.value = saved.draft.query; ui.extractor.value = saved.draft.extractor; if (saved.draft.engine) ui.engine.value = saved.draft.engine; seedsUI?.restore(saved.draft); }
+  if (draft) { ui.urls.value = saved.draft.urls; ui.extractor.value = saved.draft.extractor; if (saved.draft.engine) ui.engine.value = saved.draft.engine; seedsUI?.restore(saved.draft); }
   renderEntries();
   const selected = entries.find(entry => entry.url === previewURL)?.doc;
   if (previewURL && selected?.filename !== previewFilename) clearPreview();
@@ -353,7 +356,7 @@ ui.export.addEventListener('click', () => work(async () => {
     document.body.append(link); link.click(); link.remove(); ui.status.textContent = 'ZIP prepared. Your project is still saved in this browser.';
   } finally { controller = null; }
 }));
-for (const [id, key, type] of [['urls', 'urls', 'input'], ['query', 'query', 'input'], ['engine', 'engine', 'change'], ['extractor', 'extractor', 'change']]) {
+for (const [id, key, type] of [['urls', 'urls', 'input'], ['engine', 'engine', 'change'], ['extractor', 'extractor', 'change']]) {
   ui[id].addEventListener(type, () => { queueDraft({ [key]: ui[id].value }); if (id === 'urls') warnURLs(); });
 }
 ext.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes.captureRevision) importSavedPages(); });

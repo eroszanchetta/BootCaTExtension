@@ -29,6 +29,9 @@ for (const namespace of ['chrome', 'browser']) test(`${namespace}: background re
   const request = message => new Promise(resolve => listener(message, { id: 'test', url: origin + 'downloader.html' }, resolve));
   try {
     const { project } = await request({ type: 'get-project' });
+    assert.equal(project.nameConfirmed, false);
+    const named = await request({ type: 'rename-project', projectId: project.id, name: 'Initial corpus' });
+    assert.equal(named.project.nameConfirmed, true);
     const good = await request({ type: 'open-project-search', projectId: project.id, engine: 'google', query: 'energy' });
     const captcha = await request({ type: 'open-project-search', projectId: project.id, engine: 'google', query: 'captcha' });
     tabs.set(100, { id: 100, url: 'https://www.google.com/search?q=random', status: 'complete' });
@@ -42,7 +45,10 @@ for (const namespace of ['chrome', 'browser']) test(`${namespace}: background re
     assert.equal(state.batch.running, false); assert.equal(state.batch.closed, 1); assert.equal(state.batch.saved, 1);
     assert.deepEqual(removed, [good.tabId]); assert.ok(tabs.has(captcha.tabId)); assert.ok(tabs.has(100));
     assert.equal(local.collections.length, 1); assert.equal(local.collections[0].query, 'energy');
-    const reset = await request({ type: 'new-project' });
+    const stale = await request({ type: 'new-project', projectId: 'stale', name: 'Must not clear' });
+    assert.equal(stale.ok, false); assert.equal(local.collections.length, 1);
+    const reset = await request({ type: 'new-project', projectId: project.id, name: '  Fresh corpus  ' });
+    assert.equal(reset.project.name, 'Fresh corpus'); assert.equal(reset.project.nameConfirmed, true);
     assert.equal((await request({ type: 'get-project-search-tabs', projectId: reset.project.id })).count, 0);
     assert.ok(tabs.has(captcha.tabId)); assert.equal((await request({ type: 'collect-project-search-tabs', projectId: project.id })).ok, false);
   } finally { delete globalThis[namespace]; delete globalThis.indexedDB; }

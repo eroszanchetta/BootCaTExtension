@@ -21,13 +21,13 @@ async function ensureProject() {
   if (storedId && project?.id !== storedId) {
     // Recover a reset interrupted between the atomic database clear and the
     // storage.local notification. Never attach an old project's collections.
-    project = { id: storedId, name: 'Untitled project' };
+    project = { id: storedId, name: 'Untitled project', nameConfirmed: false };
     await searchTabs?.resetInQueue();
     await ext.storage.local.clear();
     await ext.storage.local.set({ project, collections: [], captureRevision: crypto.randomUUID() });
   }
   if (!project) {
-    project = { id: crypto.randomUUID(), name: 'Untitled project' };
+    project = { id: crypto.randomUUID(), name: 'Untitled project', nameConfirmed: false };
     await ext.storage.local.set({ project });
   }
   await ensureStoredProject(project.id);
@@ -78,13 +78,15 @@ async function handle(message) {
   if (message.type === 'get-project') return serialize(async () => ({ project: await ensureProject() }));
   if (message.type === 'rename-project') return serialize(async () => {
     await assertProject(message.projectId);
-    const project = { id: message.projectId, name: String(message.name).slice(0, 120) };
+    const project = { id: message.projectId, name: String(message.name).slice(0, 120), nameConfirmed: Boolean(String(message.name).trim()) };
     await ext.storage.local.set({ project });
     return { project };
   });
   if (message.type === 'new-project') return serialize(async () => {
     // Serialize with collection/capture writes so stale work cannot survive reset.
-    const project = { id: crypto.randomUUID(), name: 'Untitled project' };
+    if (message.projectId) await assertProject(message.projectId);
+    const chosenName = typeof message.name === 'string' ? message.name.trim().slice(0, 120) : '';
+    const project = { id: crypto.randomUUID(), name: chosenName || 'Untitled project', nameConfirmed: Boolean(chosenName) };
     await resetStoredProject(project.id);
     await searchTabs.resetInQueue();
     await ext.storage.local.clear();
