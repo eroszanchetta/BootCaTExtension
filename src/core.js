@@ -44,7 +44,9 @@ export async function fetchFile(url, signal, limit = FILE_LIMIT, { credentials =
   });
   if (!response.ok) {
     await response.body?.cancel();
-    throw new Error(`HTTP ${response.status} ${response.statusText}`);
+    throw Object.assign(new Error(`HTTP ${response.status} ${response.statusText}`), {
+      finalURL: response.url, contentType: response.headers.get('content-type') || '', httpStatus: response.status
+    });
   }
   if (!response.body) throw new Error("Empty response stream");
   const reader = response.body.getReader();

@@ -2,8 +2,10 @@ import { crc32 } from './zip.js';
 // Bounded ZIP/XML reader for DOCX body text. Never renders document HTML.
 const W = new Set(['http://schemas.openxmlformats.org/wordprocessingml/2006/main', 'http://purl.oclc.org/ooxml/wordprocessingml/main']);
 export const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-export const XML_LIMIT = 3 * 1024 * 1024;
-const ZIP_LIMIT = 50 * 1024 * 1024;
+export const XML_LIMIT = 50 * 1024 * 1024;
+export const XML_NODE_LIMIT = 500_000;
+export const DOCX_TEXT_LIMIT = 10_000_000;
+export const ZIP_LIMIT = 250 * 1024 * 1024;
 const abort = signal => { if (signal?.aborted) throw new DOMException('Extraction cancelled', 'AbortError'); };
 
 export function zipDirectory(bytes) {
@@ -17,7 +19,7 @@ export function zipDirectory(bytes) {
   const count = view.getUint16(end + 10, true), size = view.getUint32(end + 12, true), start = view.getUint32(end + 16, true);
   if (view.getUint16(end + 4, true) || view.getUint16(end + 6, true) || view.getUint16(end + 8, true) !== count) throw new Error('Multipart ZIP documents are unsupported');
   if (count === 65535 || size === 0xffffffff || start === 0xffffffff) throw new Error('ZIP64 documents are unsupported');
-  if (count > 2000 || start + size > end) throw new Error('DOCX archive exceeds directory limits');
+  if (count > 10000 || start + size > end) throw new Error('DOCX archive exceeds directory limits (10,000 entries)');
   const entries = new Map();
   let offset = start, expanded = 0;
   for (let i = 0; i < count; i++) {
@@ -30,16 +32,16 @@ export function zipDirectory(bytes) {
     if (entries.has(name) || /(^|\/)\.\.(\/|$)|\\|^\//.test(name)) throw new Error('Invalid or duplicate DOCX ZIP path');
     if (flags & 1) throw new Error('Encrypted DOCX files are unsupported');
     expanded += uncompressed;
-    if (expanded > ZIP_LIMIT) throw new Error('DOCX archive exceeds the 50 MiB expanded size limit');
+    if (expanded > ZIP_LIMIT) throw new Error('DOCX archive exceeds the 250 MiB expanded size limit');
     entries.set(name, { name, crc: view.getUint32(offset + 16, true), method, compressed, uncompressed, offset: view.getUint32(offset + 42, true), directoryStart: start });
     offset += 46 + length + extra + comment;
   }
   if (offset !== start + size) throw new Error('Invalid DOCX ZIP directory length');
   return entries;
 }
-async function readEntry(bytes, entry, signal) {
+export async function readEntry(bytes, entry, signal) {
   if (!entry) throw new Error('DOCX main document part was not found');
-  if (entry.uncompressed > XML_LIMIT) throw new Error('DOCX XML exceeds the 3 MiB extraction limit');
+  if (entry.uncompressed > XML_LIMIT) throw new Error('DOCX XML exceeds the 50 MiB extraction limit');
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength), offset = entry.offset;
   if (offset + 30 > entry.directoryStart || view.getUint32(offset, true) !== 0x04034b50) throw new Error('Invalid DOCX ZIP local header');
   const start = offset + 30 + view.getUint16(offset + 26, true) + view.getUint16(offset + 28, true);
@@ -75,7 +77,7 @@ async function readEntry(bytes, entry, signal) {
 function defaultParseXML(text) {
   const doc = new DOMParser().parseFromString(text, 'application/xml');
   if (doc.getElementsByTagName('parsererror').length) throw new Error('Malformed DOCX XML');
-  if (doc.getElementsByTagName('*').length > 60000) throw new Error('DOCX XML exceeds 60,000 elements');
+  if (doc.getElementsByTagName('*').length > XML_NODE_LIMIT) throw new Error('DOCX XML exceeds 500,000 elements');
   return doc;
 }
 const word = (node, name) => node?.nodeType === 1 && W.has(node.namespaceURI) && node.localName === name;
@@ -84,7 +86,8 @@ function attribute(node, name) {
   for (const ns of W) { const value = node.getAttributeNS(ns, name); if (value !== null) return value; }
   return '';
 }
-function text(node) {
+function text(node, depth = 0) {
+  if (depth > 256) throw new Error('DOCX XML nesting exceeds the 256-level limit');
   if (word(node, 'del') || word(node, 'instrText')) return '';
   if (word(node, 'r')) {
     const props = children(node).find(child => word(child, 'rPr'));
@@ -94,18 +97,25 @@ function text(node) {
   if (word(node, 'tab')) return '\t';
   if (word(node, 'br') || word(node, 'cr')) return '\n';
   if (word(node, 'noBreakHyphen')) return '\u2011';
-  return children(node).map(text).join('');
+  return children(node).map(child => text(child, depth + 1)).join('');
 }
-function blocks(node) {
+function blocks(node, depth = 0) {
+  if (depth > 256) throw new Error('DOCX XML nesting exceeds the 256-level limit');
   if (word(node, 'del')) return '';
   if (word(node, 'p')) return text(node) + '\n\n';
-  if (word(node, 'tr')) return children(node).filter(child => word(child, 'tc')).map(child => blocks(child).trim()).join('\t') + '\n\n';
-  return children(node).map(blocks).join('');
+  if (word(node, 'tr')) return children(node).filter(child => word(child, 'tc')).map(child => blocks(child, depth + 1).trim()).join('\t') + '\n\n';
+  return children(node).map(child => blocks(child, depth + 1)).join('');
 }
 export async function extractDOCX(bytes, { signal, parseXML = defaultParseXML } = {}) {
   const entries = zipDirectory(bytes);
   const parse = value => {
     if (/<!DOCTYPE|<!ENTITY/i.test(value)) throw new Error('DOCX XML declarations with entities are unsupported');
+    // Preflight before DOM allocation, then verify the actual element count in
+    // the native parser. This also protects injected parsers used by tests.
+    let nodes = 0;
+    for (const match of value.matchAll(/<[A-Za-z_]/g)) {
+      if (++nodes > XML_NODE_LIMIT) throw new Error('DOCX XML exceeds 500,000 elements');
+    }
     return parseXML(value);
   };
   let main = 'word/document.xml';

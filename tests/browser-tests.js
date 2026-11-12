@@ -76,6 +76,7 @@ await checkAsync('local PDF worker extracts embedded text without detaching the 
   assert(result.status === 'ok', result.warnings.join(' '));
   assert(result.pageCount === 2 && result.text.includes('Renewable energy corpus.'), 'PDF text/page metadata missing');
   assert(bytes.length === before, 'Original PDF bytes detached');
+  assert(result.text.split('\n').slice(0, -1).every(line => line.endsWith('.')), 'Non-dot newlines survived PDF cleanup');
 });
 await checkAsync('real DOMParser reads DOCX paragraphs and tables without rendering document markup', async () => {
   const bytes = new Uint8Array(await makeZIP(docxFiles).arrayBuffer());
