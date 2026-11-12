@@ -43,6 +43,32 @@ export function loadWorkspace(projectId) {
     done(results);
   });
 }
+// Inspect only document metadata and pending capture keys, never original/text Blobs.
+// One transaction covers inbox-to-corpus handoff without a temporary false negative.
+export function hasStoredPage(projectId, url) {
+  const canonical = value => { try { const parsed = new URL(value); if (!/^https?:$/.test(parsed.protocol)) return null; parsed.hash = ''; return parsed.href; } catch { return null; } };
+  const target = canonical(url);
+  return projectTransaction(projectId, ['documents', 'pages'], 'readonly', (tx, done) => {
+    if (!target) { done(false); return; }
+    let found = false, remaining = 2;
+    const finish = () => { if (!--remaining) done(found); };
+    const documents = tx.objectStore('documents').openCursor();
+    documents.onsuccess = () => {
+      const cursor = documents.result;
+      if (!cursor || found) { finish(); return; }
+      const entry = cursor.value;
+      if (entry.doc && ['downloaded', 'captured'].includes(entry.record.outcome) && !entry.record.processingIncomplete && [entry.url, entry.record.finalURL, entry.doc.url].some(value => canonical(value) === target)) {
+        found = true; finish();
+      } else cursor.continue();
+    };
+    const pending = tx.objectStore('pages').openKeyCursor();
+    pending.onsuccess = () => {
+      const cursor = pending.result;
+      if (!cursor || found) { finish(); return; }
+      if (canonical(cursor.key) === target) { found = true; finish(); } else cursor.continue();
+    };
+  });
+}
 export function saveDraft(projectId, patch) {
   return projectTransaction(projectId, [], 'readwrite', tx => {
     const store = tx.objectStore('meta'), request = store.get('draft');

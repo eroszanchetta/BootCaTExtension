@@ -6,7 +6,23 @@ const feedback = document.getElementById("feedback");
 collect.disabled = true;
 const collectionHint = feedback.textContent;
 const savePage = document.getElementById('save-page');
+const pageFeedback = document.getElementById('page-feedback'), pageHint = pageFeedback.textContent;
+let popupProjectId, savingPage = false, pageRevision = 0;
 let activeTab, engine, collecting = false, alreadyCollected = false, collectionRevision = 0;
+async function refreshPageState() {
+  if (!activeTab || engine || !/^https?:\/\//.test(activeTab.url || '') || savingPage) return;
+  const revision = ++pageRevision;
+  savePage.disabled = true;
+  try {
+    const result = await ext.runtime.sendMessage({ type: 'get-page-corpus-state', tabId: activeTab.id });
+    if (revision !== pageRevision || savingPage) return;
+    if (!result?.ok) throw new Error(result?.error || 'Could not check whether this page is saved.');
+    popupProjectId = result.projectId;
+    savePage.disabled = result.saved;
+    pageFeedback.textContent = result.saved ? 'Page saved' : pageHint;
+    if (result.saved) pageFeedback.classList.add('saved'); else pageFeedback.classList.remove('saved');
+  } catch (error) { if (revision === pageRevision) { pageFeedback.classList.remove('saved'); pageFeedback.textContent = error.message; } }
+}
 function showResultsAdded(unresolved = 0) {
   feedback.textContent = `Results added${unresolved ? `. ${unresolved} candidate links were skipped because their destinations could not be resolved.` : ''}`;
   feedback.classList.add('saved');
@@ -19,6 +35,7 @@ function updateCollectionState(collections) {
   else if (!collecting) { feedback.textContent = collectionHint; feedback.classList.remove('saved'); }
 }
 ext.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.captureRevision) refreshPageState();
   if (area === 'local' && changes.collections) {
     collectionRevision++;
     updateCollectionState(changes.collections.newValue || []);
@@ -29,6 +46,7 @@ try {
   engine = adapterForURL(activeTab?.url);
   savePage.disabled = !!engine || !/^https?:\/\//.test(activeTab?.url || '');
   document.getElementById('page-info').textContent = engine ? `${engine.name}${engine.experimental ? ' (experimental)' : ''} web results detected.` : 'Open a DuckDuckGo, Ecosia or Google web search results tab, then click this extension again.';
+  if (!engine) await refreshPageState();
   if (engine) {
     const revision = collectionRevision;
     const { collections = [] } = await ext.storage.local.get('collections');
@@ -57,7 +75,7 @@ document.getElementById("workspace").addEventListener("click", async () => {
 document.getElementById('save-page').addEventListener('click', async event => {
   const button = event.currentTarget;
   if (button.disabled) return;
-  const pageFeedback = document.getElementById('page-feedback');
+  savingPage = true; pageRevision++;
   button.disabled = true; pageFeedback.classList.remove('saved'); pageFeedback.textContent = 'Saving this page…';
   try {
     const result = await ext.runtime.sendMessage({ type: 'save-page', tabId: activeTab.id });
@@ -65,9 +83,9 @@ document.getElementById('save-page').addEventListener('click', async event => {
     pageFeedback.textContent = 'Page saved';
     pageFeedback.classList.add('saved');
   } catch (error) { pageFeedback.textContent = error.message; button.disabled = false; }
+  finally { savingPage = false; }
 });
 
-let popupProjectId;
 ext.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local' || !changes.project) return;
   popupProjectId ||= changes.project.oldValue?.id;
