@@ -27,6 +27,8 @@ async function popup(state, url, fail = false) {
       tabs: { query: async () => [{ id: 10, url }] },
       storage: { local: { get: async () => ({ collections: state.collections }) }, onChanged: { addListener(fn) { listeners.push(fn); } } },
       runtime: { sendMessage: async message => {
+        if (message.type === 'get-page-corpus-state') return { ok: true, projectId: 'current', saved: !!state.saved };
+        if (message.type === 'save-page') { state.saved = true; return { ok: true }; }
         assert.equal(message.type, 'collect'); requests++;
         if (fail) return { ok: false, error: 'Please try again' };
         const engine = adapterForURL(url);
@@ -77,4 +79,17 @@ test('ordinary web pages allow corpus capture and keep result collection disable
   const ui = await popup({ collections: [] }, 'https://example.org/article');
   assert.equal(ui.get('save-page').disabled, false);
   assert.equal(ui.get('collect').disabled, true);
+});
+
+test('saved pages stay disabled on popup reopen, and become available after corpus deletion/reset', async () => {
+  const state = { collections: [], saved: false }, url = 'https://example.org/article';
+  const first = await popup(state, url);
+  const button = first.get('save-page'); await button.handlers.click({ currentTarget: button });
+  assert.equal(button.disabled, true);
+  const reopened = await popup(state, url);
+  assert.equal(reopened.get('save-page').disabled, true); assert.equal(reopened.get('page-feedback').textContent, 'Page saved');
+  assert.equal(reopened.get('page-feedback').classList.contains('saved'), true);
+  state.saved = false; const removed = await popup(state, url); assert.equal(removed.get('save-page').disabled, false);
+  state.saved = true; removed.notify({ captureRevision: { newValue: 'capture' } });
+  await new Promise(resolve => setImmediate(resolve)); assert.equal(removed.get('save-page').disabled, true);
 });

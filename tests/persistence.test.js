@@ -179,3 +179,25 @@ test('pending browser lock acquisition disables edits immediately so deletion ca
   await app.input('urls', 'https://race.test/');
   assert.equal((await storage.loadWorkspace('one')).draft.urls, 'https://race.test/');
 });
+
+test('saved-page lookup covers downloads, imports, redirects and pending captures, but not failures or other projects', async () => {
+  fresh(); await storage.ensureStoredProject('p');
+  const url = 'https://example.org/original', finalURL = 'https://example.org/final?id=1';
+  assert.equal(await storage.hasStoredPage('p', url), false);
+  await storage.saveFailure('p', { url, outcome: 'error', error: '403' });
+  assert.equal(await storage.hasStoredPage('p', url), false);
+  for (const [index, source] of ['downloaded', 'browser-tab', 'local-file'].entries()) {
+    const filename = `pages/${index}.html`, outcome = source === 'downloaded' ? 'downloaded' : 'captured';
+    await storage.saveDocument('p', { ...record(url, filename), outcome, finalURL, source }, document(url, filename), new Blob(['original']));
+    assert.equal(await storage.hasStoredPage('p', url + '#section'), true);
+    assert.equal(await storage.hasStoredPage('p', finalURL + '#fragment'), true);
+    assert.equal(await storage.hasStoredPage('p', 'https://example.org/final?id=2'), false);
+    await storage.setIncluded('p', url, false); assert.equal(await storage.hasStoredPage('p', url), true);
+    await storage.removeDocument('p', url); assert.equal(await storage.hasStoredPage('p', finalURL), false);
+  }
+  await savePage({ id: 'pending', url: url + '#capture', html: '<p>Queued</p>' });
+  assert.equal(await storage.hasStoredPage('p', url), true);
+  assert.equal(await storage.hasStoredPage('p', 'chrome://settings'), false);
+  await storage.resetStoredProject('next'); assert.equal(await storage.hasStoredPage('next', url), false);
+  await assert.rejects(storage.hasStoredPage('p', url), /project changed/);
+});

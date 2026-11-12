@@ -53,7 +53,7 @@ for (const success of [true, false]) test(`popup ${success ? 'keeps save disable
     getExtensionAPI: () => ({
       storage: { onChanged: { addListener() {} } },
       tabs: { query: async () => [{ id: 9, url: 'https://example.org/article' }] },
-      runtime: { sendMessage: async message => { assert.equal(message.type, 'save-page'); assert.equal(message.tabId, 9); return success ? { ok: true } : { ok: false, error: 'Could not read page' }; } }
+      runtime: { sendMessage: async message => { if (message.type === 'get-page-corpus-state') return { ok: true, saved: false, projectId: 'p' }; assert.equal(message.type, 'save-page'); assert.equal(message.tabId, 9); return success ? { ok: true } : { ok: false, error: 'Could not read page' }; } }
     })
   });
   const source = (await readFile(new URL('../src/popup.js', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');

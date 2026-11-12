@@ -1,4 +1,4 @@
-import { ensureStoredProject, resetStoredProject, storedProjectId } from './project-store.js';
+import { ensureStoredProject, resetStoredProject, storedProjectId, hasStoredPage } from './project-store.js';
 import { captureTabDocument } from './pdf-recovery.js';
 import { savePage } from './page-store.js';
 import { getExtensionAPI } from './extension-api.js';
@@ -106,14 +106,24 @@ async function handle(message) {
     await ext.storage.local.set({ collections: [] });
     return {};
   });
+  if (message.type === 'get-page-corpus-state') {
+    const tab = await ext.tabs.get(message.tabId);
+    return serialize(async () => {
+      const project = await ensureProject();
+      return { projectId: project.id, saved: await hasStoredPage(project.id, tab.url) };
+    });
+  }
   if (message.type === 'save-page') {
     const project = await serialize(ensureProject);
     const tab = await ext.tabs.get(message.tabId);
     if (!/^https?:\/\//.test(tab.url || '')) throw new Error('Open a web page first.');
     if (adapterForURL(tab.url)) throw new Error('Use Collect results from this tab for a search results page.');
+    const saved = await serialize(async () => { await assertProject(project.id); return hasStoredPage(project.id, tab.url); });
+    if (saved) { await ensureWorkspace(); return { alreadySaved: true }; }
     const page = await captureTabDocument(tab, ext.scripting);
     return serialize(async () => {
       await assertProject(project.id);
+      if (await hasStoredPage(project.id, page.url)) return { alreadySaved: true };
       await savePage({ ...page, id: crypto.randomUUID() });
       try { await ext.storage.local.set({ captureRevision: crypto.randomUUID() }); } catch {}
       await ensureWorkspace();
