@@ -195,7 +195,9 @@ The **Project name** field at the top is saved locally and used in the corpus ZI
 
 **Collect results from this tab** adds collected URLs to the download list automatically and opens a background workspace if needed. New URLs wait until an active batch finishes, and duplicates are skipped. Existing manual edits are preserved. There is no hard URL-count limit. Lists above 500 URLs display a performance/storage warning, with no extra setting or confirmation required. Search collection metadata retains its separate provider-neutral limits.
 
-**Preview text** stays blank until a Preview text button is clicked. The section heading remains fixed and the selected page is identified below it.
+Review separates documents with usable text from **Documents needing attention**: download errors, extraction failures, unsupported formats and textless/scanned PDFs. Successful recoveries return to the main list. The attention block disappears when all problems have been recovered or deleted. Unchecking Include keeps usable documents in the main list. **Save corpus** sits below both lists; originals and export behavior remain unchanged.
+
+**Preview text** stays blank until a Preview text button is clicked. The selected document row is highlighted in either list; selecting another preview moves the highlight, and deleting the selected document clears it. The section heading remains fixed and the selected page is identified below it.
 
 The **Include** checkbox controls corpus inclusion while retaining original files. The trash button on the right instead asks for confirmation and deletes that page's text, original files (including previous captures), and download metadata from the review list and future exports. It also removes the URL from the download list and clears the preview if it displays that page. Saved search provenance remains in the search collections. Delete buttons are disabled while downloads or imports are running.
 

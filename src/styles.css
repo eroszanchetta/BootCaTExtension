@@ -20,8 +20,8 @@ progress { display: block; width: 100%; height: 12px; margin: 16px 0 22px; accen
 table { border-collapse: collapse; width: 100%; text-align: left; font-size: .85rem; }
 th, td { padding: 10px 8px; border-bottom: 1px solid #dbe7ef; vertical-align: top; }
 td { overflow-wrap: anywhere; }
-#results td:nth-child(2) { width: 45%; }
-#results input[type="checkbox"] { width: auto; accent-color: #007aa6; }
+#review-lists td:nth-child(2) { width: 45%; }
+#review-lists input[type="checkbox"] { width: auto; accent-color: #007aa6; }
 .preview-button { display: block; padding: 5px 10px; margin-top: 8px; font-size: .8rem; }
 .import-document-button { display: block; padding: 5px 10px; margin-top: 8px; font-size: .8rem; }
 #preview-text { min-height: 350px; font-family: system-ui, sans-serif; }
@@ -83,3 +83,9 @@ nav a:hover { background: #c7ddeb; }
 #project-dialog h2 { margin: 12px 0; font-size: 1.6rem; }
 #project-dialog .actions { margin-top: 24px; flex-wrap: wrap; }
 .project-reset-warning { padding: 12px 14px; border-radius: 8px; border: 1px solid #d5aaa6; color: #87352e; background: #fff5f3; font-size: .9rem; }
+
+.attention-section { margin-top: 24px; padding: 20px; border: 1px solid #d5b976; border-radius: 12px; background: #fffbf2; }
+.attention-section h3 { margin-top: 0; }
+#review-lists tr.preview-selected > td { background: #dceef8; }
+#review-lists tr.preview-selected > td:first-child { box-shadow: inset 4px 0 #007aa6; }
+.corpus-export { margin-top: 24px; padding-top: 20px; border-top: 1px solid #dbe7ef; }

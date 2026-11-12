@@ -54,11 +54,11 @@ test('size-limit failures persist explicit download status without suggesting CA
   const entry = (await storage.loadWorkspace('size')).entries[0];
   assert.equal(entry.record.errorCode, 'DOWNLOAD_TOO_LARGE'); assert.equal(entry.record.limitBytes, FILE_LIMIT);
   assert.equal(entry.fileNames.length, 0); assert.equal(entry.doc, null);
-  const row = app.get('results').children[0];
+  const row = app.get('problem-results').children[0];
   assert.match(row.children[2].textContent, /50 MiB download limit/);
   assert.ok(!row.children[2].textContent.includes('CAPTCHA'));
   assert.equal(row.children[1].children.some(item => item.className === 'secondary import-pdf-button'), false);
-  const reopened = await workspace('size'); assert.match(reopened.get('results').children[0].children[2].textContent, /50 MiB download limit/);
+  const reopened = await workspace('size'); assert.match(reopened.get('problem-results').children[0].children[2].textContent, /50 MiB download limit/);
 });
 
 test('originals and text persist separately; metadata has no body; inclusion/deletion/reset are durable', async () => {

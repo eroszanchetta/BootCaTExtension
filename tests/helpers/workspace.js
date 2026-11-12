@@ -8,10 +8,11 @@ import { extractionMetadata } from '../../src/corpus.js';
 import { fileWarnings, readPDFFile } from '../../src/pdf-recovery.js';
 import { formatByMIME, readImportedDocument } from '../../src/document-formats.js';
 class Element {
-  constructor() { this.value = ''; this.textContent = ''; this.children = []; this.handlers = {}; this.disabled = false; }
+  constructor() { this.value = ''; this.textContent = ''; this.children = []; this.handlers = {}; this.disabled = false; this.attributes = {}; this.classList = { toggle: (name, enabled) => { const classes = new Set((this.className || '').split(/\s+/).filter(Boolean)); if (enabled) classes.add(name); else classes.delete(name); this.className = [...classes].join(' '); }, contains: name => (this.className || '').split(/\s+/).includes(name) }; }
   querySelector() { return new Element(); }
   addEventListener(type, fn) { this.handlers[type] = fn; }
-  setAttribute() {}
+  setAttribute(name, value) { this.attributes[name] = value; }
+  get parentNode() { return this.parent; }
   append(...nodes) { for (const node of nodes) { node.parent = this; this.children.push(node); } }
   replaceChildren() { this.children = []; }
   replaceWith(node) { const index = this.parent.children.indexOf(this); this.parent.children[index] = node; node.parent = this.parent; }
