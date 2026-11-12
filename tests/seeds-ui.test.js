@@ -1,9 +1,10 @@
+import { SEARCH_FILE_TYPES, DEFAULT_EXCLUDED_SITES, normalizeSearchFilters } from '../src/search-filters.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
 import { IDBFactory } from 'fake-indexeddb';
-import { ENGINES, searchURL } from '../src/engines.js';
+import { ENGINES, searchURL, buildSearchQuery } from '../src/engines.js';
 import { parseSeeds, parseQueries, generateTuples, combinationCount } from '../src/tuples.js';
 import * as storage from '../src/project-store.js';
 
@@ -15,22 +16,22 @@ class Element {
   replaceChildren() { this.children = []; }
 }
 function fixture(options = {}) {
-  const elements = new Map(), draft = { ...options.draft }, opened = [], confirmations = [];
+  const elements = new Map(), draft = { excludedSites: '', ...options.draft }, opened = [], confirmations = [];
   let confirmed = true;
   const get = id => elements.get(id) || (elements.set(id, new Element()), elements.get(id));
   get('engine').value = 'google';
   const context = vm.createContext({
-    openWorkspaceSection() {}, combinationCount,
+    openWorkspaceSection() {}, combinationCount, SEARCH_FILE_TYPES, DEFAULT_EXCLUDED_SITES, normalizeSearchFilters,
     document: { getElementById: get, createElement: () => new Element() },
     window: { confirm(message) { confirmations.push(message); return confirmed; } },
-    getExtensionAPI: () => ({ tabs: { create: async value => { if (options.open) await options.open(value, opened.length); opened.push(value); } } }),
+    getExtensionAPI: () => ({ runtime: { sendMessage: async message => options.saveDefaults ? options.saveDefaults(message) : { ok: true } }, tabs: { create: async value => { if (options.open) await options.open(value, opened.length); opened.push(value); } } }),
     getProjectId: () => 'project',
     openProjectSearch: async ({ projectId, engine, query, active }) => {
       assert.equal(projectId, 'project'); const value = { url: searchURL(engine, query), active };
       if (options.open) await options.open(value, opened.length); opened.push(value);
       return { tabId: opened.length };
     },
-    ENGINES, searchURL, parseSeeds, parseQueries, AbortController, BigInt,
+    ENGINES, searchURL, buildSearchQuery, parseSeeds, parseQueries, AbortController, BigInt,
     generateTuples: (text, length, count, config) => generateTuples(text, length, count, { ...config, random: () => 0n }),
     draft, onChange: patch => Object.assign(draft, patch)
   });
@@ -140,4 +141,24 @@ test('generation needs five distinct seeds while manual tuples work with none an
   app.input('tuples', 'edited during generation'); await generation;
   assert.equal(app.get('tuples').value, 'edited during generation');
   app.input('seeds', 'a\nb'); assert.equal(app.get('generate-tuples').disabled, true); assert.equal(app.get('tuples').disabled, false);
+});
+
+test('search restrictions compile once, appear in links and batch tabs, persist, and can be replaced without modifying tuples', async () => {
+  let savedDefault;
+  const app = fixture({ saveDefaults: async message => { savedDefault = message; return { ok: true }; } });
+  app.input('tuples', 'solar energy'); app.input('excluded-sites', 'https://www.youtube.com/watch?v=1\nfacebook.com\nfacebook.com');
+  app.get('search-filetype').value = 'pdf'; app.get('search-filetype').handlers.change(); await app.click('prepare-queries');
+  const query = 'solar energy filetype:pdf -site:youtube.com -site:facebook.com';
+  assert.equal(app.get('prepared-queries').children[0].children[0].textContent, query);
+  assert.equal(app.get('tuples').value, 'solar energy'); assert.equal(app.draft.preparedQueries[0], query);
+  app.get('engine').value = 'ecosia'; app.get('engine').handlers.change();
+  assert.equal(new URL(app.get('prepared-queries').children[0].children[0].href).searchParams.get('q'), query);
+  await app.click('open-all-queries'); assert.equal(new URL(app.opened[0].url).searchParams.get('q'), query);
+  await app.click('save-site-defaults'); assert.deepEqual(JSON.parse(JSON.stringify(savedDefault.patch)), { excludedSites: ['youtube.com', 'facebook.com'] });
+  const restored = fixture({ draft: app.draft }); assert.equal(restored.get('prepared-queries').children[0].children[0].textContent, query);
+  restored.get('search-filetype').value = 'docx'; restored.get('search-filetype').handlers.change();
+  assert.equal(restored.get('prepared-queries').children.length, 0); assert.equal(restored.get('open-all-queries').disabled, true);
+  await restored.click('prepare-queries'); assert.equal(restored.get('prepared-queries').children[0].children[0].textContent, query.replace('filetype:pdf', 'filetype:docx'));
+  restored.input('excluded-sites', 'example.com -site:other.com'); await restored.click('prepare-queries');
+  assert.equal(restored.get('prepared-queries').children.length, 0); assert.match(restored.get('query-status').textContent, /Invalid excluded website/);
 });

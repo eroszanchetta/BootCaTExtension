@@ -95,3 +95,7 @@ nav a:hover { background: #c7ddeb; }
 .language-settings select { flex: 1; min-width: 180px; }
 .accept-language { margin-top: 10px; font-size: .85rem; padding: 6px 12px; }
 #project-dialog-language { margin-top: 8px; }
+
+.search-filters { margin: 20px 0; padding: 18px; border: 1px solid #c4d8e7; border-radius: 12px; background: #f4f8fb; }
+.search-filters label:not(:first-child) { margin-top: 16px; }
+#excluded-sites { min-height: 140px; }

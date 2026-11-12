@@ -1,9 +1,10 @@
+import { compileSearchQuery } from './search-filters.js';
 // Provider-specific DOM knowledge lives here, not in the downloader.
 // Selectors are heuristics, not a guaranteed search-engine interface.
 export const ENGINES = [
-  { id: "google", name: "Google", searchURL: "https://www.google.com/search", queryParam: "q", selectors: ["#search a:has(h3)", "#rso a:has(h3)", "#search h3 a"], titleSelector: "h3", experimental: false },
-  { id: "duckduckgo", name: "DuckDuckGo", searchURL: "https://duckduckgo.com/", queryParam: "q", selectors: ['a[data-testid="result-title-a"]', "a.result__a"], titleSelector: null, experimental: false },
-  { id: "ecosia", name: "Ecosia", searchURL: "https://www.ecosia.org/search", queryParam: "q", selectors: ['a[data-test-id="result-link"]', "a.result-title", "a.result__link"], titleSelector: null, experimental: false }
+  { id: "google", name: "Google", searchURL: "https://www.google.com/search", queryParam: "q", querySyntax: { fileType: "filetype:", excludeSite: "-site:" }, selectors: ["#search a:has(h3)", "#rso a:has(h3)", "#search h3 a"], titleSelector: "h3", experimental: false },
+  { id: "duckduckgo", name: "DuckDuckGo", searchURL: "https://duckduckgo.com/", queryParam: "q", querySyntax: { fileType: "filetype:", excludeSite: "-site:" }, selectors: ['a[data-testid="result-title-a"]', "a.result__a"], titleSelector: null, experimental: false },
+  { id: "ecosia", name: "Ecosia", searchURL: "https://www.ecosia.org/search", queryParam: "q", querySyntax: { fileType: "filetype:", excludeSite: "-site:" }, selectors: ['a[data-test-id="result-link"]', "a.result-title", "a.result__link"], titleSelector: null, experimental: false }
 ];
 export function adapterForURL(value) {
   try {
@@ -24,6 +25,12 @@ export function searchURL(engineID, query) {
   const url = new URL(engine.searchURL);
   url.searchParams.set(engine.queryParam, query);
   return url.href;
+}
+// All query modifiers are provider concerns; collected URLs are never filtered.
+export function buildSearchQuery(engineID, query, filters) {
+  const engine = ENGINES.find(item => item.id === engineID);
+  if (!engine) throw new Error('Unknown search engine');
+  return compileSearchQuery(query, filters, engine.querySyntax);
 }
 // Chrome copies this function into the tab's isolated world. It must be
 // self-contained: imports and outer variables are NOT copied with it.

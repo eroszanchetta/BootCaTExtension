@@ -89,8 +89,9 @@ for (const namespace of ['chrome', 'browser']) test(`${namespace}: background se
     windows: { update: async (id, options) => { assert.equal(id, 5); assert.equal(options.focused, true); } },
     scripting: { executeScript: async ({ target }) => { if (target.tabId === 4) { injectionStarted(); await gate; } return [{ result: { engine: 'google', query: String(target.tabId), pageURL: `https://www.google.com/search?q=${target.tabId}`, unresolved: 0, results: target.tabId === 3 ? [] : [{ url: `https://example.org/${target.tabId}`, title: 'Example', positionOnPage: 1 }] } }]; } },
     storage: { session: { get: async key => ({ [key]: session[key] }), set: async data => { Object.assign(session, data); } }, local: {
-      get: async key => { await new Promise(r => setTimeout(r, 10)); return key === "collections" ? { collections } : { [key]: stored[key] }; },
+      get: async key => { await new Promise(r => setTimeout(r, 10)); return key === null ? { ...stored, collections } : key === "collections" ? { collections } : { [key]: stored[key] }; },
       set: async data => { await new Promise(r => setTimeout(r, 10)); Object.assign(stored, data); if (data.collections) collections = data.collections; },
+      remove: async keys => { for (const key of keys) { delete stored[key]; if (key === 'collections') collections = []; } },
       clear: async () => { for (const key of Object.keys(stored)) delete stored[key]; collections = []; }
     } }
   };

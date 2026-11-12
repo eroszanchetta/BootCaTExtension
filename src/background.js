@@ -1,3 +1,5 @@
+import { resetProjectLocalState } from './project-local-state.js';
+import { readUserDefaults, saveUserDefaults } from './user-defaults.js';
 import { validateLanguage } from './language-detection.js';
 import { ensureStoredProject, resetStoredProject, storedProjectId, hasStoredPage } from './project-store.js';
 import { captureTabDocument } from './pdf-recovery.js';
@@ -24,14 +26,13 @@ async function ensureProject() {
     // storage.local notification. Never attach an old project's collections.
     project = { id: storedId, name: 'Untitled project', nameConfirmed: false };
     await searchTabs?.resetInQueue();
-    await ext.storage.local.clear();
-    await ext.storage.local.set({ project, collections: [], captureRevision: crypto.randomUUID() });
+    await resetProjectLocalState(ext.storage.local, project);
   }
   if (!project) {
     project = { id: crypto.randomUUID(), name: 'Untitled project', nameConfirmed: false };
     await ext.storage.local.set({ project });
   }
-  await ensureStoredProject(project.id);
+  await ensureStoredProject(project.id, !storedId ? await readUserDefaults(ext.storage.local) : undefined);
   return project;
 }
 async function assertProject(id) {
@@ -76,6 +77,10 @@ async function handle(message) {
   if (message.type === 'get-project-search-tabs') return searchTabs.getState(message.projectId);
   if (message.type === 'collect-project-search-tabs') return searchTabs.start(message.projectId);
   if (message.type === 'stop-project-search-tabs') return searchTabs.stop(message.projectId);
+  if (message.type === 'save-user-defaults') return serialize(async () => {
+    await assertProject(message.projectId);
+    return { defaults: await saveUserDefaults(ext.storage.local, message.patch) };
+  });
   if (message.type === 'get-project') return serialize(async () => ({ project: await ensureProject() }));
   if (message.type === 'rename-project') return serialize(async () => {
     await assertProject(message.projectId);
@@ -94,10 +99,9 @@ async function handle(message) {
     if (message.projectId) await assertProject(message.projectId);
     const chosenName = typeof message.name === 'string' ? message.name.trim().slice(0, 120) : '';
     const project = { language: validateLanguage(message.language ?? 'none'), id: crypto.randomUUID(), name: chosenName || 'Untitled project', nameConfirmed: Boolean(chosenName) };
-    await resetStoredProject(project.id);
+    await resetStoredProject(project.id, await readUserDefaults(ext.storage.local));
     await searchTabs.resetInQueue();
-    await ext.storage.local.clear();
-    await ext.storage.local.set({ project, collections: [], captureRevision: crypto.randomUUID() });
+    await resetProjectLocalState(ext.storage.local, project);
     return { project };
   });
   if (message.type === "open-workspace") {
