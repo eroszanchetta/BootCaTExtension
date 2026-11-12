@@ -3,7 +3,6 @@ const ext = getExtensionAPI();
 import { ENGINES } from "./engines.js";
 import { uniqueResults } from "./collection.js";
 import { parseURLs } from "./core.js";
-import { openProjectSearch } from './search-tabs-client.js';
 
 export async function readCollections() {
   const { collections = [] } = await ext.storage.local.get("collections");
@@ -20,13 +19,6 @@ export function initSearchUI({ isRunning, seenCollectionIds = [], onChange = () 
     option.value = engine.id; option.textContent = engine.name + (engine.experimental ? " (experimental)" : "");
     el("engine").append(option);
   }
-  el("search-form").addEventListener("submit", async event => {
-    event.preventDefault();
-    const query = el("query").value.trim();
-    if (!query) return;
-    try { await openProjectSearch({ projectId: getProjectId(), engine: el('engine').value, query, active: true }); }
-    catch (error) { status.textContent = error.message; }
-  });
   function render() {
     const results = uniqueResults(collections);
     const unresolved = collections.reduce((sum, item) => sum + item.unresolved, 0);

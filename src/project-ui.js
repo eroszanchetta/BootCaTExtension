@@ -4,11 +4,25 @@ export function initProjectUI({ onReset, onRename }) {
   const name = document.getElementById('project-name');
   const button = document.getElementById('new-project');
   const status = document.getElementById('project-status');
-  let project = null, saving = 0;
+  const dialog = document.getElementById('project-dialog'), form = document.getElementById('project-form');
+  const dialogName = document.getElementById('project-dialog-name'), submit = document.getElementById('project-dialog-submit');
+  const cancel = document.getElementById('project-dialog-cancel'), error = document.getElementById('project-dialog-error');
+  let project = null, saving = 0, mode = 'name', targetId = null, changingProject = false;
+  function showDialog(nextMode) {
+    if (!project || saving) return;
+    mode = nextMode; targetId = project.id; error.textContent = '';
+    dialogName.value = mode === 'new' || project.name === 'Untitled project' ? '' : project.name;
+    document.getElementById('project-dialog-title').textContent = mode === 'new' ? 'Create a new project' : 'Name your project';
+    document.getElementById('project-dialog-warning').hidden = mode !== 'new';
+    submit.textContent = mode === 'new' ? 'Create project' : 'Save project name';
+    if (!dialog.open) dialog.showModal();
+    dialogName.focus();
+  }
   name.disabled = button.disabled = true;
   function apply(next) {
     if (!next) return;
-    if (project && next.id !== project.id) { onReset(); return; }
+    if (project && next.id !== project.id) { if (dialog.open) dialog.close(); if (!changingProject) { changingProject = true; onReset(); } return; }
+    if (dialog.open && mode === 'name' && next.nameConfirmed) dialog.close();
     project = next; if (document.activeElement !== name) name.value = next.name; onRename();
     name.disabled = button.disabled = false;
   }
@@ -18,6 +32,7 @@ export function initProjectUI({ onReset, onRename }) {
   const ready = ext.runtime.sendMessage({ type: 'get-project' }).then(reply => {
     if (!reply?.ok) throw new Error(reply?.error || 'Could not load project');
     apply(reply.project);
+    if (project && (project.nameConfirmed === false || (project.nameConfirmed == null && project.name === 'Untitled project'))) showDialog('name');
   }).catch(error => { status.textContent = error.message; });
   // Persist edits as they are made; do not depend on a blur before export.
   name.addEventListener('input', async () => {
@@ -31,14 +46,24 @@ export function initProjectUI({ onReset, onRename }) {
     } catch (error) { status.textContent = error.message; }
     finally { saving--; }
   });
-  button.addEventListener('click', async () => {
-    if (!window.confirm('Create a new project? This clears the current project name, saved searches, search-tab tracking, URL list, downloaded pages, corpus texts, selections, pending page saves and preview everywhere in BootCaT. Export your corpus first if you want to keep it.')) return;
-    name.disabled = button.disabled = true;
+  button.addEventListener('click', () => showDialog('new'));
+  cancel.addEventListener('click', () => { if (!saving) dialog.close(); });
+  dialog.addEventListener('cancel', event => { if (saving) event.preventDefault(); });
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (saving || !project || project.id !== targetId) return;
+    const value = dialogName.value.trim();
+    if (!value) { error.textContent = 'Enter a project name.'; dialogName.focus(); return; }
+    saving++; submit.disabled = cancel.disabled = dialogName.disabled = true;
+    name.disabled = button.disabled = true; error.textContent = '';
     try {
-      const reply = await ext.runtime.sendMessage({ type: 'new-project' });
-      if (!reply?.ok) throw new Error(reply?.error || 'Could not create project');
-    } catch (error) {
-      status.textContent = error.message; name.disabled = button.disabled = false;
+      const reply = await ext.runtime.sendMessage({ type: mode === 'new' ? 'new-project' : 'rename-project', projectId: targetId, name: value });
+      if (!reply?.ok) throw new Error(reply?.error || 'Could not save project');
+      apply(reply.project); if (dialog.open) dialog.close();
+    } catch (failure) { error.textContent = failure.message; }
+    finally {
+      saving--; submit.disabled = cancel.disabled = dialogName.disabled = false;
+      name.disabled = button.disabled = false;
     }
   });
   return { ready, isSaving: () => saving > 0, snapshot: () => project ? { ...project, name: name.value.trim() || 'Untitled project' } : { name: 'Untitled project' } };

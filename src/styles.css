@@ -28,10 +28,7 @@ td { overflow-wrap: anywhere; }
 #preview-meta { overflow-wrap: anywhere; }
 .error { color: #a22d25; }
 footer { padding: 4px; }
-.search-form { display: grid; gap: 8px; }
-.search-form label { margin-bottom: 0; }
 select, input { width: 100%; padding: 10px; border: 1px solid #7697ad; border-radius: 8px; font: inherit; background: white; color: inherit; }
-.search-form button { justify-self: start; margin-top: 8px; }
 .collection-actions { flex-wrap: wrap; margin: 14px 0; }
 summary { cursor: pointer; }
 @media (max-width: 600px) { main { margin: 24px auto; padding: 0 12px; } section { padding: 20px; } }
@@ -72,3 +69,17 @@ nav a:hover { background: #c7ddeb; }
 .query-list li { padding: 5px 0; }
 #query-pagination { align-items: center; flex-wrap: wrap; margin: 12px 0; }
 @media (max-width: 500px) { .tuple-settings { grid-template-columns: 1fr; } }
+
+/* Native disclosure and dialog elements provide keyboard and focus handling. */
+.workspace-panel > summary { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; list-style: none; border-radius: 6px; }
+.workspace-panel > summary::-webkit-details-marker { display: none; }
+.workspace-panel > summary::before { content: '›'; color: #007aa6; font-size: 1.6rem; line-height: 1; transform: rotate(0); }
+.workspace-panel[open] > summary::before { transform: rotate(90deg); }
+.workspace-panel > summary h2 { display: inline; margin: 0 auto 0 0; font-size: 1.2rem; }
+.panel-content { padding-top: 24px; }
+.section-counter { border-radius: 999px; background: #e7f2f8; color: #00658c; padding: 3px 10px; font-size: .8rem; font-variant-numeric: tabular-nums; }
+#project-dialog { width: min(520px, calc(100% - 32px)); max-height: calc(100vh - 48px); overflow: auto; padding: 32px; border: 1px solid #abc8e0; border-radius: 18px; color: #24323b; background: white; box-shadow: 0 24px 80px #004f7040; }
+#project-dialog::backdrop { background: #17394c80; }
+#project-dialog h2 { margin: 12px 0; font-size: 1.6rem; }
+#project-dialog .actions { margin-top: 24px; flex-wrap: wrap; }
+.project-reset-warning { padding: 12px 14px; border-radius: 8px; border: 1px solid #d5aaa6; color: #87352e; background: #fff5f3; font-size: .9rem; }
