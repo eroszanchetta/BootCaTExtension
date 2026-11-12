@@ -1,6 +1,6 @@
 import { extractDownloadedDocument, extractionContentType } from './binary-extraction.js';
 import { fileWarnings, readPDFFile } from './pdf-recovery.js';
-import { recoveryFormat, formatById, formatByMIME, formatAccept, readDocumentFile } from './document-formats.js';
+import { formatByMIME, readImportedDocument } from './document-formats.js';
 import { initProjectUI, projectFilename } from './project-ui.js';
 import { listSavedPages, readSavedPage, removeSavedPage } from './page-store.js';
 import * as storage from './project-store.js';
@@ -88,9 +88,7 @@ async function preview(doc) {
 function errorTip(record) {
   if (record.errorCode === 'DOWNLOAD_TOO_LARGE') return record.error;
   if (record.outcome === 'cancelled') return 'Stopped by user. Click Resume downloads to try again.';
-  const format = recoveryFormat(record);
-  return format ? `Could not download this ${format.label}. Open its URL and complete any CAPTCHA or sign-in, then download the file using your browser and click Choose downloaded ${format.label} here. (${record.error || 'Download interrupted'})`
-    : `Could not download this page. Click its URL to open it in a new tab. Complete any CAPTCHA or sign-in, then click the BootCaT toolbar icon → Add page to corpus. The page will appear here automatically. (${record.error || 'Download interrupted'})`;
+  return `Could not download this page or file. Open its URL and complete any CAPTCHA or sign-in. Then use Add page to corpus in the BootCaT popup, or download the file using your browser and choose Import downloaded file here. (${record.error || 'Download interrupted'})`;
 }
 function renderRow(entry) {
   const { url, record, doc } = entry;
@@ -118,20 +116,18 @@ function renderRow(entry) {
     const warnings = fileWarnings(e);
     if (warnings.length) { const warning = document.createElement('p'); warning.className = 'hint'; warning.textContent = warnings.join(' '); result.append(warning); }
   }
-  // Offer a format-specific picker only when there is evidence of a supported
-  // document type. Unknown and HTML failures must not be labelled as PDFs.
-  const format = recoveryFormat(record);
+  // A failed request cannot establish the format: inspect only selected file bytes.
   let importDocument, importFeedback;
-  if (!doc && format && record.outcome === 'error' && record.errorCode !== 'DOWNLOAD_TOO_LARGE') {
-    importDocument = document.createElement('button'); importDocument.type = 'button'; importDocument.className = 'secondary import-document-button'; importDocument.textContent = `Choose downloaded ${format.label}`;
+  if (!doc && record.outcome === 'error' && record.errorCode !== 'DOWNLOAD_TOO_LARGE') {
+    importDocument = document.createElement('button'); importDocument.type = 'button'; importDocument.className = 'secondary import-document-button'; importDocument.textContent = 'Import downloaded file';
     importDocument.addEventListener('click', () => {
       if (running || resetting || pickingDocument) return;
-      documentImportTarget = { url, finalURL: record.finalURL || url, projectId, formatId: format.id };
+      documentImportTarget = { url, finalURL: record.finalURL || url, projectId };
       pickingDocument = true;
-      documentImportMessage(url, `Choose the ${format.label} downloaded for this URL (up to 50 MiB).`);
+      documentImportMessage(url, 'Choose the file downloaded for this URL (up to 50 MiB).');
       // Keep the input outside the table: focus/storage updates may rebuild rows
       // while the native file chooser is open, before its change event arrives.
-      ui['import-document-picker'].accept = formatAccept(format);
+      ui['import-document-picker'].accept = '';
       ui['import-document-picker'].value = ''; ui['import-document-picker'].click();
     });
     importFeedback = document.createElement('p'); importFeedback.className = 'hint document-import-feedback'; importFeedback.setAttribute('role', 'status');
@@ -165,31 +161,30 @@ function documentImportMessage(url, message) {
 }
 ui['import-document-picker'].addEventListener('cancel', () => {
   pickingDocument = false;
-  if (documentImportTarget) documentImportMessage(documentImportTarget.url, `${formatById(documentImportTarget.formatId).label} selection cancelled.`);
+  if (documentImportTarget) documentImportMessage(documentImportTarget.url, 'File selection cancelled.');
   documentImportTarget = null;
 });
 ui['import-document-picker'].addEventListener('change', async () => {
   const target = documentImportTarget, file = ui['import-document-picker'].files?.[0];
   pickingDocument = false;
   if (!target || !file || resetting || target.projectId !== projectId) { documentImportTarget = null; return; }
-  const format = formatById(target.formatId);
   let started = false;
   await work(async () => {
     started = true;
     try {
-      documentImportMessage(target.url, `Importing ${format.label}… Reading and extracting text may take up to 30 seconds.`);
+      documentImportMessage(target.url, 'Importing file… Reading and extracting text may take up to 30 seconds.');
       await flushWrites();
-      const bytes = await readDocumentFile(file, format.id);
+      const { bytes, format } = await readImportedDocument(file);
       await storeCapture({ ...target, bytes, contentType: format.mime, source: 'local-file', capturedAt: new Date().toISOString() });
       if (resetting) return;
       documentImportMessage(target.url, `${format.label} imported. Original file saved; review its extraction result below.`);
       ui['saved-status'].textContent = `Downloaded ${format.label} added to the review list. Review its text before saving your corpus.`;
     } catch (error) {
-      documentImportMessage(target.url, `${format.label} not imported: ${error.message}`);
+      documentImportMessage(target.url, `File not imported: ${error.message}`);
       throw error;
     }
   });
-  if (!started && !resetting) documentImportMessage(target.url, `${format.label} not imported: another operation is running. Choose the file again when it finishes.`);
+  if (!started && !resetting) documentImportMessage(target.url, 'File not imported: another operation is running. Choose the file again when it finishes.');
   documentImportTarget = null; ui['import-document-picker'].value = '';
 });
 function remember(entry) {

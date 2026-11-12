@@ -49,7 +49,7 @@ test('session retry rejects HTTP errors, challenge HTML even with PDF MIME, and 
       () => new Response(new Uint8Array(FILE_LIMIT + 1))
     ]) {
       globalThis.fetch = async () => response();
-      await assert.rejects(captureTabDocument({ id: 1, url: 'https://example.org/p.pdf' }, blocked), /Choose downloaded PDF/);
+      await assert.rejects(captureTabDocument({ id: 1, url: 'https://example.org/p.pdf' }, blocked), /Import downloaded file/);
     }
     globalThis.fetch = async (url, options) => { assert.equal(options.credentials, 'omit'); return new Response(pdf); };
     await fetchFile('https://example.org/p.pdf', new AbortController().signal);
@@ -106,10 +106,10 @@ test('local PDF chooser keeps failures intact on invalid input and replaces only
   assert.equal(app.get('results').children[1], row, 'returning from the chooser must not rebuild its target row');
   input.files = [new Blob(['Not PDF'])]; await input.handlers.change();
   assert.equal((await storage.loadWorkspace('local')).entries.filter(entry => entry.doc).length, 0);
-  assert.match(app.get('status').textContent, /does not contain a PDF/);
-  assert.match(app.get('document-import-status').textContent, /PDF not imported/);
+  assert.match(app.get('status').textContent, /Unsupported file contents/);
+  assert.match(app.get('document-import-status').textContent, /File not imported/);
   await app.focus();
-  assert.match(app.get('results').children[1].children[1].children.find(item => item.className === 'hint document-import-feedback').textContent, /PDF not imported/);
+  assert.match(app.get('results').children[1].children[1].children.find(item => item.className === 'hint document-import-feedback').textContent, /File not imported/);
   app.get('results').children[1].children[1].children.find(item => item.className === 'secondary import-document-button').handlers.click();
   input.files = [new Blob([pdf])]; await input.handlers.change();
   const entries = (await storage.loadWorkspace('local')).entries;
