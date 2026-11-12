@@ -5,6 +5,8 @@ import { getExtensionAPI } from './extension-api.js';
 const ext = getExtensionAPI();
 import { adapterForURL, extractResults } from "./engines.js";
 import { addCollection } from "./collection.js";
+import { createProjectSearchTabs, matchesProjectSearch } from './project-search-tabs.js';
+let searchTabs;
 
 // Serialize storage read/modify/write operations, including Clear.
 let writes = Promise.resolve();
@@ -20,6 +22,7 @@ async function ensureProject() {
     // Recover a reset interrupted between the atomic database clear and the
     // storage.local notification. Never attach an old project's collections.
     project = { id: storedId, name: 'Untitled project' };
+    await searchTabs?.resetInQueue();
     await ext.storage.local.clear();
     await ext.storage.local.set({ project, collections: [], captureRevision: crypto.randomUUID() });
   }
@@ -48,7 +51,30 @@ async function workspaceTabs() {
 async function ensureWorkspace() {
   if (!(await workspaceTabs()).length) await ext.tabs.create({ url: ext.runtime.getURL('downloader.html'), active: false });
 }
+async function collectPage(tabId, projectId, expected) {
+  const tab = await ext.tabs.get(tabId);
+  const adapter = adapterForURL(tab.url);
+  if (!adapter) throw new Error('Open a Google, DuckDuckGo or Ecosia web results page first.');
+  const injected = await ext.scripting.executeScript({ target: { tabId: tab.id }, func: extractResults, args: [adapter] });
+  const result = injected[0]?.result;
+  if (!result || result.error) throw new Error(result?.error || 'Could not read this results page.');
+  if (expected && (!matchesProjectSearch(expected.record, result.pageURL) || new URL(result.pageURL).href.split('#')[0] !== expected.url)) throw new Error('The tab changed during collection; left open.');
+  if (!result.results.length) throw new Error(`No usable results found. ${result.unresolved ? `${result.unresolved} candidate links could not be resolved. ` : ''}The page may be a consent screen, CAPTCHA, or an unsupported layout. Try another engine or paste URLs in the workspace.`);
+  return serialize(async () => {
+    await assertProject(projectId);
+    const { collections = [] } = await ext.storage.local.get('collections');
+    const collection = { ...result, id: crypto.randomUUID(), collectedAt: new Date().toISOString() };
+    await ext.storage.local.set({ collections: addCollection(collections, collection) });
+    await ensureWorkspace();
+    return { count: result.results.length, unresolved: result.unresolved, engine: adapter.name };
+  });
+}
+searchTabs = createProjectSearchTabs({ ext, serialize, assertProject, collectPage });
 async function handle(message) {
+  if (message.type === 'open-project-search') return searchTabs.open(message);
+  if (message.type === 'get-project-search-tabs') return searchTabs.getState(message.projectId);
+  if (message.type === 'collect-project-search-tabs') return searchTabs.start(message.projectId);
+  if (message.type === 'stop-project-search-tabs') return searchTabs.stop(message.projectId);
   if (message.type === 'get-project') return serialize(async () => ({ project: await ensureProject() }));
   if (message.type === 'rename-project') return serialize(async () => {
     await assertProject(message.projectId);
@@ -60,6 +86,7 @@ async function handle(message) {
     // Serialize with collection/capture writes so stale work cannot survive reset.
     const project = { id: crypto.randomUUID(), name: 'Untitled project' };
     await resetStoredProject(project.id);
+    await searchTabs.resetInQueue();
     await ext.storage.local.clear();
     await ext.storage.local.set({ project, collections: [], captureRevision: crypto.randomUUID() });
     return { project };
@@ -93,23 +120,7 @@ async function handle(message) {
   }
   if (message.type !== "collect") throw new Error("Unknown request");
   const project = await serialize(ensureProject);
-  const tab = await ext.tabs.get(message.tabId);
-  const adapter = adapterForURL(tab.url);
-  if (!adapter) throw new Error("Open a Google, DuckDuckGo or Ecosia web results page first.");
-  const injected = await ext.scripting.executeScript({
-    target: { tabId: tab.id }, func: extractResults, args: [adapter]
-  });
-  const result = injected[0]?.result;
-  if (!result || result.error) throw new Error(result?.error || "Could not read this results page.");
-  if (!result.results.length) throw new Error(`No usable results found. ${result.unresolved ? `${result.unresolved} candidate links could not be resolved. ` : ""}The page may be a consent screen, CAPTCHA, or an unsupported layout. Try another engine or paste URLs in the workspace.`);
-  return serialize(async () => {
-    await assertProject(project.id);
-    const { collections = [] } = await ext.storage.local.get("collections");
-    const collection = { ...result, id: crypto.randomUUID(), collectedAt: new Date().toISOString() };
-    await ext.storage.local.set({ collections: addCollection(collections, collection) });
-    await ensureWorkspace();
-    return { count: result.results.length, unresolved: result.unresolved, engine: adapter.name };
-  });
+  return collectPage(message.tabId, project.id);
 }
 ext.runtime.onMessage.addListener((message, sender, respond) => {
   // Only our bundled UI can call this handler. There are no content scripts.

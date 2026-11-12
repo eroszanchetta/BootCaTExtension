@@ -32,7 +32,7 @@ export function initProjectUI({ onReset, onRename }) {
     finally { saving--; }
   });
   button.addEventListener('click', async () => {
-    if (!window.confirm('Create a new project? This clears the current project name, saved searches, URL list, downloaded pages, corpus texts, selections, pending page saves and preview everywhere in BootCaT. Export your corpus first if you want to keep it.')) return;
+    if (!window.confirm('Create a new project? This clears the current project name, saved searches, search-tab tracking, URL list, downloaded pages, corpus texts, selections, pending page saves and preview everywhere in BootCaT. Export your corpus first if you want to keep it.')) return;
     name.disabled = button.disabled = true;
     try {
       const reply = await ext.runtime.sendMessage({ type: 'new-project' });

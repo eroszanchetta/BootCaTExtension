@@ -1,0 +1,188 @@
+import { adapterForURL, searchURL } from './engines.js';
+export const SEARCH_TABS_KEY = 'projectSearchTabs';
+const empty = () => ({ tabs: [], batch: null });
+const canonical = value => { const url = new URL(value); url.hash = ''; return url.href; };
+const queryText = value => value.normalize('NFC').replace(/\s+/gu, ' ').trim();
+export function matchesProjectSearch(record, value) {
+  try {
+    const adapter = adapterForURL(value), url = new URL(value);
+    return !url.username && !url.password && adapter?.id === record.engine && queryText(url.searchParams.get(adapter.queryParam) || '') === queryText(record.query);
+  } catch { return false; }
+}
+function isProviderGate(record, value) {
+  try {
+    const url = new URL(value), host = url.hostname.replace(/^www\./, '');
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return false;
+    const google = /^(?:(?:consent|accounts)\.)?google\.[a-z]{2,3}(\.[a-z]{2})?$/.test(host);
+    const provider = record.engine === 'google' ? google : record.engine === 'duckduckgo' ? /^(html\.)?duckduckgo\.com$/.test(host) : record.engine === 'ecosia' && host === 'ecosia.org';
+    return !!provider && (/^\/(sorry|captcha|challenge|consent|anomaly)(\/|\.|$)/i.test(url.pathname) || (record.engine === 'google' && /^(consent|accounts)\./.test(host)));
+  } catch { return false; }
+}
+export function createProjectSearchTabs({ ext, serialize, assertProject, collectPage }) {
+  const workerToken = crypto.randomUUID(), navigation = new Map();
+  let known = new Set(), activeBatch = null;
+  async function read() {
+    if (!ext.storage.session) throw new Error('This browser does not support safe session tab tracking.');
+    const data = (await ext.storage.session.get(SEARCH_TABS_KEY))[SEARCH_TABS_KEY] || empty();
+    known = new Set(data.tabs.map(record => record.tabId)); return data;
+  }
+  async function write(data) {
+    await ext.storage.session.set({ [SEARCH_TABS_KEY]: data });
+    known = new Set(data.tabs.map(record => record.tabId));
+    for (const id of navigation.keys()) if (!known.has(id)) navigation.delete(id);
+  }
+  // Caller already holds the background write queue, including project reset.
+  async function resetInQueue() {
+    if (activeBatch) activeBatch.stopped = true;
+    activeBatch = null;
+    await write(empty());
+  }
+  async function open({ projectId, engine, query, active }) {
+    if (typeof query !== 'string' || !query.trim()) throw new Error('Enter a search query first.');
+    const url = searchURL(engine, query);
+    return serialize(async () => {
+      await assertProject(projectId);
+      const data = await read();
+      const tab = await ext.tabs.create({ url, active: active !== false });
+      if (!Number.isInteger(tab?.id)) throw new Error('The browser did not return a search tab ID.');
+      data.tabs.push({ tabId: tab.id, token: crypto.randomUUID(), projectId, engine, query, createdURL: url, revision: 0 });
+      try { await write(data); }
+      catch (error) { throw new Error(`The search tab opened but could not be tracked. Collect it manually. (${error.message})`); }
+      return { tabId: tab.id };
+    });
+  }
+  function status(data, projectId) {
+    const batch = data.batch?.projectId === projectId ? data.batch : null;
+    return { count: data.tabs.filter(record => record.projectId === projectId).length, batch };
+  }
+  async function getState(projectId) {
+    return serialize(async () => {
+      await assertProject(projectId); const data = await read();
+      if (data.batch?.running && (data.batch.workerToken !== workerToken || activeBatch?.id !== data.batch.id)) {
+        data.batch.running = false; data.batch.interrupted = true; await write(data);
+      }
+      return status(data, projectId);
+    });
+  }
+  async function forget(tabId) {
+    return serialize(async () => {
+      const data = await read(), count = data.tabs.length;
+      data.tabs = data.tabs.filter(record => record.tabId !== tabId);
+      if (data.tabs.length !== count) await write(data);
+    });
+  }
+  ext.tabs.onRemoved?.addListener(tabId => { forget(tabId).catch(() => {}); });
+  ext.tabs.onReplaced?.addListener((addedId, removedId) => { forget(removedId).catch(() => {}); });
+  ext.tabs.onUpdated?.addListener((tabId, change, tab) => {
+    if (!known.has(tabId)) return;
+    if (!change.url && change.status !== 'loading') return;
+    // Invalidate synchronously too: a navigation may arrive while tabs.get is
+    // pending immediately before a close. Ignore content of untracked tabs.
+    if (known.has(tabId)) navigation.set(tabId, (navigation.get(tabId) || 0) + 1);
+    serialize(async () => {
+      const data = await read(), record = data.tabs.find(item => item.tabId === tabId);
+      if (!record) return;
+      const url = change.url || tab?.pendingUrl || tab?.url;
+      if (url && !matchesProjectSearch(record, url) && !isProviderGate(record, url)) data.tabs = data.tabs.filter(item => item !== record);
+      else record.revision++;
+      await write(data);
+    }).catch(() => {});
+  });
+  ext.runtime.onStartup?.addListener(() => serialize(resetInQueue).catch(() => {}));
+  ext.runtime.onInstalled?.addListener(() => serialize(resetInQueue).catch(() => {}));
+  async function snapshot(projectId, original) {
+    return serialize(async () => {
+      await assertProject(projectId); const data = await read();
+      const record = data.tabs.find(item => item.tabId === original.tabId && item.token === original.token && item.projectId === projectId);
+      if (!record) return { outcome: 'skipped', reason: 'Tab was closed or is no longer tracked.' };
+      let tab;
+      try { tab = await ext.tabs.get(record.tabId); }
+      catch { data.tabs = data.tabs.filter(item => item !== record); await write(data); return { outcome: 'skipped', reason: 'Tab has been closed.' }; }
+      if (!tab.url && !tab.pendingUrl) return { outcome: 'skipped', reason: 'Cannot read this tab. Check website access permissions, then retry; tab left open.' };
+      if (!matchesProjectSearch(record, tab.pendingUrl || tab.url)) {
+        if (isProviderGate(record, tab.pendingUrl || tab.url)) return { outcome: 'skipped', reason: 'Search-provider challenge, consent or sign-in page. Complete it in the tab, then retry collection.' };
+        data.tabs = data.tabs.filter(item => item !== record); await write(data);
+        return { outcome: 'skipped', reason: 'Tab moved to another page or query; left open.' };
+      }
+      if (tab.discarded || tab.status !== 'complete') return { outcome: 'skipped', reason: 'Tab is loading or unloaded; open it and retry collection.' };
+      return { record: { ...record }, url: canonical(tab.url), navigation: navigation.get(record.tabId) || 0 };
+    });
+  }
+  async function closeSaved(projectId, saved, run) {
+    return serialize(async () => {
+      await assertProject(projectId); const data = await read(), expected = saved.record;
+      const record = data.tabs.find(item => item.tabId === expected.tabId && item.token === expected.token && item.projectId === projectId);
+      if (!record || record.revision !== expected.revision) return { reason: 'Results saved, but the tab changed; left open.' };
+      let tab;
+      try { tab = await ext.tabs.get(record.tabId); }
+      catch { data.tabs = data.tabs.filter(item => item !== record); await write(data); return { reason: 'Results saved; tab was already closed.' }; }
+      if (run.stopped) return { reason: 'Results saved; stopped before closing the tab.' };
+      if (tab.status !== 'complete' || tab.discarded || !matchesProjectSearch(record, tab.pendingUrl || tab.url) || canonical(tab.url) !== saved.url || (navigation.get(record.tabId) || 0) !== saved.navigation) {
+        return { reason: 'Results saved, but the tab navigated or started loading; left open.' };
+      }
+      await ext.tabs.remove(record.tabId);
+      data.tabs = data.tabs.filter(item => item !== record); await write(data);
+      return { closed: true };
+    });
+  }
+  async function updateBatch(run, change) {
+    return serialize(async () => {
+      const data = await read();
+      if (data.batch?.id !== run.id || data.batch.projectId !== run.projectId) return false;
+      change(data.batch); await write(data); return true;
+    });
+  }
+  async function runBatch(run, records) {
+    try {
+      for (const record of records) {
+        if (run.stopped) break;
+        let outcome = 'failed', saved = false, reason;
+        try {
+          const snap = await snapshot(run.projectId, record);
+          if (!snap.record) { outcome = snap.outcome; reason = snap.reason; }
+          else {
+            const result = await collectPage(record.tabId, run.projectId, snap); saved = true;
+            if (run.stopped) { outcome = 'saved'; reason = 'Results saved; stopped before closing the tab.'; }
+            else {
+              if (result?.unresolved) { outcome = 'partial'; reason = 'Partial results saved. Some links could not be resolved; tab left open for inspection.'; }
+              else { const closed = await closeSaved(run.projectId, snap, run); outcome = closed.closed ? 'closed' : 'saved'; reason = closed.reason; }
+            }
+          }
+        } catch (error) { reason = `${saved ? 'Results saved, but tab could not be closed: ' : ''}${error.message}`; }
+        const exists = await updateBatch(run, batch => {
+          batch.processed++; if (saved) batch.saved++;
+          if (outcome === 'closed') batch.closed++; else if (outcome === 'skipped') batch.skipped++; else batch.leftOpen++;
+          if (batch.details.length < 100) batch.details.push({ query: record.query, outcome, reason: reason || 'Results saved and tab closed.' });
+        });
+        if (!exists) break;
+      }
+    } finally {
+      try { await updateBatch(run, batch => { batch.running = false; batch.stopped = run.stopped; }); }
+      finally { if (activeBatch === run) activeBatch = null; }
+    }
+  }
+  async function start(projectId) {
+    const prepared = await serialize(async () => {
+      await assertProject(projectId);
+      if (activeBatch) throw new Error('Project search-tab collection is already running.');
+      const data = await read(), records = data.tabs.filter(record => record.projectId === projectId);
+      const run = { id: crypto.randomUUID(), projectId, stopped: false };
+      data.batch = { id: run.id, projectId, workerToken, running: true, total: records.length, processed: 0, saved: 0, closed: 0, skipped: 0, leftOpen: 0, details: [] };
+      await write(data); activeBatch = run;
+      return { run, records, state: status(data, projectId) };
+    });
+    runBatch(prepared.run, prepared.records).catch(() => {});
+    return prepared.state;
+  }
+  async function stop(projectId) {
+    if (activeBatch?.projectId === projectId) activeBatch.stopped = true;
+    return serialize(async () => {
+      await assertProject(projectId);
+      if (activeBatch?.projectId === projectId) activeBatch.stopped = true;
+      const data = await read();
+      if (data.batch?.projectId === projectId && data.batch.running) { data.batch.stopping = true; await write(data); }
+      return status(data, projectId);
+    });
+  }
+  return { open, getState, start, stop, resetInQueue };
+}
