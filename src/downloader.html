@@ -103,11 +103,19 @@
       <input id="import-document-picker" type="file" aria-label="Choose a downloaded document for the selected failed URL" hidden>
       <p id="document-import-status" role="status" aria-live="polite"></p>
       <p class="hint">Check below to see the download status of each URL</p>
-      <button id="export" disabled>Save Corpus</button>
-      <p class="hint">Includes all original downloaded files, selected corpus text files, search sources and extraction metadata.</p>
-      <div class="table-wrap"><table><thead><tr><th scope="col">Include</th><th scope="col">URL</th><th scope="col">Download / extraction</th><th scope="col">Delete</th></tr></thead><tbody id="results"></tbody></table></div>
+      <div id="review-lists">
+      <div class="table-wrap"><table aria-label="Documents with usable text"><thead><tr><th scope="col">Include</th><th scope="col">URL</th><th scope="col">Download / extraction</th><th scope="col">Delete</th></tr></thead><tbody id="results"></tbody></table></div>
+      <div id="attention-section" class="attention-section" aria-labelledby="attention-heading" hidden>
+        <h3 id="attention-heading">Documents needing attention</h3>
+        <p id="attention-count" class="hint" role="status" aria-live="polite">0 documents</p>
+        <p class="hint">These documents have not produced usable corpus text. Resolve download problems using the guidance below, or remove unwanted documents. Successfully recovered documents return to the main list.</p>
+        <div class="table-wrap"><table aria-labelledby="attention-heading"><thead><tr><th scope="col">Include</th><th scope="col">URL</th><th scope="col">Download / extraction</th><th scope="col">Delete</th></tr></thead><tbody id="problem-results"></tbody></table></div>
+      </div>
+      </div>
       <p id="storage-status" class="hint" role="status" aria-live="polite">Loading saved project…</p>
       <p id="corpus-status" role="status" aria-live="polite">Download pages to extract corpus text.</p>
+      <div class="corpus-export"><button id="export" disabled>Save corpus</button>
+      <p class="hint">Includes all original downloaded files, selected corpus text files, search sources and extraction metadata.</p></div>
       </div></details>
     </section>
     <section id="preview-section" aria-labelledby="preview-title" tabindex="-1">

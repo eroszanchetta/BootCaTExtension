@@ -98,19 +98,19 @@ test('local PDF chooser keeps failures intact on invalid input and replaces only
   globalThis.indexedDB = new IDBFactory();
   const app = await workspace('local', { fetch: async () => { throw new Error('HTTP 403'); } });
   await app.input('urls', 'https://example.org/one.pdf\nhttps://example.org/two.pdf'); await app.click('start');
-  const button = app.get('results').children[1].children[1].children.find(item => item.className === 'secondary import-document-button');
+  const button = app.get('problem-results').children[1].children[1].children.find(item => item.className === 'secondary import-document-button');
   const input = app.get('import-document-picker');
   button.handlers.click();
-  const row = app.get('results').children[1];
+  const row = app.get('problem-results').children[1];
   await app.focus();
-  assert.equal(app.get('results').children[1], row, 'returning from the chooser must not rebuild its target row');
+  assert.equal(app.get('problem-results').children[1], row, 'returning from the chooser must not rebuild its target row');
   input.files = [new Blob(['Not PDF'])]; await input.handlers.change();
   assert.equal((await storage.loadWorkspace('local')).entries.filter(entry => entry.doc).length, 0);
   assert.match(app.get('status').textContent, /Unsupported file contents/);
   assert.match(app.get('document-import-status').textContent, /File not imported/);
   await app.focus();
-  assert.match(app.get('results').children[1].children[1].children.find(item => item.className === 'hint document-import-feedback').textContent, /File not imported/);
-  app.get('results').children[1].children[1].children.find(item => item.className === 'secondary import-document-button').handlers.click();
+  assert.match(app.get('problem-results').children[1].children[1].children.find(item => item.className === 'hint document-import-feedback').textContent, /File not imported/);
+  app.get('problem-results').children[1].children[1].children.find(item => item.className === 'secondary import-document-button').handlers.click();
   input.files = [new Blob([pdf])]; await input.handlers.change();
   const entries = (await storage.loadWorkspace('local')).entries;
   assert.equal(entries.length, 2); assert.equal(entries.find(entry => entry.url.endsWith('/one.pdf')).doc, null);
@@ -128,7 +128,7 @@ test('manually selected PDF above 10 MiB imports and exports exact original', as
     return { ...extracted('Large PDF text'), format: 'pdf' };
   } });
   await app.input('urls', 'https://example.org/L15.pdf'); await app.click('start');
-  app.get('results').children[0].children[1].children.find(item => item.className === 'secondary import-document-button').handlers.click();
+  app.get('problem-results').children[0].children[1].children.find(item => item.className === 'secondary import-document-button').handlers.click();
   app.get('import-document-picker').files = [new Blob([bytes])]; await app.get('import-document-picker').handlers.change();
   const entry = (await storage.loadWorkspace('large')).entries[0];
   assert.equal(entry.record.bytes, 15690948); assert.equal(entry.doc.extraction.status, 'ok');
@@ -144,7 +144,7 @@ test('successful downloads with failed PDF or HTML extraction do not offer PDF r
     await app.input('urls', `https://example.org/document.${format}`); await app.click('start');
     const entry = app.state().entries[0]; assert.ok(entry.doc);
     assert.ok(await storage.readOriginal('failed-extraction', entry.doc.filename));
-    assert.equal(app.get('results').children[0].children[1].children.some(item => item.className === 'secondary import-document-button'), false);
+    assert.equal(app.get('problem-results').children[0].children[1].children.some(item => item.className === 'secondary import-document-button'), false);
   }
 });
 
@@ -152,11 +152,11 @@ test('cancelling the native PDF chooser allows focus refresh and a subsequent se
   globalThis.indexedDB = new IDBFactory();
   const app = await workspace('cancel', { fetch: async () => { throw new Error('HTTP 403'); } });
   await app.input('urls', 'https://example.org/failed.pdf'); await app.click('start');
-  app.get('results').children[0].children[1].children.find(item => item.className === 'secondary import-document-button').handlers.click();
+  app.get('problem-results').children[0].children[1].children.find(item => item.className === 'secondary import-document-button').handlers.click();
   app.get('import-document-picker').handlers.cancel();
   await app.focus();
   assert.match(app.get('document-import-status').textContent, /selection cancelled/);
-  app.get('results').children[0].children[1].children.find(item => item.className === 'secondary import-document-button').handlers.click();
+  app.get('problem-results').children[0].children[1].children.find(item => item.className === 'secondary import-document-button').handlers.click();
   app.get('import-document-picker').files = [new Blob([pdf])]; await app.get('import-document-picker').handlers.change();
   assert.ok(app.state().entries[0].doc);
 });

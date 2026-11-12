@@ -17,7 +17,7 @@ import { DEFUDDLE_AVAILABLE } from './defuddle-loader.js';
 
 initWorkspaceSections();
 const ext = getExtensionAPI(), VERSION = '0.4.0';
-const ui = Object.fromEntries(['urls', 'start', 'stop', 'export', 'status', 'progress', 'results', 'corpus-status', 'preview-title', 'preview-meta', 'preview-text', 'extractor', 'urls-warning', 'storage-status', 'saved-status', 'engine', 'import-document-picker', 'document-import-status'].map(id => [id, document.getElementById(id)]));
+const ui = Object.fromEntries(['urls', 'start', 'stop', 'export', 'status', 'progress', 'results', 'problem-results', 'attention-section', 'attention-count', 'corpus-status', 'preview-title', 'preview-meta', 'preview-text', 'extractor', 'urls-warning', 'storage-status', 'saved-status', 'engine', 'import-document-picker', 'document-import-status'].map(id => [id, document.getElementById(id)]));
 let ready = false, running = false, stopping = false, resetting = false, controller = null;
 let projectId, state, entries = [], searchUI, seedsUI, projectTabsUI, archiveURL = null, previewURL = null, previewFilename = null;
 let writes = Promise.resolve(), pendingWrites = 0, writeError = null, capturesPending = false, refreshing = false;
@@ -66,21 +66,33 @@ function updateControls() {
   ui.start.textContent = !running && ready && ['running', 'stopped'].includes(state.batch.state) && pendingURLs().length ? 'Resume downloads' : 'Download URLs';
   for (const items of controls.values()) { items.trash.disabled = running; if (items.importDocument) items.importDocument.disabled = running; if (items.checkbox) items.checkbox.disabled = running || items.failed; }
 }
+const needsAttention = entry => !entry.doc || entry.doc.extraction.status !== 'ok';
+function markPreviewRow(url, row) {
+  const selected = url === previewURL;
+  row.classList.toggle('preview-selected', selected);
+  row.setAttribute('aria-current', selected ? 'true' : 'false');
+}
+function updatePreviewSelection() {
+  for (const [url, row] of rows) markPreviewRow(url, row);
+}
 function updateCounts() {
+  const problems = entries.filter(needsAttention).length;
+  ui['attention-section'].hidden = !problems;
+  ui['attention-count'].textContent = `${problems.toLocaleString()} document${problems === 1 ? '' : 's'}`;
   const documents = entries.filter(entry => entry.doc?.extraction.status === 'ok');
   const included = documents.filter(entry => entry.doc.extraction.included);
   ui['corpus-status'].textContent = `${included.length} of ${documents.length} extracted texts included · ${included.reduce((sum, entry) => sum + entry.doc.extraction.characters, 0).toLocaleString()} characters. Unchecked pages retain their originals.`;
   storageMessage();
 }
 function clearPreview() {
-  previewURL = previewFilename = null;
+  previewURL = previewFilename = null; updatePreviewSelection();
   ui['preview-title'].textContent = 'Preview Text'; ui['preview-meta'].textContent = 'Click a Preview text button in the review list to display its text here.'; ui['preview-text'].value = '';
 }
 async function preview(doc) {
   openWorkspaceSection('preview-section', { scroll: true });
   const e = doc.extraction;
   const warnings = fileWarnings(e);
-  previewURL = doc.url; previewFilename = doc.filename; const selected = doc.filename;
+  previewURL = doc.url; previewFilename = doc.filename; const selected = doc.filename; updatePreviewSelection();
   ui['preview-meta'].textContent = `${e.title ? e.title + ' · ' : ''}${doc.url} · ${e.extractor || 'Unsupported format'} · ${e.characters.toLocaleString()} characters${e.pageCount ? ` · ${e.pageCount} pages` : ''}${warnings.length ? ` · ${warnings.join(' ')}` : ''}`;
   ui['preview-text'].value = 'Loading text…';
   try {
@@ -151,8 +163,11 @@ function renderRow(entry) {
     ui.status.textContent = 'Page deleted from the saved project and future exports.';
   }));
   actions.append(trash); tr.append(selection, source, result, actions);
-  const old = rows.get(url); if (old) old.replaceWith(tr); else ui.results.append(tr);
-  rows.set(url, tr); controls.set(url, { trash, checkbox, importDocument, importFeedback, failed: doc?.extraction.status !== 'ok' });
+  const target = needsAttention(entry) ? ui['problem-results'] : ui.results;
+  const old = rows.get(url);
+  if (old?.parentNode === target) old.replaceWith(tr);
+  else { old?.remove(); target.append(tr); }
+  rows.set(url, tr); markPreviewRow(url, tr); controls.set(url, { trash, checkbox, importDocument, importFeedback, failed: doc?.extraction.status !== 'ok' });
   if (importDocument) importDocument.disabled = running;
   trash.disabled = running; if (checkbox) checkbox.disabled = running || doc.extraction.status !== 'ok';
 }
@@ -196,7 +211,7 @@ function remember(entry) {
   if (previewURL === entry.url) clearPreview(); renderRow(entry); invalidateArchive(); updateCounts();
 }
 function renderEntries() {
-  ui.results.replaceChildren(); rows.clear(); controls.clear();
+  ui.results.replaceChildren(); ui['problem-results'].replaceChildren(); rows.clear(); controls.clear();
   for (const entry of entries) renderRow(entry);
 }
 async function restore({ draft = true } = {}) {

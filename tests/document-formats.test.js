@@ -34,7 +34,7 @@ test('all failed download URLs share generic guidance and an unrestricted picker
   globalThis.indexedDB = new IDBFactory();
   const app = await workspace('formats', { fetch: async () => { throw new Error('HTTP 403'); } });
   await app.input('urls', 'https://example.org/page.html\nhttps://example.org/report.pdf\nhttps://example.org/report.docx\nhttps://example.org/download?id=1'); await app.click('start');
-  const rows = app.get('results').children, button = row => row.children[1].children.find(item => item.className === 'secondary import-document-button');
+  const rows = app.get('problem-results').children, button = row => row.children[1].children.find(item => item.className === 'secondary import-document-button');
   for (const row of rows) {
     assert.equal(button(row).textContent, 'Import downloaded file');
     assert.match(row.children[2].textContent, /Add page to corpus/);
@@ -50,7 +50,7 @@ test('DOCX recovery replaces only its failed row, preserves the original and per
     assert.equal(type, DOCX_MIME); assert.deepEqual(bytes, original); return { ...extracted('Recovered DOCX text'), format: 'docx' };
   } });
   await app.input('urls', 'https://example.org/blocked.pdf'); await app.click('start');
-  app.get('results').children[0].children[1].children.find(item => item.className === 'secondary import-document-button').handlers.click();
+  app.get('problem-results').children[0].children[1].children.find(item => item.className === 'secondary import-document-button').handlers.click();
   app.get('import-document-picker').files = [new Blob([original])]; await app.get('import-document-picker').handlers.change();
   const entry = (await storage.loadWorkspace('docx-import')).entries[0];
   assert.equal(entry.record.contentType, DOCX_MIME); assert.match(entry.doc.filename, /\.docx$/); assert.equal(entry.record.source, 'local-file');
@@ -66,5 +66,5 @@ test('response MIME hints do not change generic recovery controls', async () => 
   const app = await workspace('mime', { fetch: async () => { throw Object.assign(new Error('HTTP 403'), { contentType: DOCX_MIME, finalURL: 'https://example.org/resource?id=1' }); } });
   await app.input('urls', 'https://example.org/resource?id=1'); await app.click('start');
   const entry = (await storage.loadWorkspace('mime')).entries[0]; assert.equal(entry.record.contentType, DOCX_MIME);
-  assert.equal(app.get('results').children[0].children[1].children.find(item => item.className === 'secondary import-document-button').textContent, 'Import downloaded file');
+  assert.equal(app.get('problem-results').children[0].children[1].children.find(item => item.className === 'secondary import-document-button').textContent, 'Import downloaded file');
 });
