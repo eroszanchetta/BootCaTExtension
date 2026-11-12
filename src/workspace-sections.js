@@ -1,8 +1,11 @@
 const sectionIds = ['seeds-section', 'search-section', 'urls-section', 'review-section', 'preview-section'];
-export function openWorkspaceSection(id) {
+export function openWorkspaceSection(id, { scroll = false } = {}) {
   const section = document.getElementById(id);
   const panel = section?.querySelector('details.workspace-panel');
-  if (panel) panel.open = true;
+  if (panel) {
+    panel.open = true;
+    if (scroll) section.scrollIntoView({ block: 'start' });
+  }
 }
 export function initWorkspaceSections() {
   for (const id of sectionIds) {

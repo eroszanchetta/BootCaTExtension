@@ -77,7 +77,7 @@ function clearPreview() {
   ui['preview-title'].textContent = 'Preview Text'; ui['preview-meta'].textContent = 'Click a Preview text button in the review list to display its text here.'; ui['preview-text'].value = '';
 }
 async function preview(doc) {
-  openWorkspaceSection('preview-section');
+  openWorkspaceSection('preview-section', { scroll: true });
   const e = doc.extraction;
   const warnings = fileWarnings(e);
   previewURL = doc.url; previewFilename = doc.filename; const selected = doc.filename;
@@ -234,6 +234,7 @@ async function work(task) {
 }
 ui.stop.addEventListener('click', () => { stopping = true; controller?.abort(); ui.stop.disabled = true; ui.status.textContent = 'Stopping… Completed pages are saved in this browser.'; });
 ui.start.addEventListener('click', () => work(async () => {
+  openWorkspaceSection('review-section', { scroll: true });
   await flushWrites();
   const parsed = parseURLs(ui.urls.value);
   if (parsed.errors.length || !parsed.urls.length) { ui.status.textContent = parsed.errors.join(' · ') || 'Please enter at least one URL.'; return; }
