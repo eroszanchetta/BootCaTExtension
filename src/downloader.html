@@ -22,8 +22,8 @@
     </div>
   </div>
   <main>
-    <header><span class="badge">BootCaT · 0.4</span><h1>Collect pages from the web.</h1>
-      <p>Find pages, extract useful text, and build a local corpus.</p></header>
+    <header><span class="badge">BootCaT · 2.0</span><h1>Create corpora from the web</h1>
+      <p>Find pages, extract useful text, and build a corpus</p></header>
     <section aria-labelledby="project-heading">
       <h2 id="project-heading">Project</h2>
       <label for="project-name">Project name</label>
@@ -46,7 +46,8 @@
       <p id="tuple-status" role="status" aria-live="polite"></p>
       <label for="tuples">Tuples (editable, one per line)</label>
       <textarea id="tuples" spellcheck="false" disabled placeholder="Generate tuples above, then edit them here."></textarea>
-      <button id="prepare-queries" type="button" disabled>Create search queries</button>
+      <p class="hint">Each tuple will become a query to the selected search engine</p>
+      <button id="prepare-queries" type="button" disabled>Create search queries</button></section>
       <p class="hint">Uses the search engine selected below. Queries open only when you click a query link or Open all queries.</p>
     </section>
     <section id="search-section" aria-labelledby="search-heading" tabindex="-1">
