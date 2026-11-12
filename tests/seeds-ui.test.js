@@ -128,3 +128,16 @@ test('counters and exact combination limits follow edits, duplicates, tuple leng
   assert.ok(BigInt(app.get('tuple-count').max) > BigInt(Number.MAX_SAFE_INTEGER));
   assert.match(app.get('tuple-count-hint').textContent, /unique tuples/);
 });
+
+test('generation needs five distinct seeds while manual tuples work with none and remain editable during generation', async () => {
+  const app = fixture();
+  assert.equal(app.get('generate-tuples').disabled, true); assert.equal(app.get('tuples').disabled, false);
+  app.input('tuples', 'manual query'); await app.click('prepare-queries');
+  assert.equal(app.get('prepared-queries').children[0].children[0].textContent, 'manual query');
+  app.input('seeds', 'a\nb\nc\nd\na'); assert.equal(app.get('generate-tuples').disabled, true);
+  app.input('seeds', 'a\nb\nc\nd\ne'); assert.equal(app.get('generate-tuples').disabled, false);
+  const generation = app.click('generate-tuples'); assert.equal(app.get('tuples').disabled, false);
+  app.input('tuples', 'edited during generation'); await generation;
+  assert.equal(app.get('tuples').value, 'edited during generation');
+  app.input('seeds', 'a\nb'); assert.equal(app.get('generate-tuples').disabled, true); assert.equal(app.get('tuples').disabled, false);
+});

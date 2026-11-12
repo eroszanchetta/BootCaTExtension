@@ -10,7 +10,9 @@ export function initSeedsUI({ draft = {}, onChange = () => {}, getProjectId = ()
   const engineName = () => ENGINES.find(engine => engine.id === engineID())?.name || engineID();
   const busy = () => generating || opening;
   function controls() {
-    for (const id of ['seeds', 'tuple-length', 'tuple-count', 'tuples', 'generate-tuples']) el(id).disabled = busy();
+    for (const id of ['seeds', 'tuple-length', 'tuple-count']) el(id).disabled = busy();
+    el('tuples').disabled = false;
+    el('generate-tuples').disabled = busy() || parseSeeds(el('seeds').value).length < 5;
     el('prepare-queries').disabled = busy() || !el('tuples').value.trim();
     el('open-all-queries').disabled = busy() || !prepared.length;
     el('stop-tuples').hidden = !generating; el('stop-query-tabs').hidden = !opening;
@@ -71,6 +73,8 @@ export function initSeedsUI({ draft = {}, onChange = () => {}, getProjectId = ()
     el(id).addEventListener('change', () => { seedCount({ clamp: true }); onChange({ tupleLength: el('tuple-length').value, tupleCount: el('tuple-count').value }); });
   }
   el('tuples').addEventListener('input', () => {
+    // Manual edits take priority over an in-progress generated replacement.
+    controller?.abort();
     prepared = []; page = 0;
     onChange({ tuples: el('tuples').value, preparedQueries: [] });
     el('query-status').textContent = 'Tuples edited. Click Create search queries to update the query list.';

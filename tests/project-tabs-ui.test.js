@@ -23,7 +23,7 @@ test('project-tab UI shows running/final outcomes and ignores replies from a des
     if (!elements.has(id)) elements.set(id, { textContent: '', children: [], handlers: {}, addEventListener(type, fn) { this.handlers[type] = fn; }, replaceChildren() { this.children = []; }, append(child) { this.children.push(child); } });
     return elements.get(id);
   };
-  const context = vm.createContext({ SEARCH_TABS_KEY, getProjectId: () => 'p', document: { getElementById: get, createElement: () => ({}) },
+  const context = vm.createContext({ openWorkspaceSection() {}, SEARCH_TABS_KEY, getProjectId: () => 'p', document: { getElementById: get, createElement: () => ({}) },
     getExtensionAPI: () => ({ storage: { onChanged: { addListener(fn) { changed = fn; } } }, runtime: { sendMessage: async message => { requests.push(message); return reply; } } }) });
   vm.runInContext(source + '\nglobalThis.ui = initProjectTabsUI({getProjectId});', context);
   await new Promise(resolve => setImmediate(resolve)); assert.equal(get('collect-project-tabs').disabled, false);
@@ -38,4 +38,38 @@ test('project-tab UI shows running/final outcomes and ignores replies from a des
   const previous = get('project-tab-status').textContent; vm.runInContext('ui.destroy()', context);
   reply = { ok: true, count: 100, batch: null }; changed({ [SEARCH_TABS_KEY]: {} }, 'session');
   await new Promise(resolve => setImmediate(resolve)); assert.equal(get('project-tab-status').textContent, previous);
+});
+
+test('only the current fully successful collection jumps to URLs, once; partial, stopped and historical batches stay put', async () => {
+  const source = (await readFile(new URL('../src/project-tabs-ui.js', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '').replace(/^export /gm, '');
+  const finished = { id: 'batch', running: false, total: 2, processed: 2, saved: 2, closed: 2, leftOpen: 0, skipped: 0, details: [] };
+  for (const scenario of [
+    { batch: finished, count: 0, jumps: 1 },
+    { batch: finished, count: 1, jumps: 0 },
+    { batch: { ...finished, closed: 1, leftOpen: 1 }, count: 1, jumps: 0 },
+    { batch: { ...finished, closed: 1, skipped: 1 }, count: 0, jumps: 0 },
+    { batch: { ...finished, stopped: true }, count: 0, jumps: 0 },
+    { batch: { ...finished, interrupted: true }, count: 0, jumps: 0 },
+    { batch: finished, count: 0, jumps: 1, fast: true }
+  ]) {
+    const elements = new Map(), jumps = []; let changed, reply = { ok: true, count: 0, batch: finished };
+    const get = id => {
+      if (!elements.has(id)) elements.set(id, { handlers: {}, addEventListener(type, fn) { this.handlers[type] = fn; }, replaceChildren() {}, append() {} });
+      return elements.get(id);
+    };
+    const context = vm.createContext({ SEARCH_TABS_KEY, getProjectId: () => 'p', document: { getElementById: get, createElement: () => ({}) },
+      openWorkspaceSection: (id, options) => jumps.push([id, options.scroll]),
+      getExtensionAPI: () => ({ storage: { onChanged: { addListener(fn) { changed = fn; } } }, runtime: { sendMessage: async () => reply } }) });
+    vm.runInContext(source + '\nglobalThis.ui = initProjectTabsUI({getProjectId});', context);
+    await new Promise(resolve => setImmediate(resolve)); assert.equal(jumps.length, 0, 'restoring a historical completion must not jump');
+    reply = { ok: true, count: 2, batch: { ...finished, running: true } };
+    if (scenario.fast) reply = { ok: true, count: scenario.count, batch: scenario.batch };
+    await get('collect-project-tabs').handlers.click();
+    reply = { ok: true, count: scenario.count, batch: scenario.batch };
+    changed({ [SEARCH_TABS_KEY]: {} }, 'session'); await new Promise(resolve => setImmediate(resolve));
+    assert.equal(jumps.length, scenario.jumps);
+    if (scenario.jumps) assert.deepEqual(jumps[0], ['urls-section', true]);
+    changed({ [SEARCH_TABS_KEY]: {} }, 'session'); await new Promise(resolve => setImmediate(resolve));
+    assert.equal(jumps.length, scenario.jumps, 'refresh must not repeat a jump');
+  }
 });
