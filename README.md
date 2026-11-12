@@ -39,6 +39,16 @@ After editing the tuples, click **Create search queries**. Each nonblank line be
 
 Seeds, generation parameters, edited tuple text and prepared queries are part of the persistent project draft and `project.json` export. New project clears them. Old projects receive empty/default fields without a schema migration. There are no new dependencies or permissions; searches are sent to the selected engine only through explicit link clicks or the confirmed batch action.
 
+## Search restrictions and personal defaults
+
+**File type** offers No restriction, PDF and DOCX. Its choices come from the supported document-format registry. **Excluded websites** accepts domains or HTTP(S) website URLs, one per line; URLs are reduced to domains, leading `www.` is removed, duplicates are ignored, and invalid entries are reported. Subdomains other than `www` stay specific. These settings add `filetype:` and `-site:` operators through the search-engine adapter. They never remove collected URLs or change downloads. Engine support is best effort, particularly with Ecosia's varying providers.
+
+**Create search queries** displays and stores the final query strings, including restrictions. Editable tuples stay unchanged. Changing a restriction clears prepared links until they are explicitly recreated; switching engines rebuilds final queries using their saved base tuples and filter snapshot. Search-tab tracking and collection provenance use the final query. Existing saved links from older versions remain unchanged until recreated. Restrictions and query snapshots persist in the project draft and `project.json`.
+
+New projects start by excluding youtube.com, facebook.com, instagram.com and amazon.com. **Save exclusions as my default** saves a personal list for future projects in this browser. An empty saved list is valid. Editing a project's list does not change personal defaults, and saving defaults does not overwrite another project's list. File type resets to No restriction for each new project.
+
+Personal defaults live in the separate, versioned `userDefaults` storage record. A field registry in `user-defaults.js` supplies built-ins, validation and partial-update rules, allowing future preferences to share the same mechanism. New project clears project data and legacy project keys while retaining that record, including during interrupted-reset recovery. Preferences are local to the browser profile, not synced to a service. The profile is not part of corpus exports; the project's effective list is exported with its draft.
+
 ## Project search tabs
 
 Opening a prepared query or **Open all queries** registers the created tab ID, project, engine and query in browser-session storage. Normal, Ctrl/Cmd and middle clicks are supported. Browser context-menu opens, copied links, duplicated tabs and pre-existing search tabs are not adopted; collect those manually. Switching the selected engine does not change ownership of tabs already opened for the project.

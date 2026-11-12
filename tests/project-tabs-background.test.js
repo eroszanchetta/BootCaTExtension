@@ -7,7 +7,7 @@ for (const namespace of ['chrome', 'browser']) test(`${namespace}: background re
   globalThis.indexedDB = new IDBFactory();
   const local = {}, session = {}, tabs = new Map(), removed = []; let listener, nextId = 1;
   const origin = `${namespace === 'chrome' ? 'chrome' : 'moz'}-extension://test/`;
-  const area = values => ({ get: async key => ({ [key]: structuredClone(values[key]) }), set: async patch => { Object.assign(values, structuredClone(patch)); }, clear: async () => { for (const key of Object.keys(values)) delete values[key]; } });
+  const area = values => ({ get: async key => key === null ? structuredClone(values) : ({ [key]: structuredClone(values[key]) }), set: async patch => { Object.assign(values, structuredClone(patch)); }, remove: async keys => { for (const key of keys) delete values[key]; }, clear: async () => { for (const key of Object.keys(values)) delete values[key]; } });
   globalThis[namespace] = {
     runtime: { id: 'test', getURL: path => origin + path, onMessage: { addListener(fn) { listener = fn; } }, getContexts: async () => [{ documentUrl: origin + 'downloader.html', tabId: 999 }] },
     storage: { local: area(local), session: area(session) },
@@ -52,7 +52,13 @@ for (const namespace of ['chrome', 'browser']) test(`${namespace}: background re
     assert.equal(local.collections.length, 1); assert.equal(local.collections[0].query, 'energy');
     const stale = await request({ type: 'new-project', projectId: 'stale', name: 'Must not clear' });
     assert.equal(stale.ok, false); assert.equal(local.collections.length, 1);
+    const defaults = await request({ type: 'save-user-defaults', projectId: project.id, patch: { excludedSites: ['https://www.example.org/path'] } });
+    assert.deepEqual(defaults.defaults.excludedSites, ['example.org']);
     const reset = await request({ type: 'new-project', projectId: project.id, name: '  Fresh corpus  ', language: 'fra' });
+    assert.deepEqual(local.userDefaults.values.excludedSites, ['example.org']);
+    const draft = await (await import('../src/project-store.js')).loadWorkspace(reset.project.id);
+    assert.equal(draft.draft.excludedSites, 'example.org');
+    assert.equal((await request({ type: 'save-user-defaults', projectId: project.id, patch: { excludedSites: [] } })).ok, false);
     assert.equal(reset.project.language, 'fra'); assert.equal(reset.project.name, 'Fresh corpus'); assert.equal(reset.project.nameConfirmed, true);
     assert.equal((await request({ type: 'get-project-search-tabs', projectId: reset.project.id })).count, 0);
     assert.ok(tabs.has(captcha.tabId)); assert.equal((await request({ type: 'collect-project-search-tabs', projectId: project.id })).ok, false);

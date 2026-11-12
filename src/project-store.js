@@ -1,26 +1,27 @@
+import { DEFAULT_EXCLUDED_SITES } from './search-filters.js';
 import { hasLanguageWarning } from './language-detection.js';
 import { transaction, STORES } from './storage-db.js';
 import { parseURLs } from './core.js';
-const initialDraft = () => ({ key: 'draft', urls: '', query: '', engine: '', extractor: 'readability', seenCollections: [], seeds: '', tupleLength: '3', tupleCount: '10', tuples: '', preparedQueries: [] });
+const initialDraft = (defaults = {}) => ({ key: 'draft', urls: '', query: '', engine: '', extractor: 'readability', seenCollections: [], seeds: '', tupleLength: '3', tupleCount: '10', tuples: '', preparedQueries: [], preparedQueryBases: null, preparedFilters: null, searchFileType: '', excludedSites: (defaults.excludedSites ?? DEFAULT_EXCLUDED_SITES).join('\n') });
 const initialBatch = () => ({ key: 'batch', startedAt: null, state: 'idle', processed: 0, total: 0, nextFileIndex: 0, storedBytes: 0, lastStatus: 'Ready when you are.' });
-function seed(tx, projectId) {
+function seed(tx, projectId, defaults) {
   const store = tx.objectStore('meta');
-  store.put({ key: 'active', projectId }); store.put(initialDraft()); store.put(initialBatch()); store.put({ key: 'searches', collections: [] });
+  store.put({ key: 'active', projectId }); store.put(initialDraft(defaults)); store.put(initialBatch()); store.put({ key: 'searches', collections: [] });
 }
-export function ensureStoredProject(projectId) {
+export function ensureStoredProject(projectId, defaults) {
   if (!projectId) throw new Error('Project identity is missing. Reopen BootCaT.');
   return transaction(['meta'], 'readwrite', (tx, done, fail) => {
     const request = tx.objectStore('meta').get('active');
     request.onsuccess = () => {
-      if (!request.result) seed(tx, projectId);
+      if (!request.result) seed(tx, projectId, defaults);
       else if (request.result.projectId !== projectId) fail(new Error('The project changed. Reopen BootCaT.'));
     };
   });
 }
-export function resetStoredProject(projectId) {
+export function resetStoredProject(projectId, defaults) {
   return transaction(STORES, 'readwrite', tx => {
     for (const name of STORES) tx.objectStore(name).clear();
-    seed(tx, projectId);
+    seed(tx, projectId, defaults);
   });
 }
 function projectTransaction(projectId, names, mode, operation) {
@@ -75,7 +76,7 @@ export function saveDraft(projectId, patch) {
     const store = tx.objectStore('meta'), request = store.get('draft');
     request.onsuccess = () => {
       const next = { ...request.result };
-      for (const key of ['urls', 'query', 'engine', 'extractor', 'seenCollections', 'seeds', 'tupleLength', 'tupleCount', 'tuples', 'preparedQueries']) if (Object.hasOwn(patch, key)) next[key] = patch[key];
+      for (const key of ['urls', 'query', 'engine', 'extractor', 'seenCollections', 'seeds', 'tupleLength', 'tupleCount', 'tuples', 'preparedQueries', 'preparedQueryBases', 'preparedFilters', 'searchFileType', 'excludedSites']) if (Object.hasOwn(patch, key)) next[key] = patch[key];
       store.put(next);
     };
   });
