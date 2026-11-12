@@ -19,7 +19,9 @@ const { createServer } = require('node:http');
     // relying on Playwright interception of protected PDF viewer requests.
     pdfServer = createServer((request, response) => {
       if (request.url.startsWith('/search-fixture')) {
-        response.writeHead(200, { 'Content-Type': 'text/html' }); response.end('<p>Local search results fixture</p>'); return;
+        const query = new URL(request.url, 'http://fixture').searchParams.get('q') || '';
+        const body = query === 'captcha' ? '<h1>CAPTCHA required</h1>' : `<a data-testid="result-title-a" href="https://corpus.test/search?q=${encodeURIComponent(query)}">Local result</a>${query === 'partial' ? '<a data-testid="result-title-a" href="https://duckduckgo.com/l/?opaque=1">Unresolved link</a>' : ''}`;
+        response.writeHead(200, { 'Content-Type': 'text/html' }); response.end(body); return;
       }
       if (request.url === '/oversized.pdf') {
         response.writeHead(200, { 'Content-Type': 'application/pdf' }); response.end(Buffer.alloc(50 * 1024 * 1024 + 1)); return;
@@ -40,7 +42,11 @@ const { createServer } = require('node:http');
     // temporary test build only. Production provider URLs are covered by unit tests.
     const enginesPath = join(extension, 'engines.js'), engineSource = await readFile(enginesPath, 'utf8');
     assert.ok(engineSource.includes('searchURL: "https://duckduckgo.com/"'));
-    await writeFile(enginesPath, engineSource.replace('searchURL: "https://duckduckgo.com/"', `searchURL: "${pdfOrigin}/search-fixture"`));
+    const fixtureEngines = engineSource
+      .replace('searchURL: "https://duckduckgo.com/"', `searchURL: "${pdfOrigin}/search-fixture"`)
+      .replace('const url = new URL(value);', `const url = new URL(value);\n    if (url.origin === '${pdfOrigin}' && url.pathname === '/search-fixture' && url.searchParams.get('q')) return ENGINES.find(engine => engine.id === 'duckduckgo');`)
+      .replace('if (!expectedHost) return', `if (!expectedHost && page.origin !== '${pdfOrigin}') return`);
+    await writeFile(enginesPath, fixtureEngines);
     context = await chromium.launchPersistentContext(join(root, 'profile'), {
       executablePath: process.env.CHROMIUM_EXECUTABLE_PATH || undefined,
       headless: true,
@@ -118,10 +124,57 @@ const { createServer } = require('node:http');
     await Promise.all(batchPages.map(tab => tab.waitForLoadState('domcontentloaded'))); context.off('page', recordQueryPage);
     assert.equal(batchPages.length, 2);
     assert.deepEqual(batchPages.map(tab => new URL(tab.url()).searchParams.get('q')), ['"custom phrase" energy', 'storage generation']);
-    for (const tab of batchPages) await tab.close();
+    async function waitProjectTabsReady(count) {
+      await page.waitForFunction(async count => {
+        const ext = globalThis.browser ?? chrome, data = await ext.storage.session.get('projectSearchTabs');
+        const records = data.projectSearchTabs?.tabs || [];
+        if (records.length !== count) return false;
+        const tabs = await Promise.all(records.map(record => ext.tabs.get(record.tabId)));
+        return tabs.every(tab => tab.status === 'complete');
+      }, count);
+    }
+    const unrelatedSearch = await context.newPage(); await unrelatedSearch.goto(pdfOrigin + '/search-fixture?q=unrelated');
+    await page.bringToFront();
+    await page.waitForFunction(() => document.querySelector('#project-tab-count').textContent.startsWith('2 project search tabs'));
+    await waitProjectTabsReady(2);
+    const closedBatchPages = batchPages.map(tab => tab.waitForEvent('close'));
+    await page.click('#collect-project-tabs'); await Promise.all(closedBatchPages);
+    await page.waitForFunction(() => document.querySelector('#project-tab-status').textContent.startsWith('Finished.') && !document.querySelector('#project-tab-status').textContent.includes('0 tabs closed'));
+    assert.match(await page.locator('#project-tab-status').innerText(), /2 result pages saved; 2 tabs closed/);
+    assert.equal(unrelatedSearch.isClosed(), false);
+    await page.waitForFunction(() => document.querySelector('#urls').value.split('\n').filter(Boolean).length === 2);
+    assert.ok(!(await page.inputValue('#urls')).includes('unrelated'));
     await page.selectOption('#engine', 'google');
     assert.equal(new URL(await page.locator('#prepared-queries a').first().getAttribute('href')).hostname, 'www.google.com');
     console.log('Seed validation, unique tuples, phrase quoting, edits, query links, engine switching, batch confirmation and persistence passed.');
+    await page.selectOption('#engine', 'duckduckgo');
+    await page.fill('#tuples', 'captcha\npartial\nmoved'); await page.click('#prepare-queries');
+    const troublePages = [], recordTrouble = tab => troublePages.push(tab); context.on('page', recordTrouble);
+    const troubleReady = context.waitForEvent('page', { predicate: () => troublePages.length >= 3 });
+    await page.click('#open-all-queries'); await troubleReady;
+    await Promise.all(troublePages.map(tab => tab.waitForLoadState('domcontentloaded'))); context.off('page', recordTrouble);
+    await page.waitForFunction(() => document.querySelector('#query-status').textContent.startsWith('3 of 3 search tabs opened'));
+    const movedPage = troublePages.find(tab => new URL(tab.url()).searchParams.get('q') === 'moved'); await movedPage.goto(pdfOrigin + '/login');
+    await page.bringToFront();
+    await page.waitForFunction(() => document.querySelector('#project-tab-count').textContent.startsWith('2 project search tabs'));
+    await waitProjectTabsReady(2);
+    await page.click('#collect-project-tabs');
+    await page.waitForFunction(() => document.querySelector('#project-tab-status').textContent.startsWith('Finished.') && document.querySelector('#project-tab-status').textContent.includes('1 result page saved; 0 tabs closed'));
+    assert.ok(troublePages.every(tab => !tab.isClosed())); assert.equal(unrelatedSearch.isClosed(), false);
+    await page.locator('summary').filter({ hasText: 'Project tab collection details' }).click();
+    assert.match(await page.locator('#project-tab-details').innerText(), /CAPTCHA/);
+    assert.match(await page.locator('#project-tab-details').innerText(), /Partial results saved/);
+    await page.locator('summary').filter({ hasText: 'Open a single custom search' }).click();
+    await page.fill('#query', 'custom-single');
+    const customEvent = context.waitForEvent('page'); await page.locator('#search-form button').click();
+    const customTab = await customEvent; await customTab.waitForLoadState('domcontentloaded'); troublePages.push(customTab);
+    await page.bringToFront();
+    await page.waitForFunction(() => document.querySelector('#project-tab-count').textContent.startsWith('3 project search tabs'));
+    await page.click('#new-project');
+    await page.waitForFunction(() => document.querySelector('#collection-status').textContent.includes('0 unique URLs') && document.querySelector('#project-tab-count').textContent.startsWith('0 project search tabs'));
+    assert.ok(troublePages.every(tab => !tab.isClosed())); assert.equal(unrelatedSearch.isClosed(), false);
+    for (const tab of [...troublePages, unrelatedSearch]) await tab.close();
+    console.log('Project-only background collection, save-before-close, CAPTCHA/partial/navigation safeguards and reset passed.');
     const search = await context.newPage();
     await search.goto('https://www.google.com/search?q=energy');
     const tabId = await worker.evaluate(async () => (await (globalThis.browser ?? chrome).tabs.query({})).find(tab => tab.url?.includes('www.google.com/search')).id);

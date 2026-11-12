@@ -1,14 +1,15 @@
 import { getExtensionAPI } from './extension-api.js';
 const ext = getExtensionAPI();
-import { ENGINES, searchURL } from "./engines.js";
+import { ENGINES } from "./engines.js";
 import { uniqueResults } from "./collection.js";
 import { parseURLs } from "./core.js";
+import { openProjectSearch } from './search-tabs-client.js';
 
 export async function readCollections() {
   const { collections = [] } = await ext.storage.local.get("collections");
   return collections;
 }
-export function initSearchUI({ isRunning, seenCollectionIds = [], onChange = () => {} }) {
+export function initSearchUI({ isRunning, seenCollectionIds = [], onChange = () => {}, getProjectId = () => null }) {
   const el = id => document.getElementById(id);
   let collections = [];
   let changed = false;
@@ -23,7 +24,7 @@ export function initSearchUI({ isRunning, seenCollectionIds = [], onChange = () 
     event.preventDefault();
     const query = el("query").value.trim();
     if (!query) return;
-    try { await ext.tabs.create({ url: searchURL(el("engine").value, query) }); }
+    try { await openProjectSearch({ projectId: getProjectId(), engine: el('engine').value, query, active: true }); }
     catch (error) { status.textContent = error.message; }
   });
   function render() {

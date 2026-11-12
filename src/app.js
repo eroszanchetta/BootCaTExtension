@@ -8,6 +8,7 @@ import { parseURLs, filenameFor, fetchFile, FILE_LIMIT, urlListWarning } from '.
 import { makeStoredZIP } from './zip-blob.js';
 import { initSearchUI, readCollections } from './search-ui.js';
 import { initSeedsUI } from './seeds-ui.js';
+import { initProjectTabsUI } from './project-tabs-ui.js';
 import { extractDocument } from './extraction.js';
 import { extractionMetadata } from './corpus.js';
 import { DEFUDDLE_AVAILABLE } from './defuddle-loader.js';
@@ -15,7 +16,7 @@ import { DEFUDDLE_AVAILABLE } from './defuddle-loader.js';
 const ext = getExtensionAPI(), VERSION = '0.4.0';
 const ui = Object.fromEntries(['urls', 'start', 'stop', 'export', 'status', 'progress', 'results', 'corpus-status', 'preview-title', 'preview-meta', 'preview-text', 'extractor', 'urls-warning', 'storage-status', 'saved-status', 'query', 'engine', 'import-pdf-picker', 'pdf-import-status'].map(id => [id, document.getElementById(id)]));
 let ready = false, running = false, stopping = false, resetting = false, controller = null;
-let projectId, state, entries = [], searchUI, seedsUI, archiveURL = null, previewURL = null, previewFilename = null;
+let projectId, state, entries = [], searchUI, seedsUI, projectTabsUI, archiveURL = null, previewURL = null, previewFilename = null;
 let writes = Promise.resolve(), pendingWrites = 0, writeError = null, capturesPending = false, refreshing = false;
 let pickingPDF = false, pdfImportTarget = null, pdfImportStatus = { url: null, message: '' };
 const rows = new Map(), controls = new Map();
@@ -25,7 +26,7 @@ if (!DEFUDDLE_AVAILABLE) ui.extractor.querySelector('option[value="defuddle"]').
 const projectUI = initProjectUI({
   onRename: invalidateArchive,
   onReset: () => {
-    resetting = true; controller?.abort(); seedsUI?.destroy(); running = false;
+    resetting = true; controller?.abort(); seedsUI?.destroy(); projectTabsUI?.destroy(); running = false;
     invalidateArchive(); ui.urls.value = ''; ui.query.value = ''; clearPreview();
     document.getElementById('project-name').value = 'Untitled project';
     window.location.reload();
@@ -204,6 +205,7 @@ async function restore({ draft = true } = {}) {
   ui.progress.max = Math.max(1, state.batch.total); ui.progress.value = state.batch.processed;
   ui.status.textContent = state.batch.state === 'running' ? 'Saved project restored. An interrupted download can be resumed with Resume downloads. Completed pages will be skipped.' : state.batch.lastStatus;
   updateCounts(); warnURLs(); updateControls();
+  projectTabsUI?.refresh();
 }
 async function work(task) {
   if (!ready || running || resetting) return false;
@@ -363,9 +365,10 @@ window.addEventListener('focus', async () => {
     await projectUI.ready; projectId = projectUI.snapshot().id;
     await storage.ensureStoredProject(projectId);
     await restore();
-    searchUI = initSearchUI({ isRunning: () => running, seenCollectionIds: state.draft.seenCollections, onChange: patch => { queueDraft(patch); warnURLs(); } });
+    searchUI = initSearchUI({ isRunning: () => running, seenCollectionIds: state.draft.seenCollections, getProjectId: () => projectId, onChange: patch => { queueDraft(patch); warnURLs(); } });
     if (state.draft.engine) ui.engine.value = state.draft.engine;
-    ready = true; seedsUI = initSeedsUI({ draft: state.draft, onChange: queueDraft });
+    ready = true; seedsUI = initSeedsUI({ draft: state.draft, onChange: queueDraft, getProjectId: () => projectId });
+    projectTabsUI = initProjectTabsUI({ getProjectId: () => projectId });
     updateControls(); await importSavedPages();
   } catch (error) { report(error); }
 })();

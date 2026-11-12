@@ -27,6 +27,18 @@ After editing the tuples, click **Create search queries**. Each nonblank line be
 
 Seeds, generation parameters, edited tuple text and prepared queries are part of the persistent project draft and `project.json` export. New project clears them. Old projects receive empty/default fields without a schema migration. There are no new dependencies or permissions; searches are sent to the selected engine only through explicit link clicks or the confirmed batch action.
 
+## Project search tabs
+
+Opening a prepared query, **Open all queries**, or the single custom-search form registers the created tab ID, project, engine and query in browser-session storage. Normal, Ctrl/Cmd and middle clicks are supported. Browser context-menu opens, copied links, duplicated tabs and pre-existing search tabs are not adopted; collect those manually. Switching the selected engine does not change ownership of tabs already opened for the project.
+
+**Collect results and close project search tabs** processes a snapshot of this project's tracked tabs across browser windows. It reads background result pages without activating them. A tab is closed only after its collection has been successfully stored, and after another check of its ownership, navigation revision, URL/query and loaded state. Other queries/pages are left open and lose tracking. Loading, discarded or inaccessible tabs remain open for retry. CAPTCHA/unsupported pages, storage errors, collection-capacity errors and partial results with unresolved links remain open, with outcomes in the details panel. **Stop collecting** stops remaining work and avoids closing the current page when possible; an already-dispatched browser close cannot be undone by the extension. New tabs opened during collection are included on the next run.
+
+Tab ownership survives background-worker suspension within the same browser session, but is cleared on browser restart and extension reload/update to avoid stale tab IDs. Restored search tabs can be collected manually. Interrupted batches never resume automatically; saved collections remain and the user can retry explicitly. Manually closing a tab removes its tracking. New project cancels old collection work and clears ownership without closing browser tabs. Tracking metadata is not included in corpus ZIPs; saved search provenance remains in the usual collections export.
+
+Recognized provider challenge/consent/sign-in redirects keep their ownership for manual resolution, but their DOM is not collected and they are never closed by the batch action. Returning to the original project's search query makes them eligible on a later explicit retry.
+
+The feature uses the existing `storage`, `scripting` and HTTP(S) website permissions, with no `tabs`, history or web-navigation permission added. DOM collection and closing occur only on an explicit user command. Lifecycle listeners update only BootCaT-created ownership records; unrelated tab content is not inspected. Store publication still requires a complete review of permissions, privacy disclosures and Firefox data declarations.
+
 ## Requirements
 
 - Node.js 22.15+ (Node 24 recommended) for building, packaging and tests. Node is a developer tool; extension users do not need it.
@@ -75,6 +87,7 @@ The ZIP retains originals in `pages/`, selected UTF-8 texts in `corpus/`, raw PD
 | `src/extension-api.js` | Prefer `browser.*`, fall back to the supported Chromium `chrome.*` APIs |
 | `src/background.js` | The same message/collection handler for both browser contexts |
 | `src/engines.js` | Search provider detection and DOM adapters |
+| `src/project-search-tabs.js`, `src/search-tabs-client.js`, `src/project-tabs-ui.js` | Session-only project tab ownership, explicit collection/close, and progress reporting |
 | `src/tuples.js`, `src/seeds-ui.js` | Random unique seed combinations, editable tuples and explicit search-query opening |
 | `src/extraction.js`, `src/binary-extraction.js`, `src/docx.js`, `src/corpus.js` | HTML/plain-text/PDF/DOCX extraction, inclusion and corpus export |
 | `src/icons/`, `src/vendor/` | Shared logo, icons and bundled extractors/licences |

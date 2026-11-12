@@ -1,9 +1,9 @@
-import { getExtensionAPI } from './extension-api.js';
+import { openProjectSearch } from './search-tabs-client.js';
 import { ENGINES, searchURL } from './engines.js';
 import { parseSeeds, parseQueries, generateTuples } from './tuples.js';
 
-export function initSeedsUI({ draft = {}, onChange = () => {} } = {}) {
-  const ext = getExtensionAPI(), el = id => document.getElementById(id), PAGE_SIZE = 100;
+export function initSeedsUI({ draft = {}, onChange = () => {}, getProjectId = () => null } = {}) {
+  const el = id => document.getElementById(id), PAGE_SIZE = 100;
   let prepared = [], page = 0, generating = false, opening = false, stopped = false, destroyed = false, controller;
   const engineID = () => el('engine').value || ENGINES[0].id;
   const engineName = () => ENGINES.find(engine => engine.id === engineID())?.name || engineID();
@@ -26,6 +26,17 @@ export function initSeedsUI({ draft = {}, onChange = () => {} } = {}) {
     for (const query of prepared.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)) {
       const item = document.createElement('li'), link = document.createElement('a');
       link.href = searchURL(engineID(), query); link.textContent = query; link.target = '_blank'; link.rel = 'noopener noreferrer';
+      const open = async event => {
+        if (event.type === 'auxclick' && event.button !== 1) return;
+        if (event.type === 'click' && event.button > 0) return;
+        event.preventDefault();
+        if (destroyed) return;
+        try {
+          await openProjectSearch({ projectId: getProjectId(), engine: engineID(), query, active: !(event.button === 1 || event.ctrlKey || event.metaKey) });
+          if (!destroyed) el('query-status').textContent = 'Search tab opened and tracked for this project.';
+        } catch (error) { if (!destroyed) el('query-status').textContent = error.message; }
+      };
+      link.addEventListener('click', open); link.addEventListener('auxclick', open);
       item.append(link); body.append(item);
     }
     el('query-summary').textContent = prepared.length ? `${prepared.length.toLocaleString()} queries for ${engineName()}. Click a query to open its search in a new tab.` : 'No search queries prepared yet.';
@@ -89,10 +100,10 @@ export function initSeedsUI({ draft = {}, onChange = () => {} } = {}) {
     try {
       for (const query of queries) {
         if (stopped || destroyed) break;
-        await ext.tabs.create({ url: searchURL(engine, query), active: false }); opened++;
+        await openProjectSearch({ projectId: getProjectId(), engine, query, active: false }); opened++;
         if (!destroyed) el('query-status').textContent = `Opened ${opened.toLocaleString()} of ${queries.length.toLocaleString()} search tabs…`;
       }
-      if (!destroyed) el('query-status').textContent = `${stopped ? 'Stopped. ' : ''}${opened.toLocaleString()} of ${queries.length.toLocaleString()} search tabs opened. Collect results from each results tab using the toolbar icon.`;
+      if (!destroyed) el('query-status').textContent = `${stopped ? 'Stopped. ' : ''}${opened.toLocaleString()} of ${queries.length.toLocaleString()} search tabs opened and tracked. Use Collect results and close project search tabs below.`;
     } catch (error) {
       if (!destroyed) el('query-status').textContent = `Opened ${opened.toLocaleString()} of ${queries.length.toLocaleString()} tabs before an error: ${error.message}. Use the individual query links to continue.`;
     } finally { opening = false; if (!destroyed) controls(); }

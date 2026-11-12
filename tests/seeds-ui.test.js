@@ -23,11 +23,17 @@ function fixture(options = {}) {
     document: { getElementById: get, createElement: () => new Element() },
     window: { confirm(message) { confirmations.push(message); return confirmed; } },
     getExtensionAPI: () => ({ tabs: { create: async value => { if (options.open) await options.open(value, opened.length); opened.push(value); } } }),
+    getProjectId: () => 'project',
+    openProjectSearch: async ({ projectId, engine, query, active }) => {
+      assert.equal(projectId, 'project'); const value = { url: searchURL(engine, query), active };
+      if (options.open) await options.open(value, opened.length); opened.push(value);
+      return { tabId: opened.length };
+    },
     ENGINES, searchURL, parseSeeds, parseQueries, AbortController, BigInt,
     generateTuples: (text, length, count, config) => generateTuples(text, length, count, { ...config, random: () => 0n }),
     draft, onChange: patch => Object.assign(draft, patch)
   });
-  vm.runInContext(source + '\nglobalThis.seeds = initSeedsUI({draft, onChange});', context);
+  vm.runInContext(source + '\nglobalThis.seeds = initSeedsUI({draft, onChange, getProjectId});', context);
   return { get, draft, opened, confirmations, setConfirmed: value => { confirmed = value; }, ui: vm.runInContext('seeds', context),
     input(id, value) { get(id).value = value; get(id).handlers.input(); }, click: id => get(id).handlers.click() };
 }
@@ -51,6 +57,21 @@ test('batch opening requires confirmation, warns about engine refusal and opens 
   app.setConfirmed(true); await app.click('open-all-queries'); assert.equal(app.opened.length, 2);
   assert.ok(app.confirmations.every(message => /refuse automated batch queries/.test(message)));
   assert.deepEqual(app.opened.map(value => [new URL(value.url).searchParams.get('q'), value.active]), [['first', false], ['second', false]]);
+});
+
+test('normal, Ctrl/Cmd and middle clicks open registered project searches with the appropriate focus', async () => {
+  const app = fixture({ draft: { preparedQueries: ['my query'] } });
+  const link = app.get('prepared-queries').children[0].children[0];
+  for (const event of [
+    { type: 'click', button: 0 }, { type: 'click', button: 0, ctrlKey: true },
+    { type: 'click', button: 0, metaKey: true }, { type: 'auxclick', button: 1 }
+  ]) {
+    let prevented = false; await link.handlers[event.type]({ ...event, preventDefault() { prevented = true; } });
+    assert.equal(prevented, true);
+  }
+  assert.deepEqual(app.opened.map(value => value.active), [true, false, false, false]);
+  await link.handlers.auxclick({ type: 'auxclick', button: 2, preventDefault() { assert.fail('leave the browser context menu available'); } });
+  assert.equal(app.opened.length, 4);
 });
 
 test('stopping tuple generation keeps the previously edited tuples and prepared queries', async () => {
