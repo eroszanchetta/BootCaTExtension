@@ -1,4 +1,5 @@
 import { checkLanguage, hasLanguageWarning, languageMessage } from './language-detection.js';
+import { confirmAction } from './dialogs.js';
 import { initWorkspaceSections, openWorkspaceSection } from './workspace-sections.js';
 import { extractDownloadedDocument, extractionContentType } from './binary-extraction.js';
 import { fileWarnings, readPDFFile } from './pdf-recovery.js';
@@ -169,7 +170,7 @@ function renderRow(entry) {
   for (const [name, value] of Object.entries({ viewBox: '0 0 24 24', 'aria-hidden': 'true', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' })) icon.setAttribute(name, value);
   const path = document.createElementNS('http://www.w3.org/2000/svg', 'path'); path.setAttribute('d', 'M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7'); icon.append(path); trash.append(icon);
   trash.addEventListener('click', () => work(async () => {
-    if (!window.confirm('Delete this page and its text completely? Its saved originals, extracted text and download metadata will be removed from this project and future exports.')) return;
+    if (!await confirmAction({ title: 'Delete document?', message: 'Its saved originals, extracted text and download metadata will be removed from this project and future exports.', confirmLabel: 'Delete document', destructive: true })) return;
     await flushWrites(); await storage.removeDocument(projectId, url);
     entries = entries.filter(item => item.url !== url); rows.get(url)?.remove(); rows.delete(url); controls.delete(url);
     ui.urls.value = ui.urls.value.split(/\r?\n/).filter(line => parseURLs(line).urls[0] !== url).join('\n');

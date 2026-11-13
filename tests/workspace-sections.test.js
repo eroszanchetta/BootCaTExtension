@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { initWorkspaceSections, openWorkspaceSection } from '../src/workspace-sections.js';
 
 test('workspace sections collapse on initialization; navigation and preview reveal only their target', () => {
-  const ids = ['seeds-section', 'search-section', 'urls-section', 'review-section', 'preview-section'];
+  const ids = ['seeds-section', 'search-section', 'urls-section', 'review-section', 'preview-section', 'log-section'];
   const panels = new Map(ids.map(id => [id, { open: true }]));
   const links = ids.map(id => ({ getAttribute: () => '#' + id, addEventListener(type, handler) { this.click = handler; } }));
   const scrolled = [];
@@ -17,6 +17,7 @@ test('workspace sections collapse on initialization; navigation and preview reve
     openWorkspaceSection('preview-section', { scroll: true }); assert.equal(panels.get('preview-section').open, true);
     openWorkspaceSection('review-section', { scroll: true });
     assert.deepEqual(scrolled, [['preview-section', 'start'], ['review-section', 'start']]);
+    links[5].click(); assert.equal(panels.get('log-section').open, true);
     openWorkspaceSection('top', { scroll: true });
     initWorkspaceSections(); assert.ok([...panels.values()].every(panel => !panel.open));
   } finally { globalThis.document = previous; }

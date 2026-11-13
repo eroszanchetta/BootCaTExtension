@@ -25,7 +25,7 @@ function fixture(options = {}) {
   const context = vm.createContext({
     setTimeout, clearTimeout, openWorkspaceSection() {}, combinationCount, SEARCH_FILE_TYPES, DEFAULT_EXCLUDED_SITES, normalizeSearchFilters,
     document: { getElementById: get, createElement: () => new Element(), createElementNS: () => new Element() },
-    window: { confirm(message) { confirmations.push(message); return confirmed; } },
+    confirmAction: async ({ message }) => { confirmations.push(message); return confirmed; },
     getExtensionAPI: () => ({ runtime: { sendMessage: async message => options.saveDefaults ? options.saveDefaults(message) : { ok: true } }, tabs: { create: async value => { if (options.open) await options.open(value, opened.length); opened.push(value); } } }),
     getProjectId: () => 'project',
     openProjectSearch: async ({ projectId, engine, query, active }) => {
@@ -88,7 +88,7 @@ test('stopping tuple generation keeps the previously edited tuples and prepared 
 test('batch opening can stop or report partial failures while individual query links remain', async () => {
   let release; const gate = new Promise(resolve => { release = resolve; });
   const app = fixture({ draft: { preparedQueries: ['first', 'second', 'third'] }, open: async () => gate });
-  const opening = app.click('open-all-queries'); assert.equal(app.ui.isBusy(), true);
+  const opening = app.click('open-all-queries'); assert.equal(app.ui.isBusy(), true); await new Promise(resolve => setImmediate(resolve));
   app.click('stop-query-tabs'); release(); await opening;
   assert.equal(app.opened.length, 1); assert.match(app.get('query-status').textContent, /Stopped.*1 of 3/);
   const failing = fixture({ draft: { preparedQueries: ['first', 'second', 'third'] }, open: async (_, index) => { if (index === 1) throw new Error('Tab refused'); } });
@@ -102,7 +102,7 @@ test('query pagination retains all links, and destroyed projects stop pending ba
   assert.equal(app.get('prepared-queries').children[4].children[2].textContent, 'query204');
   let release; const gate = new Promise(resolve => { release = resolve; });
   const pending = fixture({ draft: { preparedQueries: ['one', 'two'] }, open: async () => gate });
-  const opening = pending.click('open-all-queries'); pending.ui.destroy(); release(); await opening;
+  const opening = pending.click('open-all-queries'); await new Promise(resolve => setImmediate(resolve)); pending.ui.destroy(); release(); await opening;
   assert.equal(pending.opened.length, 1);
 });
 test('seed drafts, edited tuples, parameters and query lists persist and reset with the project', async () => {
@@ -215,7 +215,7 @@ test('query badges track active tabs and closed outcomes without rebuilding link
 test('batch opening holds collection readiness until opening finishes or stops', async () => {
   let release; const waiting = new Promise(resolve => { release = resolve; }), opening = [];
   const app = fixture({ draft: { preparedQueries: ['first', 'second'] }, open: async () => waiting, onOpeningChange: value => opening.push(value) });
-  const pending = app.click('open-all-queries'); assert.deepEqual(opening, [true]);
+  const pending = app.click('open-all-queries'); await new Promise(resolve => setImmediate(resolve)); assert.deepEqual(opening, [true]);
   app.click('stop-query-tabs'); release(); await pending;
   assert.deepEqual(opening, [true, false]); assert.equal(app.opened.length, 1);
 });
