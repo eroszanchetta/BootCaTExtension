@@ -13,18 +13,20 @@
     <div class="topbar-inner">
       <a class="brand" href="#top"><img src="icons/BootCaT.svg" width="56" height="56" alt=""><span>BootCaT</span></a>
       <nav aria-label="Workspace sections">
+        <a href="#project-section">Project</a>
         <a href="#seeds-section">Seeds &amp; Tuples</a>
         <a href="#search-section">Search</a>
         <a href="#urls-section">URLs</a>
         <a href="#review-section">Review &amp; Download</a>
         <a href="#preview-section">Preview Text</a>
+        <a href="https://docs.sslmit.unibo.it/doku.php?id=bootcat:start" target="_blank" rel="noopener noreferrer">Help</a>
       </nav>
     </div>
   </div>
   <main>
     <header><span class="badge">BootCaT · 2.0</span><h1>Create corpora from the web</h1>
       <p>Find pages, extract useful text, and build a corpus</p></header>
-    <section aria-labelledby="project-heading">
+    <section id="project-section" aria-labelledby="project-heading">
       <h2 id="project-heading">Project</h2>
       <label for="project-name">Project name</label>
       <div class="project-controls"><input id="project-name" maxlength="120" value="Untitled project" autocomplete="off"><button id="new-project" class="secondary">New project</button></div>
@@ -51,7 +53,7 @@
       <textarea id="tuples" spellcheck="false" disabled placeholder="Generate tuples above, then edit them here."></textarea>
       <p class="hint">Each tuple will become a query to the selected search engine</p>
       <button id="prepare-queries" type="button" disabled>Create search queries</button>
-      <p class="hint">Uses the search engine selected below. Queries open only when you click a query link or Open all queries.</p>
+      <p class="hint">Uses the search engine selected below. Queries open only when you click a query link or Run all queries.</p>
       </div></details>
     </section>
     <section id="search-section" aria-labelledby="search-heading" tabindex="-1">
@@ -72,12 +74,12 @@
       <p id="query-summary" role="status" aria-live="polite">No search queries prepared yet.</p>
       <ol id="prepared-queries" class="query-list"></ol>
       <div id="query-pagination" class="actions" hidden><button id="previous-queries" type="button" class="secondary">Previous</button><span id="query-page"></span><button id="next-queries" type="button" class="secondary">Next</button></div>
-      <div class="actions"><button id="open-all-queries" type="button" disabled>Open all queries</button><button id="stop-query-tabs" type="button" class="secondary" hidden>Stop opening tabs</button></div>
+      <div class="actions"><button id="open-all-queries" type="button" disabled>Run all queries</button><button id="stop-query-tabs" type="button" class="secondary" hidden>Stop opening tabs</button></div>
       <p class="hint">Search engines may refuse automated batch queries, block requests or show CAPTCHAs. Opening many tabs can slow your browser. You will be asked to confirm before opening all queries.</p>
       <p id="query-status" role="status" aria-live="polite"></p>
       <h3>Collect project search tabs</h3>
       <p id="project-tab-count" role="status" aria-live="polite">Checking project search tabs…</p>
-      <div class="actions"><button id="collect-project-tabs" type="button" disabled>Collect results and close project search tabs</button><button id="collect-loaded-tabs" type="button" class="secondary" hidden disabled>Collect loaded tabs</button><button id="stop-project-tabs" type="button" class="secondary" hidden>Stop collecting</button></div>
+      <div class="actions"><button id="collect-project-tabs" type="button" disabled>Collect results and close search tabs</button><button id="collect-loaded-tabs" type="button" class="secondary" hidden disabled>Collect loaded tabs</button><button id="stop-project-tabs" type="button" class="secondary" hidden>Stop collecting</button></div>
       <p class="hint">Only tabs opened by BootCaT for this project in this browser session are included. Tabs close only after their results are saved. Failed, loading, partial or changed pages stay open. A stopped collection keeps saved results.</p>
       <p class="hint">Normal, Ctrl/Cmd and middle clicks on query links are tracked. Tabs opened through the browser's link context menu or duplicated later must be collected manually. Browser or extension restarts clear tab tracking.</p>
       <p id="project-tab-loading-hint" class="hint" role="status"></p>
