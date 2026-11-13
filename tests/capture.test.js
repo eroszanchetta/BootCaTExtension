@@ -48,6 +48,7 @@ for (const success of [true, false]) test(`popup ${success ? 'keeps save disable
     return elements.get(id);
   };
   const context = vm.createContext({
+    initVersionBadge: () => '2.0.0',
     document: { getElementById: get }, window: { close() {} },
     adapterForURL: () => null,
     getExtensionAPI: () => ({

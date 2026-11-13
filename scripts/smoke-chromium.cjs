@@ -91,6 +91,13 @@ const { execFileSync } = require('node:child_process');
     assert.ok(!output.includes('FAIL:'), output);
     console.log(output);
     await page.goto(origin + '/downloader.html');
+    const releaseVersion = await page.evaluate(() => (globalThis.browser ?? chrome).runtime.getManifest().version);
+    const versionLabel = `BootCaT · ${releaseVersion.replace(/\.0$/, '')}`;
+    await page.waitForFunction(label => document.querySelector('#app-version')?.textContent === label, versionLabel);
+    const versionPopup = await context.newPage(); await versionPopup.goto(origin + '/popup.html');
+    await versionPopup.waitForFunction(label => document.querySelector('#app-version')?.textContent === label, versionLabel);
+    await versionPopup.close(); await page.bringToFront();
+
     const openPanels = async () => page.locator('.workspace-panel').evaluateAll(panels => panels.forEach(panel => { panel.open = true; }));
     const assertCollapsed = async () => assert.equal(await page.locator('.workspace-panel[open]').count(), 0);
     async function checkCorpusReport(zipPath, language = 'Not checked') {
@@ -100,6 +107,8 @@ n={'m':'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
 with zipfile.ZipFile(sys.argv[1]) as z:
  assert not any('/captured/' in name for name in z.namelist())
  docs=sorted([d for d in json.loads(z.read('extraction.json'))['documents'] if d.get('textFilename')],key=lambda d:d['textFilename'])
+ for name in ['results.json','extraction.json','searches.json']:
+  assert json.loads(z.read(name))['version']==sys.argv[3]
  draft=json.loads(z.read('project.json'))['draft']
  for name,field in [('url_list.txt','urls'),('seeds.txt','seeds'),('tuples.txt','tuples')]:
   assert z.read(name).decode('utf-8')==draft.get(field,'')
@@ -118,7 +127,7 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
  assert values[0]==['Text file name','Source URL','Characters','Detected language']
  assert values[1:]==[[d['textFilename'].removeprefix('corpus/'),d['url'],d['characters'],sys.argv[2]] for d in docs]
  assert sheet.find('m:sheetViews/m:sheetView/m:pane',n).attrib['state']=='frozen'
-`, zipPath, language]);
+`, zipPath, language, releaseVersion]);
     }
 
     await page.locator('#project-dialog[open]').waitFor();
@@ -251,7 +260,8 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     assert.equal(context.pages().length, pagesAfterCollection);
     const savedSearchDownload = page.waitForEvent('download'); await page.click('#save-searches');
     const savedSearchPath = join(root, 'saved-searches.json'); await (await savedSearchDownload).saveAs(savedSearchPath);
-    assert.equal(JSON.parse(await readFile(savedSearchPath, 'utf8')).results.length, 2);
+    const savedSearchJSON = JSON.parse(await readFile(savedSearchPath, 'utf8'));
+    assert.equal(savedSearchJSON.results.length, 2); assert.equal(savedSearchJSON.version, releaseVersion);
     await clickConfirmed('#clear-searches', false);
     assert.equal(await page.locator('#collected-results tr').count(), 2);
     console.log('Styled confirmations, Escape cancellation, Log navigation and search JSON export passed.');

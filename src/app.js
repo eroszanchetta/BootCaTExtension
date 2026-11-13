@@ -12,6 +12,7 @@ import { parseURLs, filenameFor, fetchFile, FILE_LIMIT, urlListWarning } from '.
 import { makeStoredZIP } from './zip-blob.js';
 import { createExportLayout } from './export-layout.js';
 import { makeMetadataWorkbook } from './metadata-xlsx.js';
+import { initVersionBadge } from './version.js';
 import { initSearchUI, readCollections } from './search-ui.js';
 import { initSeedsUI } from './seeds-ui.js';
 import { initProjectTabsUI } from './project-tabs-ui.js';
@@ -20,7 +21,7 @@ import { extractionMetadata } from './corpus.js';
 import { DEFUDDLE_AVAILABLE } from './defuddle-loader.js';
 
 initWorkspaceSections();
-const ext = getExtensionAPI(), VERSION = '0.4.0';
+const ext = getExtensionAPI(), VERSION = initVersionBadge();
 const ui = Object.fromEntries(['urls', 'start', 'stop', 'export', 'status', 'progress', 'results', 'problem-results', 'attention-section', 'attention-count', 'project-language', 'recheck-language', 'language-status', 'corpus-status', 'preview-title', 'preview-meta', 'preview-text', 'extractor', 'urls-warning', 'storage-status', 'saved-status', 'engine', 'import-document-picker', 'document-import-status'].map(id => [id, document.getElementById(id)]));
 let ready = false, running = false, stopping = false, resetting = false, controller = null;
 let projectId, state, entries = [], searchUI, seedsUI, projectTabsUI, archiveURL = null, previewURL = null, previewFilename = null;

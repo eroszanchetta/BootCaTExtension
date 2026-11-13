@@ -1,4 +1,5 @@
 import { getExtensionAPI } from './extension-api.js';
+import { getExtensionVersion } from './version.js';
 import { confirmAction } from './dialogs.js';
 const ext = getExtensionAPI();
 import { ENGINES } from "./engines.js";
@@ -58,7 +59,7 @@ export function initSearchUI({ isRunning, seenCollectionIds = [], onChange = () 
   }
   el('urls').addEventListener('input', flush);
   el("save-searches").addEventListener("click", () => {
-    const blob = new Blob([JSON.stringify({ version: "0.2.0", collections, results: uniqueResults(collections) }, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify({ version: getExtensionVersion(), collections, results: uniqueResults(collections) }, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob), link = document.createElement("a");
     link.href = url; link.download = "bootcat-searches.json";
     document.body.append(link); link.click(); link.remove();

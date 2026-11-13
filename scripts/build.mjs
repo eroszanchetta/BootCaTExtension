@@ -10,7 +10,13 @@ export async function build(target, { outputRoot = join(ROOT, 'dist'), includeTe
   const readJSON = async path => JSON.parse(await readFile(join(ROOT, path), 'utf8'));
   const common = await readJSON('manifests/common.json');
   const override = await readJSON(`manifests/${target}.json`);
-  const manifest = { ...common, ...override };
+  // package.json is the sole release-version setting. The lockfile is managed
+  // by npm; badges and exports read this version from the installed manifest.
+  const { version } = await readJSON('package.json');
+  if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version) || version === '0.0.0' || version.split('.').some(part => Number(part) > 65535)) {
+    throw new Error('package.json version must contain three numbers from 0 to 65535 (e.g. 2.0.0), without a prerelease suffix, and must not be 0.0.0.');
+  }
+  const manifest = { ...common, ...override, version };
   let pdfRoot;
   try {
     pdfRoot = dirname(fileURLToPath(import.meta.resolve('pdfjs-dist/package.json')));

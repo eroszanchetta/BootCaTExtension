@@ -42,6 +42,7 @@ export async function workspace(projectId, options = {}) {
     initProjectUI: callbacks => { reset = callbacks.onReset; return { ready: Promise.resolve(), snapshot: () => ({ id: projectId, name: 'Test corpus', language }), setLanguage: async value => { language = value; } }; },
     checkLanguage, hasLanguageWarning, languageMessage,
     initSearchUI: () => ({ flush() {} }), readCollections: async () => [], projectFilename: name => name,
+    initVersionBadge: () => '2.0.0',
     initWorkspaceSections() {}, openWorkspaceSection() {},
     initSeedsUI: () => ({ restore() {}, isBusy: () => false, destroy() {} }),
     initProjectTabsUI: () => ({ refresh() {}, destroy() {} }),

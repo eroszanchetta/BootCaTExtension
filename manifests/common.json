@@ -1,7 +1,6 @@
 {
   "manifest_version": 3,
   "name": "BootCaT \u2014 Bootstrap Corpora and Terms ",
-  "version": "0.4.0",
   "description": "Collect search results, download pages and extract corpus text locally.",
   "action": {
     "default_title": "BootCaT: collect results or open workspace",
