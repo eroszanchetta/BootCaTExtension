@@ -21,6 +21,7 @@ async function popup(state, url, fail = false) {
   let requests = 0;
   const notify = changes => listeners.forEach(fn => fn(changes, 'local'));
   const context = vm.createContext({
+    initVersionBadge: () => '2.0.0',
     document: { getElementById: get }, adapterForURL,
     window: { close() {}, location: { reload() {} } },
     getExtensionAPI: () => ({

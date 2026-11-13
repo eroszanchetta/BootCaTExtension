@@ -1,5 +1,7 @@
 import { getExtensionAPI } from './extension-api.js';
+import { initVersionBadge } from './version.js';
 const ext = getExtensionAPI();
+initVersionBadge();
 import { adapterForURL } from "./engines.js";
 const collect = document.getElementById("collect");
 const feedback = document.getElementById("feedback");

@@ -113,7 +113,7 @@ The ZIP retains originals in `pages/`, selected UTF-8 texts in `corpus/`, raw PD
 | `src/tuples.js`, `src/seeds-ui.js` | Random unique seed combinations, editable tuples and explicit search-query opening |
 | `src/extraction.js`, `src/binary-extraction.js`, `src/docx.js`, `src/corpus.js` | HTML/plain-text/PDF/DOCX extraction, inclusion and corpus export |
 | `src/icons/`, `src/vendor/` | Shared logo, icons and bundled extractors/licences |
-| `manifests/common.json` | Common name/version, permissions, interface and CSP |
+| `manifests/common.json` | Common name, permissions, interface and CSP |
 | `manifests/chromium.json` | Chromium minimum version and module service worker |
 | `manifests/firefox.json` | Firefox module background scripts, stable ID and minimum version |
 | `scripts/` | Node build, local PDF.js asset bundling and ZIP packaging; optional browser smoke test |
@@ -136,7 +136,7 @@ Extension URLs are generated with `runtime.getURL()`. Workspace reuse checks tab
 npm run package
 ```
 
-Produces `dist/packages/bootcat-chromium-0.4.0.zip` and `dist/packages/bootcat-firefox-0.4.0.zip`, each with its manifest at the ZIP root. Individual commands: `npm run package:chromium` and `npm run package:firefox`. Packages exclude development fixtures.
+Produces `dist/packages/bootcat-chromium-2.0.0.zip` and `dist/packages/bootcat-firefox-2.0.0.zip`, each with its manifest at the ZIP root. Individual commands: `npm run package:chromium` and `npm run package:firefox`. Packages exclude development fixtures.
 
 These are unsigned packages for review/upload, not store-published releases. Normal Firefox distribution requires Mozilla signing, whether listed on AMO or self-distributed. The Firefox development manifest includes a stable extension ID; its AMO data-collection/transmission declarations must be assessed and added before a first store submission. In particular, user-initiated searches send queries to the selected engine, even though corpus content is processed locally. No submission, signing or publication is performed by these build commands.
 
@@ -267,3 +267,9 @@ All downloaded, captured and imported originals export directly into `pages/`; s
 Every corpus ZIP includes **Report.xlsx** at its root, with one row per included, successfully extracted corpus text, sorted by text filename. Columns contain the text filename, clickable HTTP(S) source URL, numeric character count and detected language name. Uncertain assessments show **Uncertain**; disabled or absent checks show **Not checked**. Accepting a language warning does not change the detected language. The workbook has filters and a frozen header, is generated locally using the existing ZIP writer and adds no dependencies or permissions. Report generation uses saved metadata only, without additional reads of document bodies.
 
 Every corpus ZIP also contains UTF-8 `url_list.txt`, `seeds.txt` and `tuples.txt` at its root. These preserve the current editable project lists, including manual edits; empty lists produce empty files. `Report.xlsx` contains a header-only sheet if no texts are included. There is no separate report download button.
+
+## Release version
+
+`package.json` → `version` is the single release-version setting. This release is `2.0.0`, displayed as **BootCaT · 2.0** in both badges. Browser manifests and ZIP package filenames take the version from `package.json` during build. Badges and exported JSON read it from the installed manifest at runtime. Storage schema and third-party library versions are independent.
+
+For the next release, run `npm version 2.0.1 --no-git-tag-version` (substitute the intended version). This updates `package.json` and the npm-managed lockfile together without creating a Git tag or commit. Then run `npm run build` and reload the installed extension. Use three numeric components without a prerelease suffix. Do not edit generated files in `dist/` or add version fields to browser manifest templates.

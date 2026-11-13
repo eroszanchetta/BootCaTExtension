@@ -20,6 +20,8 @@ test('both builds contain identical shared files and separate valid manifests', 
     const firefox = await build('firefox', { outputRoot });
     const manifests = await Promise.all([chromium, firefox].map(async dir => JSON.parse(await readFile(join(dir, 'manifest.json'), 'utf8'))));
     const [c, f] = manifests;
+    const packageInfo = JSON.parse(await readFile(join(ROOT, 'package.json'), 'utf8'));
+    assert.equal(c.version, packageInfo.version); assert.equal(f.version, packageInfo.version);
     const pdfFiles = await list(join(chromium, 'vendor/pdfjs'));
     assert.deepEqual(pdfFiles.filter(path => path.endsWith('.mjs')).sort(), ['pdf.mjs', 'pdf.worker.mjs']);
     const pdfModule = await readFile(join(chromium, 'vendor/pdfjs/pdf.mjs'), 'utf8');
