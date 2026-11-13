@@ -23,7 +23,7 @@ test('project-tab UI shows running/final outcomes and ignores replies from a des
     if (!elements.has(id)) elements.set(id, { textContent: '', children: [], handlers: {}, addEventListener(type, fn) { this.handlers[type] = fn; }, replaceChildren() { this.children = []; }, append(child) { this.children.push(child); } });
     return elements.get(id);
   };
-  const context = vm.createContext({ openWorkspaceSection() {}, SEARCH_TABS_KEY, getProjectId: () => 'p', document: { getElementById: get, createElement: () => ({}) },
+  const context = vm.createContext({ setTimeout, clearTimeout, openWorkspaceSection() {}, SEARCH_TABS_KEY, getProjectId: () => 'p', document: { getElementById: get, createElement: () => ({}) },
     getExtensionAPI: () => ({ storage: { onChanged: { addListener(fn) { changed = fn; } } }, runtime: { sendMessage: async message => { requests.push(message); return reply; } } }) });
   vm.runInContext(source + '\nglobalThis.ui = initProjectTabsUI({getProjectId});', context);
   await new Promise(resolve => setImmediate(resolve)); assert.equal(get('collect-project-tabs').disabled, false);
@@ -57,7 +57,7 @@ test('only the current fully successful collection jumps to URLs, once; partial,
       if (!elements.has(id)) elements.set(id, { handlers: {}, addEventListener(type, fn) { this.handlers[type] = fn; }, replaceChildren() {}, append() {} });
       return elements.get(id);
     };
-    const context = vm.createContext({ SEARCH_TABS_KEY, getProjectId: () => 'p', document: { getElementById: get, createElement: () => ({}) },
+    const context = vm.createContext({ setTimeout, clearTimeout, SEARCH_TABS_KEY, getProjectId: () => 'p', document: { getElementById: get, createElement: () => ({}) },
       openWorkspaceSection: (id, options) => jumps.push([id, options.scroll]),
       getExtensionAPI: () => ({ storage: { onChanged: { addListener(fn) { changed = fn; } } }, runtime: { sendMessage: async () => reply } }) });
     vm.runInContext(source + '\nglobalThis.ui = initProjectTabsUI({getProjectId});', context);
@@ -72,4 +72,33 @@ test('only the current fully successful collection jumps to URLs, once; partial,
     changed({ [SEARCH_TABS_KEY]: {} }, 'session'); await new Promise(resolve => setImmediate(resolve));
     assert.equal(jumps.length, scenario.jumps, 'refresh must not repeat a jump');
   }
+});
+
+test('collection waits for loading and opening; slow-tab fallback is explicit and manual closure unblocks it', async () => {
+  const source = (await readFile(new URL('../src/project-tabs-ui.js', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '').replace(/^export /gm, '');
+  const elements = new Map(), requests = [];
+  let reply = { ok: true, count: 2, loaded: 1, loading: 1, tabs: [{ status: 'loading', slow: false }], batch: null };
+  const get = id => {
+    if (!elements.has(id)) elements.set(id, { handlers: {}, addEventListener(type, fn) { this.handlers[type] = fn; }, replaceChildren() {}, append() {} });
+    return elements.get(id);
+  };
+  const context = vm.createContext({ setTimeout, clearTimeout, SEARCH_TABS_KEY, getProjectId: () => 'p', openWorkspaceSection() {},
+    document: { getElementById: get, createElement: () => ({}) },
+    getExtensionAPI: () => ({ storage: { onChanged: { addListener() {} } }, runtime: { sendMessage: async message => { requests.push(message); return reply; } } }) });
+  vm.runInContext(source + '\nglobalThis.ui = initProjectTabsUI({getProjectId});', context);
+  await new Promise(resolve => setImmediate(resolve));
+  const ui = vm.runInContext('ui', context);
+  assert.equal(get('collect-project-tabs').disabled, true); assert.equal(get('collect-loaded-tabs').hidden, true);
+  reply.tabs[0].slow = true; await ui.refresh();
+  assert.equal(get('collect-loaded-tabs').hidden, false); assert.equal(get('collect-loaded-tabs').disabled, false);
+  ui.setOpening(true); assert.equal(get('collect-loaded-tabs').disabled, true);
+  ui.setOpening(false); await get('collect-loaded-tabs').handlers.click();
+  assert.ok(requests.some(message => message.type === 'collect-project-search-tabs' && message.loadedOnly === true));
+  reply = { ok: true, count: 1, loaded: 1, loading: 0, tabs: [{ status: 'loaded' }], batch: null };
+  await ui.refresh(); assert.equal(get('collect-project-tabs').disabled, false);
+  ui.setOpening(true); assert.equal(get('collect-project-tabs').disabled, true);
+  ui.setOpening(false); assert.equal(get('collect-project-tabs').disabled, false);
+  reply = { ok: true, count: 0, loaded: 0, loading: 0, tabs: [], batch: null };
+  await ui.refresh(); assert.equal(get('collect-project-tabs').disabled, true);
+  ui.destroy();
 });

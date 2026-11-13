@@ -427,8 +427,8 @@ window.addEventListener('focus', async () => {
     await restore();
     searchUI = initSearchUI({ isRunning: () => running, seenCollectionIds: state.draft.seenCollections, getProjectId: () => projectId, onChange: patch => { queueDraft(patch); warnURLs(); } });
     if (state.draft.engine) ui.engine.value = state.draft.engine;
-    ready = true; seedsUI = initSeedsUI({ draft: state.draft, onChange: queueDraft, getProjectId: () => projectId });
-    projectTabsUI = initProjectTabsUI({ getProjectId: () => projectId });
+    ready = true; seedsUI = initSeedsUI({ draft: state.draft, onChange: queueDraft, getProjectId: () => projectId, onOpeningChange: value => projectTabsUI?.setOpening(value) });
+    projectTabsUI = initProjectTabsUI({ getProjectId: () => projectId, onState: value => seedsUI?.updateTabState(value) });
     updateControls(); await importSavedPages();
   } catch (error) { report(error); }
 })();

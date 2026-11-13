@@ -1,14 +1,19 @@
 import { openWorkspaceSection } from './workspace-sections.js';
 import { getExtensionAPI } from './extension-api.js';
 import { SEARCH_TABS_KEY } from './project-search-tabs.js';
-export function initProjectTabsUI({ getProjectId }) {
+export function initProjectTabsUI({ getProjectId, onState = () => {} }) {
   const ext = getExtensionAPI(), el = id => document.getElementById(id);
-  let collectingBatchId = null;
+  let collectingBatchId = null, opening = false, timer;
   let destroyed = false, revision = 0, state = { count: 0, batch: null };
   function render() {
     const batch = state.batch;
-    el('project-tab-count').textContent = `${state.count} project search tab${state.count === 1 ? '' : 's'} tracked in this browser session.`;
-    el('collect-project-tabs').disabled = !!batch?.running || !state.count;
+    const loading = state.loading || 0, loaded = state.loaded ?? state.count;
+    el('project-tab-count').textContent = `${loaded} of ${state.count} project search tabs loaded.${opening ? ' Opening search tabs…' : loading ? ' Waiting for loading to finish.' : ''}`;
+    el('collect-project-tabs').disabled = opening || !!batch?.running || !state.count || loading > 0;
+    const skip = el('collect-loaded-tabs');
+    skip.hidden = !loading || !(state.tabs || []).some(tab => tab.slow);
+    skip.disabled = opening || !!batch?.running || !loaded;
+    el('project-tab-loading-hint').textContent = skip.hidden ? '' : 'Some tabs are taking a long time to load. Inspect or close them, or collect the loaded tabs and leave the others open.';
     el('stop-project-tabs').hidden = !batch?.running;
     el('stop-project-tabs').disabled = !!batch?.stopping;
     el('project-tab-details').replaceChildren();
@@ -32,14 +37,16 @@ export function initProjectTabsUI({ getProjectId }) {
       const reply = await ext.runtime.sendMessage({ type: 'get-project-search-tabs', projectId });
       if (destroyed || request !== revision || getProjectId() !== projectId) return;
       if (!reply?.ok) throw new Error(reply?.error || 'Could not read project search tabs.');
-      state = reply; render();
+      state = reply; render(); onState(state);
+      clearTimeout(timer);
+      if (state.loading) timer = setTimeout(refresh, 1000);
     } catch (error) { if (!destroyed && request === revision) el('project-tab-status').textContent = error.message; }
   }
-  async function action(type) {
+  async function action(type, loadedOnly = false) {
     el('collect-project-tabs').disabled = true;
     if (type === 'stop-project-search-tabs') { collectingBatchId = null; el('stop-project-tabs').disabled = true; }
     try {
-      const reply = await ext.runtime.sendMessage({ type, projectId: getProjectId() });
+      const reply = await ext.runtime.sendMessage({ type, projectId: getProjectId(), ...(loadedOnly ? { loadedOnly: true } : {}) });
       if (destroyed) return;
       if (!reply?.ok) throw new Error(reply?.error || 'Could not collect project search tabs.');
       if (type === 'collect-project-search-tabs') collectingBatchId = reply.batch?.id || null;
@@ -50,8 +57,9 @@ export function initProjectTabsUI({ getProjectId }) {
     }
   }
   el('collect-project-tabs').addEventListener('click', () => action('collect-project-search-tabs'));
+  el('collect-loaded-tabs').addEventListener('click', () => action('collect-project-search-tabs', true));
   el('stop-project-tabs').addEventListener('click', () => action('stop-project-search-tabs'));
   ext.storage.onChanged.addListener((changes, area) => { if (area === 'session' && changes[SEARCH_TABS_KEY] && !destroyed) refresh(); });
   refresh();
-  return { refresh, destroy() { destroyed = true; collectingBatchId = null; revision++; } };
+  return { refresh, setOpening(value) { opening = value; if (!destroyed) render(); }, destroy() { destroyed = true; clearTimeout(timer); collectingBatchId = null; revision++; } };
 }
