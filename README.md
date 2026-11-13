@@ -43,7 +43,7 @@ Seeds, generation parameters, edited tuple text and prepared queries are part of
 
 **File type** offers No restriction, PDF and DOCX. Its choices come from the supported document-format registry. **Excluded websites** accepts domains or HTTP(S) website URLs, one per line; URLs are reduced to domains, leading `www.` is removed, duplicates are ignored, and invalid entries are reported. Subdomains other than `www` stay specific. These settings add `filetype:` and `-site:` operators through the search-engine adapter. They never remove collected URLs or change downloads. Engine support is best effort, particularly with Ecosia's varying providers.
 
-**Create search queries** displays and stores the final query strings, including restrictions. Editable tuples stay unchanged. Changing a restriction clears prepared links until they are explicitly recreated; switching engines rebuilds final queries using their saved base tuples and filter snapshot. Search-tab tracking and collection provenance use the final query. Existing saved links from older versions remain unchanged until recreated. Restrictions and query snapshots persist in the project draft and `project.json`.
+**Create search queries** displays and stores the final query strings, including restrictions. Editable tuples stay unchanged. Changing file type updates prepared queries immediately; exclusions update after a short typing pause. Invalid exclusions are shown inline and prevent opening stale queries. These updates preserve the base tuples, query-list page and scroll position, and never open searches or alter tabs already open. Switching engines also rebuilds the final queries. Search-tab tracking and collection provenance use the final query. Saved links from older versions without base-tuple metadata remain unchanged until recreated. Restrictions and query snapshots persist in the project draft and `project.json`.
 
 New projects start by excluding youtube.com, facebook.com, instagram.com and amazon.com. **Save exclusions as my default** saves a personal list for future projects in this browser. An empty saved list is valid. Editing a project's list does not change personal defaults, and saving defaults does not overwrite another project's list. File type resets to No restriction for each new project.
 
@@ -249,3 +249,9 @@ See [collection/extraction details](docs/PIPELINE.md) for limits, provenance and
 - https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/background
 - https://extensionworkshop.com/documentation/develop/getting-started-with-web-ext/
 - https://extensionworkshop.com/documentation/publish/signing-and-distribution-overview/
+
+## Search tab status
+
+Query rows show Not opened, Loading, Loaded, Needs attention, Collected, or Closed without collecting. **Show tab** brings a tracked tab into view. Loaded means the browser finished loading; it does not guarantee usable results or absence of a CAPTCHA. All indicators are limited to project tabs opened through BootCaT; no additional permissions are needed.
+
+Collection waits until all tracked tabs finish loading and batch opening finishes. A manually closed tab stops blocking collection and can be reopened through its query link. After 30 seconds of loading, **Collect loaded tabs** allows collecting the finished tabs while leaving loading tabs open. Unloaded tabs need manual attention. Collection failures, challenges and partial results keep their tabs open for inspection and retry; successful collection saves results before closing. Status and per-query outcomes survive closing/reopening the workspace within the browser session, and clear on a new project or browser/extension restart.

@@ -5,9 +5,12 @@ import { openProjectSearch } from './search-tabs-client.js';
 import { ENGINES, searchURL, buildSearchQuery } from './engines.js';
 import { parseSeeds, parseQueries, generateTuples, combinationCount } from './tuples.js';
 
-export function initSeedsUI({ draft = {}, onChange = () => {}, getProjectId = () => null } = {}) {
+export function initSeedsUI({ draft = {}, onChange = () => {}, getProjectId = () => null, onOpeningChange = () => {} } = {}) {
   const el = id => document.getElementById(id), PAGE_SIZE = 100;
   let prepared = [], bases = null, preparedFilters = null, savingDefaults = false, page = 0, generating = false, opening = false, stopped = false, destroyed = false, controller;
+  let pendingOpens = 0;
+  const notifyOpening = () => { if (!destroyed) onOpeningChange(opening || pendingOpens > 0); };
+  let tabState = { tabs: [], history: [] }, queryRows = [], filterTimer, filterPending = false, filtersValid = true;
   const engineID = () => el('engine').value || ENGINES[0].id;
   const engineName = () => ENGINES.find(engine => engine.id === engineID())?.name || engineID();
   const busy = () => generating || opening;
@@ -28,7 +31,7 @@ export function initSeedsUI({ draft = {}, onChange = () => {}, getProjectId = ()
     el('save-site-defaults').disabled = busy() || savingDefaults;
     el('generate-tuples').disabled = busy() || parseSeeds(el('seeds').value).length < 5;
     el('prepare-queries').disabled = busy() || !el('tuples').value.trim();
-    el('open-all-queries').disabled = busy() || !prepared.length;
+    el('open-all-queries').disabled = busy() || filterPending || !filtersValid || !prepared.length;
     el('stop-tuples').hidden = !generating; el('stop-query-tabs').hidden = !opening;
     el('engine').disabled = opening;
     el('tuple-length').disabled = busy() || !parseSeeds(el('seeds').value).length;
@@ -50,9 +53,51 @@ export function initSeedsUI({ draft = {}, onChange = () => {}, getProjectId = ()
     el('tuple-warning').textContent = Number(requested.value) > 500 ? 'Large tuple lists may take longer to generate and review, and consume substantial browser storage. Generation can be stopped.' : '';
     controls();
   }
+  function updateTabState(value) {
+    tabState = value;
+    for (const row of queryRows) {
+      const tabs = (value.tabs || []).filter(tab => tab.engine === row.engine && tab.query === row.query);
+      const previous = (value.history || []).find(item => item.engine === row.engine && item.query === row.query);
+      const loading = tabs.filter(tab => tab.status === 'loading').length;
+      const attention = tabs.filter(tab => tab.status === 'attention');
+      const status = loading ? 'loading' : attention.length ? 'attention' : tabs.length ? 'loaded' : previous?.status || 'unopened';
+      const labels = { unopened: '○ Not opened', loading: '◌ Loading…', loaded: '● Loaded', attention: '⚠ Needs attention', collected: '✓ Collected', closed: '○ Closed without collecting' };
+      row.badge.textContent = labels[status] + (tabs.length > 1 ? ` (${tabs.length} tabs; ${loading} loading)` : '');
+      row.badge.dataset.status = status;
+      row.badge.title = attention[0]?.reason || previous?.reason || (status === 'loaded' ? 'Loading finished; results will be checked when collected.' : '');
+      row.tabId = (attention[0] || tabs[0])?.tabId;
+      row.inspect.hidden = !tabs.length;
+    }
+  }
+  function updateLinks() {
+    for (const row of queryRows) {
+      const disabled = filterPending || !filtersValid;
+      row.link.setAttribute?.('aria-disabled', String(disabled));
+      if (disabled) row.link.removeAttribute?.('href');
+      else row.link.href = searchURL(row.engine, row.query);
+    }
+  }
+  function applyFilters({ persist = true } = {}) {
+    clearTimeout(filterTimer); filterPending = false;
+    try {
+      const filters = normalizeSearchFilters({ fileType: el('search-filetype').value, excludedSites: el('excluded-sites').value });
+      filtersValid = true; el('excluded-sites').setAttribute?.('aria-invalid', 'false');
+      if (bases) {
+        // A draft may have been saved during the typing pause, before its links.
+        const needsSave = persist || JSON.stringify(preparedFilters) !== JSON.stringify(filters);
+        preparedFilters = filters; rebuildQueries();
+        if (needsSave) onChange({ preparedQueries: prepared, preparedQueryBases: bases, preparedFilters });
+      }
+      el('search-filter-status').textContent = prepared.length && bases ? 'Search queries updated.' : '';
+      render();
+    } catch (error) {
+      filtersValid = false; el('excluded-sites').setAttribute?.('aria-invalid', 'true');
+      el('search-filter-status').textContent = error.message; updateLinks(); controls();
+    }
+  }
   function render() {
     const pages = Math.max(1, Math.ceil(prepared.length / PAGE_SIZE)); page = Math.min(page, pages - 1);
-    const body = el('prepared-queries'); body.replaceChildren(); body.start = page * PAGE_SIZE + 1;
+    const body = el('prepared-queries'), scroll = body.scrollTop; body.replaceChildren(); queryRows = []; body.start = page * PAGE_SIZE + 1;
     for (const query of prepared.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)) {
       const item = document.createElement('li'), link = document.createElement('a');
       link.href = searchURL(engineID(), query); link.textContent = query; link.target = '_blank'; link.rel = 'noopener noreferrer';
@@ -60,15 +105,28 @@ export function initSeedsUI({ draft = {}, onChange = () => {}, getProjectId = ()
         if (event.type === 'auxclick' && event.button !== 1) return;
         if (event.type === 'click' && event.button > 0) return;
         event.preventDefault();
-        if (destroyed) return;
+        if (destroyed || busy() || filterPending || !filtersValid) return;
+        pendingOpens++; notifyOpening();
         try {
           await openProjectSearch({ projectId: getProjectId(), engine: engineID(), query, active: !(event.button === 1 || event.ctrlKey || event.metaKey) });
           if (!destroyed) el('query-status').textContent = 'Search tab opened and tracked for this project.';
         } catch (error) { if (!destroyed) el('query-status').textContent = error.message; }
+        finally { pendingOpens--; notifyOpening(); }
       };
       link.addEventListener('click', open); link.addEventListener('auxclick', open);
-      item.append(link); body.append(item);
+      const badge = document.createElement('span'), inspect = document.createElement('button');
+      badge.className = 'query-tab-status'; inspect.className = 'secondary query-tab-action'; inspect.type = 'button'; inspect.textContent = 'Show tab';
+      const row = { query, engine: engineID(), badge, inspect, link }; queryRows.push(row);
+      inspect.addEventListener('click', async () => {
+        if (!row.tabId || destroyed) return;
+        try {
+          const reply = await getExtensionAPI().runtime.sendMessage({ type: 'focus-project-search-tab', projectId: getProjectId(), tabId: row.tabId });
+          if (!reply?.ok) throw new Error(reply?.error || 'Could not show this tab.');
+        } catch (error) { if (!destroyed) el('query-status').textContent = error.message; }
+      });
+      item.append(link, badge, inspect); body.append(item);
     }
+    body.scrollTop = scroll; updateTabState(tabState); updateLinks();
     el('query-summary').textContent = prepared.length ? `${prepared.length.toLocaleString()} queries for ${engineName()}. Click a query to open its search in a new tab.` : 'No search queries prepared yet.';
     el('query-pagination').hidden = pages <= 1;
     el('query-page').textContent = `Queries ${page * PAGE_SIZE + 1}–${Math.min((page + 1) * PAGE_SIZE, prepared.length)} of ${prepared.length.toLocaleString()}`;
@@ -84,7 +142,8 @@ export function initSeedsUI({ draft = {}, onChange = () => {}, getProjectId = ()
     prepared = Array.isArray(saved.preparedQueries) ? saved.preparedQueries : [];
     bases = Array.isArray(saved.preparedQueryBases) ? saved.preparedQueryBases : null;
     preparedFilters = saved.preparedFilters || null;
-    seedCount(); render();
+    clearTimeout(filterTimer); filterPending = false; filtersValid = true;
+    seedCount(); applyFilters({ persist: false });
   }
   for (const [id, key] of [['seeds', 'seeds'], ['tuple-length', 'tupleLength'], ['tuple-count', 'tupleCount']]) {
     el(id).addEventListener('input', () => { onChange({ [key]: el(id).value }); seedCount(); });
@@ -118,20 +177,29 @@ export function initSeedsUI({ draft = {}, onChange = () => {}, getProjectId = ()
   el('stop-tuples').addEventListener('click', () => controller?.abort());
   el('prepare-queries').addEventListener('click', () => {
     if (busy() || destroyed) return;
+    clearTimeout(filterTimer); filterPending = false;
     try {
       const filters = normalizeSearchFilters({ fileType: el('search-filetype').value, excludedSites: el('excluded-sites').value });
       bases = parseQueries(el('tuples').value); preparedFilters = filters; page = 0; rebuildQueries();
       el('excluded-sites').value = filters.excludedSites.join('\n');
       onChange({ preparedQueries: prepared, preparedQueryBases: bases, preparedFilters, excludedSites: el('excluded-sites').value, searchFileType: filters.fileType });
-    } catch (error) { el('query-status').textContent = error.message; return; }
+      filtersValid = true; el('excluded-sites').setAttribute?.('aria-invalid', 'false'); el('search-filter-status').textContent = '';
+    } catch (error) { applyFilters(); el('query-status').textContent = error.message; return; }
     el('query-status').textContent = prepared.length ? 'Queries are ready. No searches have been opened.' : 'Enter at least one tuple or query, one per line.';
     render();
     if (prepared.length) { openWorkspaceSection('search-section'); el('query-list-heading').scrollIntoView?.({ block: 'nearest' }); }
   });
-  el('engine').addEventListener('change', () => { rebuildQueries(); onChange({ preparedQueries: prepared }); render(); });
+  el('engine').addEventListener('change', () => { applyFilters(); onChange({ preparedQueries: prepared }); });
   for (const [id, key, type] of [['search-filetype', 'searchFileType', 'change'], ['excluded-sites', 'excludedSites', 'input']]) {
     el(id).addEventListener(type, () => {
-      discardQueries('Search restrictions changed. Click Create search queries to update the query list.', { [key]: el(id).value }); render();
+      onChange({ [key]: el(id).value });
+      clearTimeout(filterTimer);
+      if (id === 'search-filetype') applyFilters();
+      else {
+        filterPending = true; el('search-filter-status').textContent = 'Updating search queries…';
+        updateLinks(); controls();
+        filterTimer = setTimeout(() => { if (!destroyed) applyFilters(); }, 400);
+      }
     });
   }
   el('save-site-defaults').addEventListener('click', async () => {
@@ -149,10 +217,10 @@ export function initSeedsUI({ draft = {}, onChange = () => {}, getProjectId = ()
   el('next-queries').addEventListener('click', () => { if ((page + 1) * PAGE_SIZE < prepared.length) { page++; render(); } });
   el('stop-query-tabs').addEventListener('click', () => { stopped = true; });
   el('open-all-queries').addEventListener('click', async () => {
-    if (busy() || destroyed || !prepared.length) return;
+    if (busy() || destroyed || filterPending || !filtersValid || !prepared.length) return;
     const queries = prepared.slice(), engine = engineID();
     if (!window.confirm(`Open all ${queries.length.toLocaleString()} queries in new ${engineName()} tabs? Search engines may refuse automated batch queries, block requests or show CAPTCHAs. Many tabs may slow your browser.`)) return;
-    opening = true; stopped = false; controls(); let opened = 0;
+    opening = true; stopped = false; notifyOpening(); controls(); let opened = 0;
     try {
       for (const query of queries) {
         if (stopped || destroyed) break;
@@ -162,8 +230,8 @@ export function initSeedsUI({ draft = {}, onChange = () => {}, getProjectId = ()
       if (!destroyed) el('query-status').textContent = `${stopped ? 'Stopped. ' : ''}${opened.toLocaleString()} of ${queries.length.toLocaleString()} search tabs opened and tracked. Use Collect results and close project search tabs below.`;
     } catch (error) {
       if (!destroyed) el('query-status').textContent = `Opened ${opened.toLocaleString()} of ${queries.length.toLocaleString()} tabs before an error: ${error.message}. Use the individual query links to continue.`;
-    } finally { opening = false; if (!destroyed) controls(); }
+    } finally { opening = false; notifyOpening(); if (!destroyed) controls(); }
   });
   restore(draft);
-  return { restore, isBusy: () => busy() || savingDefaults, destroy() { destroyed = true; stopped = true; controller?.abort(); } };
+  return { restore, updateTabState, isBusy: () => busy() || pendingOpens > 0 || savingDefaults || filterPending, destroy() { destroyed = true; clearTimeout(filterTimer); stopped = true; controller?.abort(); } };
 }

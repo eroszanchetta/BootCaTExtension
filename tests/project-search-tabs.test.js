@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createProjectSearchTabs, matchesProjectSearch, SEARCH_TABS_KEY } from '../src/project-search-tabs.js';
+import { createProjectSearchTabs, matchesProjectSearch, SEARCH_TABS_KEY, SLOW_TAB_MS } from '../src/project-search-tabs.js';
 
 const event = () => ({ listeners: [], addListener(fn) { this.listeners.push(fn); }, emit(...args) { for (const fn of this.listeners) fn(...args); } });
 const gate = () => { let resolve; return { promise: new Promise(done => { resolve = done; }), release: () => resolve() }; };
@@ -17,6 +17,7 @@ function fixture(options = {}) {
     } },
     tabs: {
       onRemoved: event(), onUpdated: event(), onReplaced: event(),
+      update: async (id, patch) => { if (!tabs.has(id)) throw new Error('No tab'); Object.assign(tabs.get(id), patch); return { ...tabs.get(id) }; },
       create: async ({ url, active }) => { const tab = { id: nextId++, url, active, status: 'complete' }; tabs.set(tab.id, tab); return { ...tab }; },
       get: async id => {
         if (!tabs.has(id)) throw new Error('No tab');
@@ -67,8 +68,11 @@ test('CAPTCHAs, partial results, failed saves, loading tabs and changed queries 
   const ids = {};
   for (const query of ['good', 'captcha', 'partial', 'storage', 'loading', 'moved', 'closed']) ids[query] = (await app.open(query)).tabId;
   app.tabs.get(ids.loading).status = 'loading'; app.tabs.get(ids.moved).url = 'https://www.google.com/search?q=other'; app.tabs.delete(ids.closed);
-  await app.manager.start('project'); const result = await app.finish();
-  assert.deepEqual(app.removed, [ids.good]); assert.equal(result.batch.saved, 2); assert.equal(result.batch.skipped, 3);
+  await assert.rejects(app.manager.start('project'), /finish loading/);
+  await app.state();
+  app.session[SEARCH_TABS_KEY].tabs.find(tab => tab.tabId === ids.loading).loadingSince = Date.now() - SLOW_TAB_MS - 100;
+  await app.manager.start('project', { loadedOnly: true }); const result = await app.finish();
+  assert.deepEqual(app.removed, [ids.good]); assert.equal(result.batch.saved, 2); assert.equal(result.batch.skipped, 0);
   assert.equal(result.batch.leftOpen, 3); assert.equal(result.count, 4);
   for (const query of ['captcha', 'partial', 'storage', 'loading', 'moved']) assert.ok(app.tabs.has(ids[query]));
   assert.ok(result.batch.details.some(detail => /Partial results saved/.test(detail.reason)));
@@ -143,4 +147,68 @@ test('recognized provider challenge redirects stay tracked for manual resolution
   app.tabs.get(tabId).url = 'https://www.google.com/search?q=energy';
   app.ext.tabs.onUpdated.emit(tabId, { url: app.tabs.get(tabId).url }, app.tabs.get(tabId));
   await app.manager.start('project'); assert.equal((await app.finish()).batch.closed, 1);
+});
+
+test('loading blocks collection; manually closing a loading tab releases the remaining loaded tabs', async () => {
+  const app = fixture();
+  const ready = await app.open('ready'), stuck = await app.open('stuck');
+  app.tabs.get(stuck.tabId).status = 'loading';
+  app.ext.tabs.onUpdated.emit(stuck.tabId, { status: 'loading' }, app.tabs.get(stuck.tabId));
+  const loading = await app.state();
+  assert.equal(loading.loading, 1); assert.equal(loading.loaded, 1);
+  await assert.rejects(app.manager.start('project'), /finish loading/);
+  assert.equal(app.collected.length, 0);
+  app.tabs.delete(stuck.tabId); app.ext.tabs.onRemoved.emit(stuck.tabId);
+  const closed = await app.state();
+  assert.equal(closed.loading, 0); assert.equal(closed.count, 1);
+  assert.equal(closed.history.find(item => item.query === 'stuck').status, 'closed');
+  await app.manager.start('project'); const finished = await app.finish();
+  assert.deepEqual(app.removed, [ready.tabId]);
+  assert.equal(finished.history.find(item => item.query === 'ready').status, 'collected');
+  await assert.rejects(app.manager.start('project'), /No loaded/);
+});
+
+test('slow loading permits explicit collection of loaded tabs, keeps stuck tabs, and completion survives worker restart', async () => {
+  const app = fixture(); const ready = await app.open('ready'), stuck = await app.open('stuck');
+  app.tabs.get(stuck.tabId).status = 'loading'; await app.state();
+  await assert.rejects(app.manager.start('project', { loadedOnly: true }), /still loading/);
+  app.session[SEARCH_TABS_KEY].tabs.find(tab => tab.tabId === stuck.tabId).loadingSince = Date.now() - SLOW_TAB_MS - 100;
+  assert.equal((await app.state()).tabs.find(tab => tab.tabId === stuck.tabId).slow, true);
+  await app.manager.start('project', { loadedOnly: true }); await app.finish();
+  assert.deepEqual(app.removed, [ready.tabId]); assert.ok(app.tabs.has(stuck.tabId));
+  app.tabs.get(stuck.tabId).status = 'complete';
+  app.ext.tabs.onUpdated.emit(stuck.tabId, { status: 'complete' }, app.tabs.get(stuck.tabId));
+  assert.equal((await app.state()).tabs[0].status, 'loaded');
+  const restarted = createProjectSearchTabs({ ext: app.ext, serialize: app.serialize, assertProject: app.assertProject, collectPage: app.collectPage });
+  const state = await restarted.getState('project');
+  assert.equal(state.loading, 0); assert.equal(state.loaded, 1);
+  assert.equal(state.history[0].status, 'collected');
+  await restarted.start('project');
+  for (let i = 0; i < 100; i++) { const next = await restarted.getState('project'); if (!next.batch.running) break; await new Promise(resolve => setTimeout(resolve, 2)); }
+  assert.equal(app.tabs.has(stuck.tabId), false);
+});
+
+test('failed collection shows attention, retry after manual resolution clears it, and focus is scoped to owned tabs', async () => {
+  let blocked = true;
+  const app = fixture({ collect: async () => { if (blocked) throw new Error('CAPTCHA required'); return { unresolved: 0 }; } });
+  const { tabId } = await app.open('captcha'); await app.manager.start('project');
+  const attention = await app.finish(); assert.equal(attention.tabs[0].status, 'attention');
+  assert.match(attention.tabs[0].reason, /CAPTCHA/); assert.equal(attention.loading, 0);
+  await app.manager.focus('project', tabId); assert.equal(app.tabs.get(tabId).active, true);
+  await assert.rejects(app.manager.focus('other-project', tabId), /project changed/);
+  await assert.rejects(app.manager.focus('project', 999), /no longer tracked/);
+  blocked = false;
+  app.tabs.get(tabId).status = 'loading'; app.ext.tabs.onUpdated.emit(tabId, { status: 'loading' }, app.tabs.get(tabId));
+  assert.equal((await app.state()).loading, 1);
+  app.tabs.get(tabId).status = 'complete'; app.ext.tabs.onUpdated.emit(tabId, { status: 'complete' }, app.tabs.get(tabId));
+  assert.equal((await app.state()).tabs[0].status, 'loaded');
+  await app.manager.start('project'); assert.equal((await app.finish()).history[0].status, 'collected');
+});
+
+test('unloaded tabs need attention and are not counted as loaded; unrelated tab updates do not enter tracking', async () => {
+  const app = fixture(); const { tabId } = await app.open('unloaded');
+  app.tabs.get(tabId).discarded = true;
+  const state = await app.state(); assert.equal(state.tabs[0].status, 'attention'); assert.equal(state.loaded, 0);
+  app.ext.tabs.onUpdated.emit(999, { status: 'loading' }, { id: 999, url: 'https://www.google.com/search?q=unrelated' });
+  assert.equal((await app.state()).count, 1);
 });

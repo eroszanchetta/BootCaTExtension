@@ -75,7 +75,8 @@ searchTabs = createProjectSearchTabs({ ext, serialize, assertProject, collectPag
 async function handle(message) {
   if (message.type === 'open-project-search') return searchTabs.open(message);
   if (message.type === 'get-project-search-tabs') return searchTabs.getState(message.projectId);
-  if (message.type === 'collect-project-search-tabs') return searchTabs.start(message.projectId);
+  if (message.type === 'collect-project-search-tabs') return searchTabs.start(message.projectId, { loadedOnly: message.loadedOnly === true });
+  if (message.type === 'focus-project-search-tab') return searchTabs.focus(message.projectId, message.tabId);
   if (message.type === 'stop-project-search-tabs') return searchTabs.stop(message.projectId);
   if (message.type === 'save-user-defaults') return serialize(async () => {
     await assertProject(message.projectId);

@@ -1,6 +1,21 @@
 import { adapterForURL, searchURL } from './engines.js';
 export const SEARCH_TABS_KEY = 'projectSearchTabs';
-const empty = () => ({ tabs: [], batch: null });
+export const SLOW_TAB_MS = 30_000;
+const empty = () => ({ tabs: [], history: [], batch: null });
+function remember(data, record, status, reason = '') {
+  data.history = (data.history || []).filter(item => !(item.projectId === record.projectId && item.engine === record.engine && item.query === record.query));
+  data.history.push({ projectId: record.projectId, engine: record.engine, query: record.query, status, reason });
+}
+function updateLoading(record, tab) {
+  record.unloaded = !!tab.discarded;
+  if (tab.discarded) { record.status = 'attention'; record.reason = 'Tab was unloaded by the browser. Open it to reload, then retry.'; return; }
+  if (tab.status !== 'complete') {
+    if (record.status !== 'loading') record.loadingSince = Date.now();
+    record.status = 'loading'; record.reason = '';
+  } else if (!record.status || record.status === 'loading') {
+    record.status = 'loaded'; record.reason = '';
+  }
+}
 const canonical = value => { const url = new URL(value); url.hash = ''; return url.href; };
 const queryText = value => value.normalize('NFC').replace(/\s+/gu, ' ').trim();
 export function matchesProjectSearch(record, value) {
@@ -24,6 +39,7 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
   async function read() {
     if (!ext.storage.session) throw new Error('This browser does not support safe session tab tracking.');
     const data = (await ext.storage.session.get(SEARCH_TABS_KEY))[SEARCH_TABS_KEY] || empty();
+    data.history ||= [];
     known = new Set(data.tabs.map(record => record.tabId)); return data;
   }
   async function write(data) {
@@ -45,7 +61,8 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
       const data = await read();
       const tab = await ext.tabs.create({ url, active: active !== false });
       if (!Number.isInteger(tab?.id)) throw new Error('The browser did not return a search tab ID.');
-      data.tabs.push({ tabId: tab.id, token: crypto.randomUUID(), projectId, engine, query, createdURL: url, revision: 0 });
+      const record = { tabId: tab.id, token: crypto.randomUUID(), projectId, engine, query, createdURL: url, revision: 0 };
+      updateLoading(record, tab); data.tabs.push(record);
       try { await write(data); }
       catch (error) { throw new Error(`The search tab opened but could not be tracked. Collect it manually. (${error.message})`); }
       return { tabId: tab.id };
@@ -53,11 +70,37 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
   }
   function status(data, projectId) {
     const batch = data.batch?.projectId === projectId ? data.batch : null;
-    return { count: data.tabs.filter(record => record.projectId === projectId).length, batch };
+    const tabs = data.tabs.filter(record => record.projectId === projectId).map(record => ({
+      tabId: record.tabId, engine: record.engine, query: record.query, status: record.status || 'loading', reason: record.reason || '', unloaded: !!record.unloaded,
+      slow: record.status === 'loading' && Date.now() - record.loadingSince >= SLOW_TAB_MS
+    }));
+    return { count: tabs.length, loaded: tabs.filter(tab => tab.status !== 'loading' && !tab.unloaded).length,
+      loading: tabs.filter(tab => tab.status === 'loading').length, tabs,
+      history: (data.history || []).filter(item => item.projectId === projectId), batch };
+  }
+  // Reconcile only our own tab IDs, including events missed while the worker slept.
+  async function reconcile(data, projectId) {
+    const before = JSON.stringify(data);
+    for (const record of data.tabs.filter(item => item.projectId === projectId)) {
+      let tab;
+      try { tab = await ext.tabs.get(record.tabId); }
+      catch { remember(data, record, 'closed', 'Tab closed without collecting.'); data.tabs = data.tabs.filter(item => item !== record); continue; }
+      const url = tab.pendingUrl || tab.url;
+      if (url && !matchesProjectSearch(record, url) && !isProviderGate(record, url)) {
+        remember(data, record, 'closed', 'Tab moved to another page or query; no longer tracked.');
+        data.tabs = data.tabs.filter(item => item !== record); continue;
+      }
+      updateLoading(record, tab);
+      if (record.status !== 'loading' && url && isProviderGate(record, url)) {
+        record.status = 'attention'; record.reason = 'Complete the challenge, consent or sign-in in this tab, then retry collection.';
+      }
+    }
+    if (JSON.stringify(data) !== before) await write(data);
   }
   async function getState(projectId) {
     return serialize(async () => {
       await assertProject(projectId); const data = await read();
+      await reconcile(data, projectId);
       if (data.batch?.running && (data.batch.workerToken !== workerToken || activeBatch?.id !== data.batch.id)) {
         data.batch.running = false; data.batch.interrupted = true; await write(data);
       }
@@ -67,6 +110,8 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
   async function forget(tabId) {
     return serialize(async () => {
       const data = await read(), count = data.tabs.length;
+      const record = data.tabs.find(item => item.tabId === tabId);
+      if (record) remember(data, record, 'closed', 'Tab closed without collecting.');
       data.tabs = data.tabs.filter(record => record.tabId !== tabId);
       if (data.tabs.length !== count) await write(data);
     });
@@ -75,16 +120,23 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
   ext.tabs.onReplaced?.addListener((addedId, removedId) => { forget(removedId).catch(() => {}); });
   ext.tabs.onUpdated?.addListener((tabId, change, tab) => {
     if (!known.has(tabId)) return;
-    if (!change.url && change.status !== 'loading') return;
+    if (!change.url && !change.status && change.discarded === undefined) return;
     // Invalidate synchronously too: a navigation may arrive while tabs.get is
     // pending immediately before a close. Ignore content of untracked tabs.
-    if (known.has(tabId)) navigation.set(tabId, (navigation.get(tabId) || 0) + 1);
+    if (change.url || change.status === 'loading') navigation.set(tabId, (navigation.get(tabId) || 0) + 1);
     serialize(async () => {
       const data = await read(), record = data.tabs.find(item => item.tabId === tabId);
       if (!record) return;
       const url = change.url || tab?.pendingUrl || tab?.url;
-      if (url && !matchesProjectSearch(record, url) && !isProviderGate(record, url)) data.tabs = data.tabs.filter(item => item !== record);
-      else record.revision++;
+      if (url && !matchesProjectSearch(record, url) && !isProviderGate(record, url)) {
+        remember(data, record, 'closed', 'Tab moved to another page or query; no longer tracked.');
+        data.tabs = data.tabs.filter(item => item !== record);
+      } else {
+        if (change.url || change.status === 'loading') {
+          record.revision++; record.status = 'loading'; record.loadingSince = Date.now(); record.reason = '';
+        }
+        updateLoading(record, { ...tab, ...(change.status ? { status: change.status } : {}), ...(change.discarded !== undefined ? { discarded: change.discarded } : {}) });
+      }
       await write(data);
     }).catch(() => {});
   });
@@ -121,6 +173,7 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
         return { reason: 'Results saved, but the tab navigated or started loading; left open.' };
       }
       await ext.tabs.remove(record.tabId);
+      remember(data, record, 'collected', 'Results saved and tab closed.');
       data.tabs = data.tabs.filter(item => item !== record); await write(data);
       return { closed: true };
     });
@@ -129,7 +182,7 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
     return serialize(async () => {
       const data = await read();
       if (data.batch?.id !== run.id || data.batch.projectId !== run.projectId) return false;
-      change(data.batch); await write(data); return true;
+      change(data.batch, data); await write(data); return true;
     });
   }
   async function runBatch(run, records) {
@@ -149,7 +202,9 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
             }
           }
         } catch (error) { reason = `${saved ? 'Results saved, but tab could not be closed: ' : ''}${error.message}`; }
-        const exists = await updateBatch(run, batch => {
+        const exists = await updateBatch(run, (batch, data) => {
+          const current = data.tabs.find(item => item.token === record.token);
+          if (current && outcome !== 'closed') { current.status = current.status === 'loading' ? 'loading' : 'attention'; current.reason = reason || 'Inspect this tab, then retry collection.'; }
           batch.processed++; if (saved) batch.saved++;
           if (outcome === 'closed') batch.closed++; else if (outcome === 'skipped') batch.skipped++; else batch.leftOpen++;
           if (batch.details.length < 100) batch.details.push({ query: record.query, outcome, reason: reason || 'Results saved and tab closed.' });
@@ -161,11 +216,16 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
       finally { if (activeBatch === run) activeBatch = null; }
     }
   }
-  async function start(projectId) {
+  async function start(projectId, { loadedOnly = false } = {}) {
     const prepared = await serialize(async () => {
       await assertProject(projectId);
       if (activeBatch) throw new Error('Project search-tab collection is already running.');
-      const data = await read(), records = data.tabs.filter(record => record.projectId === projectId);
+      const data = await read(); await reconcile(data, projectId);
+      const state = status(data, projectId);
+      if (state.loading && !loadedOnly) throw new Error('Wait for search tabs to finish loading, or close stuck tabs.');
+      if (loadedOnly && state.loading && !state.tabs.some(tab => tab.slow)) throw new Error('Search tabs are still loading. Please wait.');
+      const records = data.tabs.filter(record => record.projectId === projectId && (!loadedOnly || (record.status !== 'loading' && !record.unloaded)));
+      if (!records.length) throw new Error('No loaded project search tabs to collect.');
       const run = { id: crypto.randomUUID(), projectId, stopped: false };
       data.batch = { id: run.id, projectId, workerToken, running: true, total: records.length, processed: 0, saved: 0, closed: 0, skipped: 0, leftOpen: 0, details: [] };
       await write(data); activeBatch = run;
@@ -184,5 +244,14 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
       return status(data, projectId);
     });
   }
-  return { open, getState, start, stop, resetInQueue };
+  async function focus(projectId, tabId) {
+    return serialize(async () => {
+      await assertProject(projectId); const data = await read();
+      if (!data.tabs.some(item => item.projectId === projectId && item.tabId === tabId)) throw new Error('This tab is no longer tracked.');
+      const tab = await ext.tabs.update(tabId, { active: true });
+      if (Number.isInteger(tab.windowId) && ext.windows?.update) await ext.windows.update(tab.windowId, { focused: true });
+      return { tabId };
+    });
+  }
+  return { open, getState, start, stop, focus, resetInQueue };
 }

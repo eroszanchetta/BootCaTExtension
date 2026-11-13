@@ -10,7 +10,9 @@ import * as storage from '../src/project-store.js';
 
 const source = (await readFile(new URL('../src/seeds-ui.js', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '').replace(/^export /gm, '');
 class Element {
-  constructor() { this.value = ''; this.textContent = ''; this.handlers = {}; this.children = []; this.disabled = false; }
+  constructor() { this.value = ''; this.textContent = ''; this.handlers = {}; this.children = []; this.disabled = false; this.dataset = {}; this.attributes = {}; this.scrollTop = 0; }
+  setAttribute(key, value) { this.attributes[key] = value; }
+  removeAttribute(key) { delete this.attributes[key]; if (key === 'href') delete this.href; }
   addEventListener(type, fn) { this.handlers[type] = fn; }
   append(...children) { this.children.push(...children); }
   replaceChildren() { this.children = []; }
@@ -21,7 +23,7 @@ function fixture(options = {}) {
   const get = id => elements.get(id) || (elements.set(id, new Element()), elements.get(id));
   get('engine').value = 'google';
   const context = vm.createContext({
-    openWorkspaceSection() {}, combinationCount, SEARCH_FILE_TYPES, DEFAULT_EXCLUDED_SITES, normalizeSearchFilters,
+    setTimeout, clearTimeout, openWorkspaceSection() {}, combinationCount, SEARCH_FILE_TYPES, DEFAULT_EXCLUDED_SITES, normalizeSearchFilters,
     document: { getElementById: get, createElement: () => new Element() },
     window: { confirm(message) { confirmations.push(message); return confirmed; } },
     getExtensionAPI: () => ({ runtime: { sendMessage: async message => options.saveDefaults ? options.saveDefaults(message) : { ok: true } }, tabs: { create: async value => { if (options.open) await options.open(value, opened.length); opened.push(value); } } }),
@@ -33,9 +35,9 @@ function fixture(options = {}) {
     },
     ENGINES, searchURL, buildSearchQuery, parseSeeds, parseQueries, AbortController, BigInt,
     generateTuples: (text, length, count, config) => generateTuples(text, length, count, { ...config, random: () => 0n }),
-    draft, onChange: patch => Object.assign(draft, patch)
+    onOpeningChange: options.onOpeningChange || (() => {}), draft, onChange: patch => Object.assign(draft, patch)
   });
-  vm.runInContext(source + '\nglobalThis.seeds = initSeedsUI({draft, onChange, getProjectId});', context);
+  vm.runInContext(source + '\nglobalThis.seeds = initSeedsUI({draft, onChange, getProjectId, onOpeningChange});', context);
   return { get, draft, opened, confirmations, setConfirmed: value => { confirmed = value; }, ui: vm.runInContext('seeds', context),
     input(id, value) { get(id).value = value; get(id).handlers.input(); }, click: id => get(id).handlers.click() };
 }
@@ -157,8 +159,59 @@ test('search restrictions compile once, appear in links and batch tabs, persist,
   await app.click('save-site-defaults'); assert.deepEqual(JSON.parse(JSON.stringify(savedDefault.patch)), { excludedSites: ['youtube.com', 'facebook.com'] });
   const restored = fixture({ draft: app.draft }); assert.equal(restored.get('prepared-queries').children[0].children[0].textContent, query);
   restored.get('search-filetype').value = 'docx'; restored.get('search-filetype').handlers.change();
-  assert.equal(restored.get('prepared-queries').children.length, 0); assert.equal(restored.get('open-all-queries').disabled, true);
+  assert.equal(restored.get('prepared-queries').children.length, 1); assert.equal(restored.get('open-all-queries').disabled, false);
   await restored.click('prepare-queries'); assert.equal(restored.get('prepared-queries').children[0].children[0].textContent, query.replace('filetype:pdf', 'filetype:docx'));
   restored.input('excluded-sites', 'example.com -site:other.com'); await restored.click('prepare-queries');
-  assert.equal(restored.get('prepared-queries').children.length, 0); assert.match(restored.get('query-status').textContent, /Invalid excluded website/);
+  assert.equal(restored.get('prepared-queries').children.length, 1); assert.equal(restored.get('open-all-queries').disabled, true); assert.match(restored.get('search-filter-status').textContent, /Invalid excluded website/);
+});
+
+test('filter edits regenerate in place after typing, preserve page and scroll, and prevent stale or invalid searches', async () => {
+  const queries = Array.from({ length: 205 }, (_, i) => `query${i}`);
+  const app = fixture({ draft: { tuples: queries.join('\n') } });
+  await app.click('prepare-queries'); app.click('next-queries');
+  app.get('prepared-queries').scrollTop = 127;
+  app.get('search-filetype').value = 'pdf'; app.get('search-filetype').handlers.change();
+  assert.equal(app.get('prepared-queries').start, 101);
+  assert.equal(app.get('prepared-queries').scrollTop, 127);
+  assert.equal(app.get('prepared-queries').children[0].children[0].textContent, 'query100 filetype:pdf');
+  app.input('excluded-sites', 'example.org');
+  assert.equal(app.get('open-all-queries').disabled, true);
+  assert.equal(app.get('prepared-queries').children[0].children[0].href, undefined);
+  await app.click('open-all-queries'); assert.equal(app.opened.length, 0);
+  await new Promise(resolve => setTimeout(resolve, 450));
+  assert.equal(app.get('prepared-queries').children[0].children[0].textContent, 'query100 filetype:pdf -site:example.org');
+  assert.equal(app.get('prepared-queries').scrollTop, 127); assert.equal(app.get('prepared-queries').start, 101);
+  assert.equal(app.draft.preparedQueryBases[100], 'query100'); assert.equal(app.opened.length, 0);
+  app.input('excluded-sites', 'example.org -site:other.org');
+  await new Promise(resolve => setTimeout(resolve, 450));
+  assert.equal(app.get('open-all-queries').disabled, true); assert.equal(app.get('excluded-sites').attributes['aria-invalid'], 'true');
+  app.input('excluded-sites', ''); await new Promise(resolve => setTimeout(resolve, 450));
+  assert.equal(app.get('open-all-queries').disabled, false);
+  assert.equal(app.get('prepared-queries').children[0].children[0].textContent, 'query100 filetype:pdf');
+  app.ui.destroy();
+});
+
+test('query badges track active tabs and closed outcomes without rebuilding links or moving scroll', async () => {
+  let focused;
+  const app = fixture({ draft: { preparedQueries: ['first', 'second'] }, saveDefaults: async message => { focused = message; return { ok: true }; } });
+  const row = app.get('prepared-queries').children[0], link = row.children[0], badge = row.children[1], inspect = row.children[2];
+  assert.match(badge.textContent, /Not opened/); assert.equal(inspect.hidden, true);
+  app.get('prepared-queries').scrollTop = 70;
+  app.ui.updateTabState({ tabs: [{ engine: 'google', query: 'first', tabId: 22, status: 'loading' }], history: [] });
+  assert.match(badge.textContent, /Loading/); assert.equal(inspect.hidden, false);
+  app.ui.updateTabState({ tabs: [{ engine: 'google', query: 'first', tabId: 22, status: 'attention', reason: 'CAPTCHA required' }], history: [] });
+  assert.match(badge.textContent, /Needs attention/); assert.match(badge.title, /CAPTCHA/);
+  await inspect.handlers.click(); assert.equal(focused.type, 'focus-project-search-tab'); assert.equal(focused.tabId, 22);
+  app.ui.updateTabState({ tabs: [], history: [{ engine: 'google', query: 'first', status: 'closed' }, { engine: 'google', query: 'second', status: 'collected' }] });
+  assert.match(badge.textContent, /Closed without collecting/); assert.equal(inspect.hidden, true);
+  assert.match(app.get('prepared-queries').children[1].children[1].textContent, /Collected/);
+  assert.equal(app.get('prepared-queries').children[0].children[0], link); assert.equal(app.get('prepared-queries').scrollTop, 70);
+});
+
+test('batch opening holds collection readiness until opening finishes or stops', async () => {
+  let release; const waiting = new Promise(resolve => { release = resolve; }), opening = [];
+  const app = fixture({ draft: { preparedQueries: ['first', 'second'] }, open: async () => waiting, onOpeningChange: value => opening.push(value) });
+  const pending = app.click('open-all-queries'); assert.deepEqual(opening, [true]);
+  app.click('stop-query-tabs'); release(); await pending;
+  assert.deepEqual(opening, [true, false]); assert.equal(app.opened.length, 1);
 });

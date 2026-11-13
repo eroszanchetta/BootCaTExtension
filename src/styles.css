@@ -99,3 +99,9 @@ nav a:hover { background: #c7ddeb; }
 .search-filters { margin: 20px 0; padding: 18px; border: 1px solid #c4d8e7; border-radius: 12px; background: #f4f8fb; }
 .search-filters label:not(:first-child) { margin-top: 16px; }
 #excluded-sites { min-height: 140px; }
+
+.query-tab-status { display: inline-block; margin: 0 8px; padding: 2px 7px; border-radius: 6px; background: #edf5fa; color: #34546b; font-size: .85em; }
+.query-tab-status[data-status="attention"], .query-tab-status[data-status="closed"] { background: #fff1ce; color: #73520c; }
+.query-tab-status[data-status="collected"] { background: #e1f1e8; color: #245b40; }
+.query-tab-action { padding: 3px 8px; font-size: .85em; }
+#excluded-sites[aria-invalid="true"] { border-color: #a04420; }
