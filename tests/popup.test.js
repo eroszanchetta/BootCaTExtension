@@ -18,19 +18,21 @@ async function popup(state, url, fail = false) {
     return elements.get(id);
   };
   get('feedback').textContent = 'Collection hint';
-  let requests = 0;
+  let requests = 0, reloads = 0;
   const notify = changes => listeners.forEach(fn => fn(changes, 'local'));
   const context = vm.createContext({
     initVersionBadge: () => '2.0.0',
     document: { getElementById: get }, adapterForURL,
-    window: { close() {}, location: { reload() {} } },
+    window: { close() {}, location: { reload() { reloads++; } } },
     getExtensionAPI: () => ({
       tabs: { query: async () => [{ id: 10, url }] },
       storage: { local: { get: async () => ({ collections: state.collections }) }, onChanged: { addListener(fn) { listeners.push(fn); } } },
       runtime: { sendMessage: async message => {
-        if (message.type === 'get-page-corpus-state') return { ok: true, projectId: 'current', saved: !!state.saved };
-        if (message.type === 'save-page') { state.saved = true; return { ok: true }; }
-        assert.equal(message.type, 'collect'); requests++;
+        if (message.type === 'get-project') return { ok: true, project: state.project === undefined ? { id: 'current', name: 'Test corpus', nameConfirmed: true } : state.project };
+        if (message.type === 'get-page-corpus-state') { if (state.pageGate) await state.pageGate; return { ok: true, projectId: 'current', saved: !!state.saved }; }
+        if (message.type === 'save-page') { assert.equal(message.projectId, 'current'); if (state.saveGate) await state.saveGate; state.saved = true; return { ok: true }; }
+        assert.equal(message.type, 'collect'); assert.equal(message.projectId, 'current'); requests++;
+        if (state.collectGate) await state.collectGate;
         if (fail) return { ok: false, error: 'Please try again' };
         const engine = adapterForURL(url);
         state.collections = [...state.collections, { id: 'saved', engine: engine.id, pageURL: url, unresolved: 0 }];
@@ -40,7 +42,7 @@ async function popup(state, url, fail = false) {
     })
   });
   await vm.runInContext(`(async () => { ${source} })()`, context);
-  return { get, notify, requests: () => requests };
+  return { get, notify, requests: () => requests, reloads: () => reloads };
 }
 
 for (const url of ['https://www.google.com/search?q=energy', 'https://duckduckgo.com/?q=energy', 'https://www.ecosia.org/search?q=energy']) {
@@ -49,9 +51,11 @@ for (const url of ['https://www.google.com/search?q=energy', 'https://duckduckgo
     const first = await popup(state, url);
     assert.equal(first.get('save-page').disabled, true, 'search results must not be saved as corpus pages');
     assert.equal(first.get('collect').disabled, false);
+    assert.equal(first.get('collect-action').hidden, false); assert.equal(first.get('capture-action').hidden, true);
     await first.get('collect').handlers.click();
     assert.equal(first.get('collect').disabled, true);
     assert.equal(first.get('feedback').textContent, 'Results added');
+    assert.equal(first.get('collect-action').hidden, true); assert.equal(first.get('feedback').hidden, false);
     assert.equal(first.get('feedback').classList.contains('saved'), true);
     await first.get('collect').handlers.click();
     assert.equal(first.requests(), 1, 'must not collect twice');
@@ -79,6 +83,7 @@ test('failed collection leaves the action enabled and shows no success marker', 
 test('ordinary web pages allow corpus capture and keep result collection disabled', async () => {
   const ui = await popup({ collections: [] }, 'https://example.org/article');
   assert.equal(ui.get('save-page').disabled, false);
+  assert.equal(ui.get('capture-action').hidden, false); assert.equal(ui.get('collect-action').hidden, true);
   assert.equal(ui.get('collect').disabled, true);
 });
 
@@ -88,9 +93,55 @@ test('saved pages stay disabled on popup reopen, and become available after corp
   const button = first.get('save-page'); await button.handlers.click({ currentTarget: button });
   assert.equal(button.disabled, true);
   const reopened = await popup(state, url);
-  assert.equal(reopened.get('save-page').disabled, true); assert.equal(reopened.get('page-feedback').textContent, 'Page saved');
+  assert.equal(reopened.get('save-page').disabled, true); assert.equal(reopened.get('page-feedback').textContent, 'Page already added to corpus');
   assert.equal(reopened.get('page-feedback').classList.contains('saved'), true);
+  assert.equal(reopened.get('capture-action').hidden, true);
   state.saved = false; const removed = await popup(state, url); assert.equal(removed.get('save-page').disabled, false);
   state.saved = true; removed.notify({ captureRevision: { newValue: 'capture' } });
   await new Promise(resolve => setImmediate(resolve)); assert.equal(removed.get('save-page').disabled, true);
+});
+
+for (const project of [null, { id: 'current', name: 'Untitled project', nameConfirmed: false }]) test('project setup hides both actions and offers a clear next step', async () => {
+  const ui = await popup({ collections: [], project }, 'https://www.google.com/search?q=energy');
+  assert.equal(ui.get('collect-action').hidden, true); assert.equal(ui.get('capture-action').hidden, true);
+  assert.match(ui.get('popup-status').textContent, /Create a project/);
+  assert.equal(ui.get('collect').disabled, true); assert.equal(ui.get('save-page').disabled, true);
+});
+
+test('unsupported pages show neither action nor irrelevant explanatory text', async () => {
+  const ui = await popup({ collections: [] }, 'about:config');
+  assert.equal(ui.get('collect-action').hidden, true); assert.equal(ui.get('capture-action').hidden, true);
+  assert.equal(ui.get('popup-status').textContent, 'This page cannot be collected.');
+});
+
+test('busy actions remain visible with clear labels until success replaces them', async () => {
+  let resolveCollect, resolveSave;
+  const collectGate = new Promise(resolve => { resolveCollect = resolve; });
+  const collecting = await popup({ collections: [], collectGate }, 'https://www.google.com/search?q=energy');
+  const pendingCollect = collecting.get('collect').handlers.click();
+  assert.equal(collecting.get('collect').textContent, 'Collecting…'); assert.equal(collecting.get('collect').disabled, true);
+  assert.equal(collecting.get('collect-action').hidden, false);
+  resolveCollect(); await pendingCollect; assert.equal(collecting.get('collect-action').hidden, true);
+  const saveGate = new Promise(resolve => { resolveSave = resolve; });
+  const saving = await popup({ collections: [], saveGate }, 'https://example.org/article');
+  const pendingSave = saving.get('save-page').handlers.click();
+  assert.equal(saving.get('save-page').textContent, 'Saving…'); assert.equal(saving.get('capture-action').hidden, false);
+  resolveSave(); await pendingSave;
+  assert.equal(saving.get('capture-action').hidden, true); assert.equal(saving.get('page-feedback').textContent, 'Page already added to corpus');
+});
+
+test('a project switch hides actions immediately and ignores a pending old-page response', async () => {
+  const state = { collections: [], saved: false }, ui = await popup(state, 'https://example.org/article');
+  let release; state.pageGate = new Promise(resolve => { release = resolve; });
+  ui.notify({ captureRevision: { newValue: 'refresh' } });
+  ui.notify({ project: { oldValue: { id: 'current' }, newValue: { id: 'next', name: 'Next', nameConfirmed: true } } });
+  assert.equal(ui.reloads(), 1); assert.equal(ui.get('capture-action').hidden, true);
+  release(); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(ui.get('capture-action').hidden, true); assert.match(ui.get('popup-status').textContent, /Refreshing/);
+});
+
+test('completing project setup reloads before exposing potentially stale collection actions', async () => {
+  const ui = await popup({ collections: [], project: { id: 'current', name: 'Untitled project', nameConfirmed: false } }, 'https://www.google.com/search?q=energy');
+  ui.notify({ project: { newValue: { id: 'current', name: 'Corpus', nameConfirmed: true } } });
+  assert.equal(ui.reloads(), 1); assert.equal(ui.get('collect-action').hidden, true);
 });

@@ -129,6 +129,7 @@ async function handle(message) {
   }
   if (message.type === 'save-page') {
     const project = await serialize(ensureProject);
+    if (message.projectId && message.projectId !== project.id) throw new Error('The project changed. Reopen the BootCaT popup.');
     const tab = await ext.tabs.get(message.tabId);
     if (!/^https?:\/\//.test(tab.url || '')) throw new Error('Open a web page first.');
     if (adapterForURL(tab.url)) throw new Error('Use Collect results from this tab for a search results page.');
@@ -146,6 +147,7 @@ async function handle(message) {
   }
   if (message.type !== "collect") throw new Error("Unknown request");
   const project = await serialize(ensureProject);
+  if (message.projectId && message.projectId !== project.id) throw new Error('The project changed. Reopen the BootCaT popup.');
   return collectPage(message.tabId, project.id);
 }
 ext.runtime.onMessage.addListener((message, sender, respond) => {
