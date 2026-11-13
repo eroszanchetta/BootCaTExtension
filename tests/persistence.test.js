@@ -6,6 +6,7 @@ import { database } from '../src/storage-db.js';
 import { savePage, readSavedPages } from '../src/page-store.js';
 import { workspace, extracted, waitFor } from './helpers/workspace.js';
 import { DownloadSizeError, FILE_LIMIT } from '../src/core.js';
+import { execFileSync } from 'node:child_process';
 
 const fresh = () => { globalThis.indexedDB = new IDBFactory(); };
 const document = (url, filename, text = 'Stored corpus text') => ({ url, filename, textFilename: filename.replace('pages/', 'corpus/').replace('.html', '.txt'), extraction: extracted(text) });
@@ -131,6 +132,39 @@ test('captured pages are committed before acknowledging their inbox entry and re
   const reopened = await workspace('one');
   assert.equal(reopened.get('results').children.length, 1); assert.equal(reopened.get('preview-text').value, '');
   assert.equal(reopened.state().entries[0].doc.captureId, 'capture');
+  assert.match(reopened.state().entries[0].doc.filename, /^pages\/[^/]+$/);
+  assert.match(reopened.state().entries[0].doc.textFilename, /^corpus\/[^/]+$/);
+});
+
+test('legacy captures export flat ZIP paths and matching XLSX metadata without renaming stored blobs or loading text for metadata', async () => {
+  fresh(); await storage.ensureStoredProject('legacy-export');
+  const url = 'https://capture.test/', filename = 'pages/captured/0001-capture.test.html';
+  const doc = document(url, filename); doc.source = 'browser-tab';
+  await storage.saveDocument('legacy-export', { ...record(url, filename), outcome: 'captured', source: 'browser-tab' }, doc, new Blob(['ORIGINAL_CAPTURE']));
+  const app = await workspace('legacy-export'); await app.click('export');
+  const zipResult = JSON.parse(execFileSync('python3', ['-c', `
+import io,sys,json,zipfile
+with zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())) as z:
+ names=z.namelist()
+ assert not any('/captured/' in name for name in names)
+ print(json.dumps({'names':names,'record':json.loads(z.read('results.json'))['results'][0], 'doc':json.loads(z.read('extraction.json'))['documents'][0]}))
+`], { input: Buffer.from(await app.archive().arrayBuffer()), encoding: 'utf8' }));
+  assert.ok(zipResult.names.includes('pages/0001-capture.test.html'));
+  assert.ok(zipResult.names.includes('corpus/0001-capture.test.txt'));
+  assert.equal(zipResult.record.filename, 'pages/0001-capture.test.html');
+  assert.equal(zipResult.doc.textFilename, 'corpus/0001-capture.test.txt');
+  assert.equal(zipResult.record.source, 'browser-tab');
+  assert.equal((await storage.loadWorkspace('legacy-export')).entries[0].doc.filename, filename);
+  assert.equal(await (await storage.readOriginal('legacy-export', filename)).text(), 'ORIGINAL_CAPTURE');
+  const metadataOnly = await workspace('legacy-export', { storage: { ...storage,
+    readText: () => assert.fail('Metadata export must not read text bodies'),
+    readOriginal: () => assert.fail('Metadata export must not read original bodies') } });
+  assert.equal(metadataOnly.get('export-metadata').disabled, false);
+  await metadataOnly.click('export-metadata');
+  const workbook = await metadataOnly.archive().text();
+  assert.ok(workbook.includes('0001-capture.test.txt')); assert.ok(!workbook.includes('corpus/captured/'));
+  await storage.setIncluded('legacy-export', url, false); await metadataOnly.focus();
+  assert.equal(metadataOnly.get('export-metadata').disabled, true);
 });
 
 test('storage quota failures stop processing while preserving completed pages and a resumable URL list', async () => {

@@ -259,3 +259,9 @@ Collection waits until all tracked tabs finish loading and batch opening finishe
 ## Workspace dialogs and logs
 
 Running all queries, deleting a document and clearing saved searches use a shared styled confirmation dialog with action-specific buttons, Cancel as the initial focus and Escape to cancel. The browser controls its own leave-page warning and file picker. The collapsible **Log** section at the bottom contains project tab collection details, saved-result review and search JSON export; its top navigation link appears before Help. Log starts collapsed on reopening the workspace and creating a project.
+
+## Corpus files and metadata export
+
+All downloaded, captured and imported originals export directly into `pages/`; selected extracted texts export directly into `corpus/`. Raw PDF text remains in `raw-pdf/`. Captures already saved with older nested paths are flattened at export time, with collision-safe names. Stored blobs are not renamed. ZIP JSON metadata and the Excel export use the same mapping; acquisition method remains in metadata.
+
+**Export corpus metadata (.xlsx)** in Log downloads one row per included, successfully extracted corpus text, with its text filename, clickable HTTP(S) source URL, numeric character count and detected language name. Uncertain assessments show **Uncertain**; disabled or absent checks show **Not checked**. Accepting a language warning does not change the detected language. The workbook has filters and a frozen header, is generated locally using the existing ZIP writer and adds no dependencies or permissions. Metadata export reads saved metadata only, without loading document bodies.

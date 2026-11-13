@@ -10,6 +10,8 @@ import * as storage from './project-store.js';
 import { getExtensionAPI } from './extension-api.js';
 import { parseURLs, filenameFor, fetchFile, FILE_LIMIT, urlListWarning } from './core.js';
 import { makeStoredZIP } from './zip-blob.js';
+import { createExportLayout } from './export-layout.js';
+import { makeMetadataWorkbook } from './metadata-xlsx.js';
 import { initSearchUI, readCollections } from './search-ui.js';
 import { initSeedsUI } from './seeds-ui.js';
 import { initProjectTabsUI } from './project-tabs-ui.js';
@@ -19,9 +21,9 @@ import { DEFUDDLE_AVAILABLE } from './defuddle-loader.js';
 
 initWorkspaceSections();
 const ext = getExtensionAPI(), VERSION = '0.4.0';
-const ui = Object.fromEntries(['urls', 'start', 'stop', 'export', 'status', 'progress', 'results', 'problem-results', 'attention-section', 'attention-count', 'project-language', 'recheck-language', 'language-status', 'corpus-status', 'preview-title', 'preview-meta', 'preview-text', 'extractor', 'urls-warning', 'storage-status', 'saved-status', 'engine', 'import-document-picker', 'document-import-status'].map(id => [id, document.getElementById(id)]));
+const ui = Object.fromEntries(['urls', 'start', 'stop', 'export', 'export-metadata', 'metadata-export-status', 'status', 'progress', 'results', 'problem-results', 'attention-section', 'attention-count', 'project-language', 'recheck-language', 'language-status', 'corpus-status', 'preview-title', 'preview-meta', 'preview-text', 'extractor', 'urls-warning', 'storage-status', 'saved-status', 'engine', 'import-document-picker', 'document-import-status'].map(id => [id, document.getElementById(id)]));
 let ready = false, running = false, stopping = false, resetting = false, controller = null;
-let projectId, state, entries = [], searchUI, seedsUI, projectTabsUI, archiveURL = null, previewURL = null, previewFilename = null;
+let projectId, state, entries = [], searchUI, seedsUI, projectTabsUI, archiveURL = null, metadataURL = null, previewURL = null, previewFilename = null;
 let writes = Promise.resolve(), pendingWrites = 0, writeError = null, capturesPending = false, refreshing = false;
 let pickingDocument = false, documentImportTarget = null, documentImportStatus = { url: null, message: '' };
 const rows = new Map(), controls = new Map();
@@ -40,7 +42,10 @@ const projectUI = initProjectUI({
 window.addEventListener('beforeunload', event => {
   if (!resetting && (running || seedsUI?.isBusy() || pendingWrites || projectUI.isSaving?.())) { event.preventDefault(); event.returnValue = ''; }
 });
-function invalidateArchive() { if (archiveURL) { URL.revokeObjectURL(archiveURL); archiveURL = null; } }
+function invalidateArchive() {
+  if (archiveURL) { URL.revokeObjectURL(archiveURL); archiveURL = null; }
+  if (metadataURL) { URL.revokeObjectURL(metadataURL); metadataURL = null; }
+}
 function storageMessage() {
   const bytes = entries.reduce((sum, entry) => sum + (entry.originalBytes || 0), 0);
   ui['storage-status'].textContent = pendingWrites ? 'Saving changes…' : `Saved in this browser · ${(bytes / 1024 / 1024).toFixed(1)} MiB of originals. Export a ZIP backup before clearing browser data or uninstalling BootCaT.`;
@@ -64,6 +69,7 @@ function pendingURLs() {
 }
 function updateControls() {
   ui.start.disabled = !ready || running; ui.export.disabled = !ready || running || !entries.length;
+  ui['export-metadata'].disabled = !ready || running || !entries.some(entry => entry.doc?.extraction.status === 'ok' && entry.doc.extraction.included);
   ui.urls.disabled = ui.extractor.disabled = running;
   ui['project-language'].disabled = !ready || running; ui['recheck-language'].disabled = !ready || running || !entries.some(entry => entry.doc?.extraction.status === 'ok');
   ui.start.textContent = !running && ready && ['running', 'stopped'].includes(state.batch.state) && pendingURLs().length ? 'Resume downloads' : 'Download URLs';
@@ -84,6 +90,7 @@ function updateCounts() {
   ui['attention-count'].textContent = `${problems.toLocaleString()} document${problems === 1 ? '' : 's'}`;
   const documents = entries.filter(entry => entry.doc?.extraction.status === 'ok');
   const included = documents.filter(entry => entry.doc.extraction.included);
+  ui['export-metadata'].disabled = !ready || running || !included.length;
   ui['corpus-status'].textContent = `${included.length} of ${documents.length} extracted texts included · ${included.reduce((sum, entry) => sum + entry.doc.extraction.characters, 0).toLocaleString()} characters. Unchecked pages retain their originals.`;
   storageMessage();
 }
@@ -316,7 +323,7 @@ ui.start.addEventListener('click', () => work(async () => {
 }));
 async function storeCapture({ url, finalURL, bytes, contentType, source, capturedAt, captureId }) {
   const index = await storage.allocateFileIndex(projectId);
-  const filename = filenameFor(url, contentType, index).replace(/^pages\//, 'pages/captured/');
+  const filename = filenameFor(url, contentType, index);
   const extraction = formatByMIME(contentType)
     ? await extractDownloadedDocument(bytes, contentType, { sourceURL: finalURL })
     : extractDocument(bytes, contentType, { extractor: ui.extractor.value, sourceURL: finalURL });
@@ -374,6 +381,7 @@ ui['recheck-language'].addEventListener('click', () => work(async () => {
 ui.export.addEventListener('click', () => work(async () => {
   await flushWrites();
   const saved = await storage.loadWorkspace(projectId), project = projectUI.snapshot();
+  const layout = createExportLayout(saved.entries);
   const exportedAt = new Date().toISOString(), signal = (controller = new AbortController()).signal;
   ui.status.textContent = 'Preparing ZIP from saved pages… Your project remains saved if export fails.';
   try {
@@ -384,23 +392,23 @@ ui.export.addEventListener('click', () => work(async () => {
           for (const name of entry.fileNames) {
             const blob = await storage.readOriginal(projectId, name);
             if (!blob) throw new Error('An original file is missing from browser storage');
-            yield { name, blob };
+            yield { name: layout.nameFor(name), blob };
           }
           if (entry.doc?.extraction.status === 'ok' && entry.doc.extraction.included) {
             const blob = await storage.readText(projectId, entry.url);
             if (!blob) throw new Error('An extracted text is missing from browser storage');
-            yield { name: entry.doc.textFilename, blob: new Blob([blob, '\n']) };
+            yield { name: layout.nameFor(entry.doc.textFilename), blob: new Blob([blob, '\n']) };
           }
           if (entry.doc?.rawTextFilename) {
             const blob = await storage.readRawText(projectId, entry.url);
             if (!blob) throw new Error('A raw PDF extraction is missing from browser storage');
-            yield { name: entry.doc.rawTextFilename, blob: new Blob([blob, '\n']) };
+            yield { name: layout.nameFor(entry.doc.rawTextFilename), blob: new Blob([blob, '\n']) };
           }
         }
         const json = [
           ['project.json', { ...project, draft: saved.draft, batch: saved.batch }],
-          ['results.json', { version: VERSION, project, startedAt: saved.batch.startedAt, exportedAt, results: saved.entries.map(entry => entry.record) }],
-          ['extraction.json', { version: VERSION, project, exportedAt, documents: extractionMetadata(saved.entries.filter(entry => entry.doc).map(entry => entry.doc)) }],
+          ['results.json', { version: VERSION, project, startedAt: saved.batch.startedAt, exportedAt, results: layout.entries.map(entry => entry.record) }],
+          ['extraction.json', { version: VERSION, project, exportedAt, documents: extractionMetadata(layout.entries.filter(entry => entry.doc).map(entry => entry.doc)) }],
           ['searches.json', { version: VERSION, project, collections: await readCollections() }]
         ];
         for (const [name, value] of json) yield { name, blob: new Blob([JSON.stringify(value, null, 2)]) };
@@ -410,6 +418,22 @@ ui.export.addEventListener('click', () => work(async () => {
     const link = document.createElement('a'); link.href = archiveURL;
     link.download = `${projectFilename(project.name)}-${exportedAt.replace(/[:.]/g, '-')}.zip`;
     document.body.append(link); link.click(); link.remove(); ui.status.textContent = 'ZIP prepared. Your project is still saved in this browser.';
+  } finally { controller = null; }
+}));
+ui['export-metadata'].addEventListener('click', () => work(async () => {
+  await flushWrites();
+  const saved = await storage.loadWorkspace(projectId), project = projectUI.snapshot();
+  const signal = (controller = new AbortController()).signal;
+  ui['metadata-export-status'].textContent = 'Preparing corpus metadata…';
+  try {
+    if (metadataURL) URL.revokeObjectURL(metadataURL);
+    metadataURL = URL.createObjectURL(await makeMetadataWorkbook(saved.entries, { signal }));
+    const link = document.createElement('a'); link.href = metadataURL;
+    link.download = `${projectFilename(project.name)}-metadata.xlsx`;
+    document.body.append(link); link.click(); link.remove();
+    ui['metadata-export-status'].textContent = 'Metadata exported for the included corpus texts.';
+  } catch (error) {
+    ui['metadata-export-status'].textContent = `Could not export metadata: ${error.message}`; throw error;
   } finally { controller = null; }
 }));
 for (const [id, key, type] of [['urls', 'urls', 'input'], ['engine', 'engine', 'change'], ['extractor', 'extractor', 'change']]) {
