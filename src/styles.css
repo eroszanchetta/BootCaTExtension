@@ -104,4 +104,6 @@ nav a:hover { background: #c7ddeb; }
 .query-tab-status[data-status="attention"], .query-tab-status[data-status="closed"] { background: #fff1ce; color: #73520c; }
 .query-tab-status[data-status="collected"] { background: #e1f1e8; color: #245b40; }
 .query-tab-action { padding: 3px 8px; font-size: .85em; }
+.query-tab-action svg { display: block; }
+#prepared-queries .query-tab-action { margin-right: 8px; vertical-align: middle; }
 #excluded-sites[aria-invalid="true"] { border-color: #a04420; }

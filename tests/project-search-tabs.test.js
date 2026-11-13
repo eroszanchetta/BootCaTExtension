@@ -212,3 +212,32 @@ test('unloaded tabs need attention and are not counted as loaded; unrelated tab 
   app.ext.tabs.onUpdated.emit(999, { status: 'loading' }, { id: 999, url: 'https://www.google.com/search?q=unrelated' });
   assert.equal((await app.state()).count, 1);
 });
+
+test('manual collection updates tracked tabs, survives manual closure, and records untracked queries without acquiring ownership', async () => {
+  const app = fixture(); const { tabId } = await app.open('manual');
+  const marker = await app.manager.collectionMarker('project', tabId, app.tabs.get(tabId).url);
+  await app.serialize(() => app.manager.markCollectedInQueue(marker, { pageURL: marker.url, unresolved: 0 }));
+  assert.equal((await app.state()).tabs[0].status, 'collected'); assert.ok(app.tabs.has(tabId)); assert.equal(app.removed.length, 0);
+  app.tabs.delete(tabId); app.ext.tabs.onRemoved.emit(tabId);
+  assert.equal((await app.state()).history[0].status, 'collected');
+  const url = 'https://www.google.com/search?q=untracked';
+  app.tabs.set(900, { id: 900, url, status: 'complete' });
+  const untracked = await app.manager.collectionMarker('project', 900, url);
+  await app.serialize(() => app.manager.markCollectedInQueue(untracked, { pageURL: url, unresolved: 0 }));
+  const state = await app.state(); assert.equal(state.count, 0);
+  assert.equal(state.history.find(item => item.query === 'untracked').status, 'collected'); assert.ok(app.tabs.has(900));
+});
+
+test('manual partial collection needs attention; navigation during collection prevents a stale collected badge', async () => {
+  const app = fixture(); const { tabId } = await app.open('partial'); const url = app.tabs.get(tabId).url;
+  const marker = await app.manager.collectionMarker('project', tabId, url);
+  await app.serialize(() => app.manager.markCollectedInQueue(marker, { pageURL: url, unresolved: 1 }));
+  assert.equal((await app.state()).tabs[0].status, 'attention');
+  app.tabs.get(tabId).status = 'loading'; app.ext.tabs.onUpdated.emit(tabId, { status: 'loading' }, app.tabs.get(tabId));
+  app.tabs.get(tabId).status = 'complete'; app.ext.tabs.onUpdated.emit(tabId, { status: 'complete' }, app.tabs.get(tabId));
+  await app.serialize(() => app.manager.markCollectedInQueue(marker, { pageURL: url, unresolved: 0 }));
+  assert.equal((await app.state()).tabs[0].status, 'loaded');
+  const newMarker = await app.manager.collectionMarker('project', tabId, url);
+  await app.reset();
+  await assert.rejects(app.serialize(() => app.manager.markCollectedInQueue(newMarker, { pageURL: url, unresolved: 0 })), /project changed/);
+});

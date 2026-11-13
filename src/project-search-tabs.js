@@ -6,6 +6,10 @@ function remember(data, record, status, reason = '') {
   data.history = (data.history || []).filter(item => !(item.projectId === record.projectId && item.engine === record.engine && item.query === record.query));
   data.history.push({ projectId: record.projectId, engine: record.engine, query: record.query, status, reason });
 }
+function rememberClosed(data, record) {
+  const collected = record.status === 'collected';
+  remember(data, record, collected ? 'collected' : 'closed', collected ? 'Results saved; tab closed.' : 'Tab closed without collecting.');
+}
 function updateLoading(record, tab) {
   record.unloaded = !!tab.discarded;
   if (tab.discarded) { record.status = 'attention'; record.reason = 'Tab was unloaded by the browser. Open it to reload, then retry.'; return; }
@@ -84,7 +88,7 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
     for (const record of data.tabs.filter(item => item.projectId === projectId)) {
       let tab;
       try { tab = await ext.tabs.get(record.tabId); }
-      catch { remember(data, record, 'closed', 'Tab closed without collecting.'); data.tabs = data.tabs.filter(item => item !== record); continue; }
+      catch { rememberClosed(data, record); data.tabs = data.tabs.filter(item => item !== record); continue; }
       const url = tab.pendingUrl || tab.url;
       if (url && !matchesProjectSearch(record, url) && !isProviderGate(record, url)) {
         remember(data, record, 'closed', 'Tab moved to another page or query; no longer tracked.');
@@ -111,7 +115,7 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
     return serialize(async () => {
       const data = await read(), count = data.tabs.length;
       const record = data.tabs.find(item => item.tabId === tabId);
-      if (record) remember(data, record, 'closed', 'Tab closed without collecting.');
+      if (record) rememberClosed(data, record);
       data.tabs = data.tabs.filter(record => record.tabId !== tabId);
       if (data.tabs.length !== count) await write(data);
     });
@@ -253,5 +257,35 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
       return { tabId };
     });
   }
-  return { open, getState, start, stop, focus, resetInQueue };
+  async function collectionMarker(projectId, tabId, url) {
+    return serialize(async () => {
+      await assertProject(projectId); const data = await read();
+      const record = data.tabs.find(item => item.projectId === projectId && item.tabId === tabId);
+      if (record && !matchesProjectSearch(record, url)) return null;
+      const adapter = adapterForURL(url);
+      return { projectId, tabId, url: canonical(url), engine: adapter?.id,
+        query: adapter ? new URL(url).searchParams.get(adapter.queryParam) || '' : '',
+        record: record ? { ...record } : null, navigation: navigation.get(tabId) || 0 };
+    });
+  }
+  // Caller holds the background write queue and has durably saved the results.
+  // Never assign ownership to a manually collected, otherwise untracked tab.
+  async function markCollectedInQueue(marker, result) {
+    if (!marker?.engine || canonical(result.pageURL) !== marker.url) return;
+    await assertProject(marker.projectId);
+    const data = await read(), expected = marker.record;
+    const record = data.tabs.find(item => item.projectId === marker.projectId && item.tabId === marker.tabId);
+    if (expected && (!record || record.token !== expected.token || record.revision !== expected.revision)) return;
+    if (!expected && record) return;
+    let tab;
+    try { tab = await ext.tabs.get(marker.tabId); } catch { return; }
+    const url = tab.pendingUrl || tab.url;
+    if (!url || tab.status !== 'complete' || tab.discarded || canonical(url) !== marker.url || (navigation.get(marker.tabId) || 0) !== marker.navigation) return;
+    const status = result.unresolved ? 'attention' : 'collected';
+    const reason = result.unresolved ? 'Partial results saved. Some links could not be resolved; inspect this tab and retry.' : 'Results saved. This tab remains open.';
+    if (record) { record.status = status; record.reason = reason; }
+    remember(data, { projectId: marker.projectId, engine: marker.engine, query: marker.query }, status, reason);
+    await write(data);
+  }
+  return { open, getState, start, stop, focus, collectionMarker, markCollectedInQueue, resetInQueue };
 }

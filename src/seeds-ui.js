@@ -60,11 +60,11 @@ export function initSeedsUI({ draft = {}, onChange = () => {}, getProjectId = ()
       const previous = (value.history || []).find(item => item.engine === row.engine && item.query === row.query);
       const loading = tabs.filter(tab => tab.status === 'loading').length;
       const attention = tabs.filter(tab => tab.status === 'attention');
-      const status = loading ? 'loading' : attention.length ? 'attention' : tabs.length ? 'loaded' : previous?.status || 'unopened';
+      const status = loading ? 'loading' : attention.length ? 'attention' : tabs.length ? (tabs.every(tab => tab.status === 'collected') ? 'collected' : 'loaded') : previous?.status || 'unopened';
       const labels = { unopened: '○ Not opened', loading: '◌ Loading…', loaded: '● Loaded', attention: '⚠ Needs attention', collected: '✓ Collected', closed: '○ Closed without collecting' };
       row.badge.textContent = labels[status] + (tabs.length > 1 ? ` (${tabs.length} tabs; ${loading} loading)` : '');
       row.badge.dataset.status = status;
-      row.badge.title = attention[0]?.reason || previous?.reason || (status === 'loaded' ? 'Loading finished; results will be checked when collected.' : '');
+      row.badge.title = attention[0]?.reason || tabs.find(tab => tab.status === status)?.reason || previous?.reason || (status === 'loaded' ? 'Loading finished; results will be checked when collected.' : '');
       row.tabId = (attention[0] || tabs[0])?.tabId;
       row.inspect.hidden = !tabs.length;
     }
@@ -115,7 +115,12 @@ export function initSeedsUI({ draft = {}, onChange = () => {}, getProjectId = ()
       };
       link.addEventListener('click', open); link.addEventListener('auxclick', open);
       const badge = document.createElement('span'), inspect = document.createElement('button');
-      badge.className = 'query-tab-status'; inspect.className = 'secondary query-tab-action'; inspect.type = 'button'; inspect.textContent = 'Show tab';
+      badge.className = 'query-tab-status'; inspect.className = 'secondary query-tab-action'; inspect.type = 'button';
+      inspect.title = 'Open search tab'; inspect.setAttribute('aria-label', 'Open search tab');
+      const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      for (const [key, value] of Object.entries({ viewBox: '0 0 24 24', width: '18', height: '18', fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' })) icon.setAttribute(key, value);
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', 'M14 3h7v7M10 14 21 3M21 14v7H3V3h7'); icon.append(path); inspect.append(icon);
       const row = { query, engine: engineID(), badge, inspect, link }; queryRows.push(row);
       inspect.addEventListener('click', async () => {
         if (!row.tabId || destroyed) return;
@@ -124,7 +129,7 @@ export function initSeedsUI({ draft = {}, onChange = () => {}, getProjectId = ()
           if (!reply?.ok) throw new Error(reply?.error || 'Could not show this tab.');
         } catch (error) { if (!destroyed) el('query-status').textContent = error.message; }
       });
-      item.append(link, badge, inspect); body.append(item);
+      item.append(badge, inspect, link); body.append(item);
     }
     body.scrollTop = scroll; updateTabState(tabState); updateLinks();
     el('query-summary').textContent = prepared.length ? `${prepared.length.toLocaleString()} queries for ${engineName()}. Click a query to open its search in a new tab.` : 'No search queries prepared yet.';
