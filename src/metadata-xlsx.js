@@ -5,6 +5,7 @@ import { languageName } from './language-detection.js';
 const NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
 const REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
 const PACKAGE = 'http://schemas.openxmlformats.org/package/2006/relationships';
+const fileOrder = new Intl.Collator('en', { numeric: true, sensitivity: 'variant' });
 const XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 const escapeXML = value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]));
 function textXML(value) {
@@ -24,7 +25,8 @@ export function corpusMetadataRows(entries) {
   return createExportLayout(entries).entries.filter(entry => entry.doc?.extraction.status === 'ok' && entry.doc.extraction.included)
     .map(({ doc, url }) => ({ filename: doc.textFilename.replace(/^corpus\//, ''), url,
       characters: Number.isSafeInteger(doc.extraction.characters) && doc.extraction.characters >= 0 ? doc.extraction.characters : null,
-      language: detectedLanguage(doc.extraction.languageCheck) }));
+      language: detectedLanguage(doc.extraction.languageCheck) }))
+    .sort((a, b) => fileOrder.compare(a.filename, b.filename));
 }
 
 // Deliberately supports one fixed, four-column table, rather than implementing

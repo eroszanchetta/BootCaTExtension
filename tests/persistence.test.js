@@ -136,18 +136,24 @@ test('captured pages are committed before acknowledging their inbox entry and re
   assert.match(reopened.state().entries[0].doc.textFilename, /^corpus\/[^/]+$/);
 });
 
-test('legacy captures export flat ZIP paths and matching XLSX metadata without renaming stored blobs or loading text for metadata', async () => {
+test('legacy captures export flat paths, an embedded report and current UTF-8 project lists without renaming stored blobs', async () => {
   fresh(); await storage.ensureStoredProject('legacy-export');
   const url = 'https://capture.test/', filename = 'pages/captured/0001-capture.test.html';
   const doc = document(url, filename); doc.source = 'browser-tab';
   await storage.saveDocument('legacy-export', { ...record(url, filename), outcome: 'captured', source: 'browser-tab' }, doc, new Blob(['ORIGINAL_CAPTURE']));
+  const draft = { urls: 'https://capture.test/\nhttps://not-yet-downloaded.test/', seeds: 'caffè\n中文\nsolar power', tuples: '"solar power" caffè\nmanual query' };
+  await storage.saveDraft('legacy-export', draft);
   const app = await workspace('legacy-export'); await app.click('export');
   const zipResult = JSON.parse(execFileSync('python3', ['-c', `
-import io,sys,json,zipfile
+import io,sys,json,zipfile,xml.etree.ElementTree as E
 with zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())) as z:
  names=z.namelist()
  assert not any('/captured/' in name for name in names)
- print(json.dumps({'names':names,'record':json.loads(z.read('results.json'))['results'][0], 'doc':json.loads(z.read('extraction.json'))['documents'][0]}))
+ lists={name:z.read(name).decode('utf-8') for name in ['url_list.txt','seeds.txt','tuples.txt']}
+ with zipfile.ZipFile(io.BytesIO(z.read('Report.xlsx'))) as report:
+  report_rows=E.fromstring(report.read('xl/worksheets/sheet1.xml')).findall('{*}sheetData/{*}row')
+  filename=report_rows[1].find('{*}c/{*}is/{*}t').text
+ print(json.dumps({'names':names,'record':json.loads(z.read('results.json'))['results'][0], 'doc':json.loads(z.read('extraction.json'))['documents'][0], 'lists':lists, 'reportFilename':filename}))
 `], { input: Buffer.from(await app.archive().arrayBuffer()), encoding: 'utf8' }));
   assert.ok(zipResult.names.includes('pages/0001-capture.test.html'));
   assert.ok(zipResult.names.includes('corpus/0001-capture.test.txt'));
@@ -156,15 +162,8 @@ with zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())) as z:
   assert.equal(zipResult.record.source, 'browser-tab');
   assert.equal((await storage.loadWorkspace('legacy-export')).entries[0].doc.filename, filename);
   assert.equal(await (await storage.readOriginal('legacy-export', filename)).text(), 'ORIGINAL_CAPTURE');
-  const metadataOnly = await workspace('legacy-export', { storage: { ...storage,
-    readText: () => assert.fail('Metadata export must not read text bodies'),
-    readOriginal: () => assert.fail('Metadata export must not read original bodies') } });
-  assert.equal(metadataOnly.get('export-metadata').disabled, false);
-  await metadataOnly.click('export-metadata');
-  const workbook = await metadataOnly.archive().text();
-  assert.ok(workbook.includes('0001-capture.test.txt')); assert.ok(!workbook.includes('corpus/captured/'));
-  await storage.setIncluded('legacy-export', url, false); await metadataOnly.focus();
-  assert.equal(metadataOnly.get('export-metadata').disabled, true);
+  assert.deepEqual(zipResult.lists, { 'url_list.txt': draft.urls, 'seeds.txt': draft.seeds, 'tuples.txt': draft.tuples });
+  assert.equal(zipResult.reportFilename, '0001-capture.test.txt');
 });
 
 test('storage quota failures stop processing while preserving completed pages and a resumable URL list', async () => {
@@ -234,4 +233,20 @@ test('saved-page lookup covers downloads, imports, redirects and pending capture
   assert.equal(await storage.hasStoredPage('p', 'chrome://settings'), false);
   await storage.resetStoredProject('next'); assert.equal(await storage.hasStoredPage('next', url), false);
   await assert.rejects(storage.hasStoredPage('p', url), /project changed/);
+});
+
+test('every corpus ZIP includes Report.xlsx and empty list files even when no texts are selected', async () => {
+  fresh(); await storage.ensureStoredProject('empty-report');
+  const url = 'https://excluded.test/', filename = 'pages/0001-excluded.html';
+  const doc = document(url, filename); doc.extraction.included = false;
+  await storage.saveDocument('empty-report', record(url, filename), doc, new Blob(['original']));
+  const app = await workspace('empty-report'); await app.click('export');
+  execFileSync('python3', ['-c', `
+import sys,io,zipfile,xml.etree.ElementTree as E
+with zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())) as z:
+ assert all(z.read(name)==b'' for name in ['url_list.txt','seeds.txt','tuples.txt'])
+ assert not any(name.startswith('corpus/') for name in z.namelist())
+ with zipfile.ZipFile(io.BytesIO(z.read('Report.xlsx'))) as report:
+  assert len(E.fromstring(report.read('xl/worksheets/sheet1.xml')).findall('{*}sheetData/{*}row'))==1
+`], { input: Buffer.from(await app.archive().arrayBuffer()) });
 });
