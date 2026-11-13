@@ -46,6 +46,25 @@ const assert = require('node:assert/strict');
             y: document.documentElement.scrollHeight > innerHeight }));
           assert.equal((await measure()).x, false, `${name}: ${scenario} initial horizontal overflow`);
           assert.equal((await measure()).y, false, `${name}: ${scenario} initial vertical overflow`);
+          // Firefox's toolbar host asks for intrinsic body sizing. A fixed-size
+          // browser page alone cannot catch content-dependent preferred widths.
+          const intrinsic = await page.evaluate(() => {
+            const root = document.documentElement, body = document.body;
+            const rootStyle = root.style.cssText, bodyStyle = body.style.cssText;
+            try {
+              root.style.width = 'max-content'; root.style.maxWidth = 'none';
+              const fixed = root.getBoundingClientRect().width;
+              body.style.width = '100%';
+              const previous = root.getBoundingClientRect().width;
+              return { fixed, previous };
+            } finally { root.style.cssText = rootStyle; body.style.cssText = bodyStyle; }
+          });
+          assert.ok(intrinsic.fixed <= 361, `${name}: ${scenario} preferred popup width ${intrinsic.fixed}`);
+          if (scenario === 'page' && name === 'firefox') {
+            assert.ok(intrinsic.previous > intrinsic.fixed + 50,
+              `${name}: capture fixture must reproduce the old intrinsic-width expansion: ${JSON.stringify(intrinsic)}`);
+          }
+
           await page.setViewportSize({ width: 300, height: 300 });
           assert.equal((await measure()).x, false, `${name}: ${scenario} initial narrow overflow`);
           await page.setViewportSize({ width: 360, height: 600 });

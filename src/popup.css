@@ -1,7 +1,7 @@
-/* Size the root, rather than fixing a body wider than its scrollbar-reduced
-   viewport. Percentage-based contents also fit Firefox's narrower menu panel. */
+/* Chromium uses the root width; Firefox uses the body's preferred width.
+   Bound both explicitly while allowing narrower panels and scrollbar gutters. */
 html { width: 360px; max-width: 100%; overflow-x: hidden; scroll-behavior: auto; scroll-padding-top: 0; }
-body { width: 100%; min-width: 0; margin: 0; font: 14px/1.45 system-ui, sans-serif; overflow-wrap: anywhere; }
+body { width: 360px; max-width: 100%; min-width: 0; margin: 0; font: 14px/1.45 system-ui, sans-serif; overflow-wrap: anywhere; }
 main { width: 100%; min-width: 0; max-width: none; margin: 0; padding: 20px 22px; }
 .popup-brand { margin-bottom: 6px; }
 .popup-brand img { display: block; }
