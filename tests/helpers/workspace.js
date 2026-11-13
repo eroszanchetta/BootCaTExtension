@@ -5,6 +5,8 @@ import * as storage from '../../src/project-store.js';
 import * as pages from '../../src/page-store.js';
 import { parseURLs, filenameFor, FILE_LIMIT, urlListWarning } from '../../src/core.js';
 import { makeStoredZIP } from '../../src/zip-blob.js';
+import { makeMetadataWorkbook } from '../../src/metadata-xlsx.js';
+import { createExportLayout } from '../../src/export-layout.js';
 import { extractionMetadata } from '../../src/corpus.js';
 import { fileWarnings, readPDFFile } from '../../src/pdf-recovery.js';
 import { formatByMIME, readImportedDocument } from '../../src/document-formats.js';
@@ -43,7 +45,7 @@ export async function workspace(projectId, options = {}) {
     initWorkspaceSections() {}, openWorkspaceSection() {},
     initSeedsUI: () => ({ restore() {}, isBusy: () => false, destroy() {} }),
     initProjectTabsUI: () => ({ refresh() {}, destroy() {} }),
-    DEFUDDLE_AVAILABLE: true, storage: options.storage || storage, ...pages, parseURLs, filenameFor, FILE_LIMIT, urlListWarning, makeStoredZIP, extractionMetadata, fileWarnings, readPDFFile, formatByMIME, readImportedDocument,
+    DEFUDDLE_AVAILABLE: true, storage: options.storage || storage, ...pages, parseURLs, filenameFor, FILE_LIMIT, urlListWarning, makeStoredZIP, makeMetadataWorkbook, createExportLayout, extractionMetadata, fileWarnings, readPDFFile, formatByMIME, readImportedDocument,
     extractionContentType: (bytes, type) => type,
     extractDownloadedDocument: options.extractor || (async () => extracted('Downloaded corpus text')),
     extractDocument: () => extracted('Captured corpus text'),

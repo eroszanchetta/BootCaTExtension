@@ -5,6 +5,7 @@ const { mkdtemp, rm, readFile, writeFile } = require('node:fs/promises');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 const { createServer } = require('node:http');
+const { execFileSync } = require('node:child_process');
 (async () => {
   const { build } = await import('./build.mjs');
   const root = await mkdtemp(join(tmpdir(), 'bootcat-browser-'));
@@ -92,11 +93,41 @@ const { createServer } = require('node:http');
     await page.goto(origin + '/downloader.html');
     const openPanels = async () => page.locator('.workspace-panel').evaluateAll(panels => panels.forEach(panel => { panel.open = true; }));
     const assertCollapsed = async () => assert.equal(await page.locator('.workspace-panel[open]').count(), 0);
+    let metadataCounter = 0;
+    async function checkMetadataExport(zipPath, language = 'Not checked') {
+      await page.locator('nav a[href="#log-section"]').click();
+      const event = page.waitForEvent('download'); await page.click('#export-metadata');
+      const download = await event, xlsxPath = join(root, `metadata-${++metadataCounter}.xlsx`);
+      assert.ok(download.suggestedFilename().endsWith('-metadata.xlsx')); await download.saveAs(xlsxPath);
+      execFileSync('python3', ['-c', `
+import sys,json,zipfile,xml.etree.ElementTree as E
+n={'m':'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
+with zipfile.ZipFile(sys.argv[1]) as z:
+ assert not any('/captured/' in name for name in z.namelist())
+ docs=[d for d in json.loads(z.read('extraction.json'))['documents'] if d.get('textFilename')]
+ for d in docs:
+  assert d['textFilename'] in z.namelist() and d['originalFilename'] in z.namelist()
+with zipfile.ZipFile(sys.argv[2]) as z:
+ assert z.testzip() is None
+ for name in z.namelist(): E.fromstring(z.read(name))
+ sheet=E.fromstring(z.read('xl/worksheets/sheet1.xml'))
+ assert not sheet.findall('.//m:f',n)
+ rows=sheet.findall('m:sheetData/m:row',n)
+ values=[]
+ for row in rows:
+  values.append([c.find('m:is/m:t',n).text if c.attrib.get('t')=='inlineStr' else int(c.find('m:v',n).text) for c in row])
+ assert values[0]==['Text file name','Source URL','Characters','Detected language']
+ assert values[1:]==[[d['textFilename'].removeprefix('corpus/'),d['url'],d['characters'],sys.argv[3]] for d in docs]
+ assert sheet.find('m:sheetViews/m:sheetView/m:pane',n).attrib['state']=='frozen'
+`, zipPath, xlsxPath, language]);
+    }
+
     await page.locator('#project-dialog[open]').waitFor();
     await page.selectOption('#project-dialog-language', 'none'); await page.fill('#project-dialog-name', 'First corpus'); await page.click('#project-dialog-submit');
     await page.locator('#project-dialog[open]').waitFor({ state: 'hidden' });
     await assertCollapsed();
     assert.equal(await page.locator('.workspace-panel').count(), 6);
+    assert.equal(await page.locator('#log-section #export-metadata').isDisabled(), true);
     assert.equal(await page.evaluate(() => document.querySelector('#review-section .panel-content').lastElementChild.classList.contains('corpus-export')), true);
     assert.equal(await page.locator('#search-form').count(), 0);
     await page.locator('nav a[href="#seeds-section"]').click();
@@ -348,6 +379,7 @@ const { createServer } = require('node:http');
     assert.match(await page.inputValue('#preview-text'), /Caffè 中文 corpus/);
     const documentsDownload = page.waitForEvent('download'); await page.click('#export');
     await (await documentsDownload).saveAs(join(root, 'documents.zip'));
+    await checkMetadataExport(join(root, 'documents.zip'));
     console.log('PDF/DOCX download, local extraction, preview and ZIP passed.');
     await deleteAllRows();
     await page.fill('#urls', 'https://corpus.test/large.docx'); await page.click('#start');
@@ -418,6 +450,9 @@ const { createServer } = require('node:http');
     assert.equal(await page.locator('#review-lists tbody tr').count(), 1);
     assert.equal(await page.locator('#results tr').count(), 1);
     assert.equal(await page.locator('#attention-section').isVisible(), false);
+    const capturedDownload = page.waitForEvent('download'); await page.click('#export');
+    const capturedZIP = join(root, 'captured-flat.zip'); await (await capturedDownload).saveAs(capturedZIP);
+    await checkMetadataExport(capturedZIP);
     assert.equal(await page.inputValue('#preview-text'), '');
     await page.click('#review-lists .preview-button');
     await page.waitForFunction(() => document.querySelector('#preview-text').value.includes('Renewable energy'));
@@ -532,7 +567,12 @@ const { createServer } = require('node:http');
     await page.click('#recheck-language');
     await page.waitForFunction(() => document.querySelector('#language-status').textContent.startsWith('1 of 1 saved texts rechecked') && !document.querySelector('#start').disabled);
     assert.equal(await page.locator('#results tr').count(), 1, 'manual override must survive recheck');
+    const acceptedDownload = page.waitForEvent('download'); await page.click('#export');
+    const acceptedZIP = join(root, 'accepted-language.zip'); await (await acceptedDownload).saveAs(acceptedZIP);
+    await checkMetadataExport(acceptedZIP, 'English');
+
     await page.uncheck('#results input[type="checkbox"]');
+    await page.waitForFunction(() => document.querySelector('#export-metadata').disabled);
     await page.selectOption('#project-language', 'none'); await page.click('#recheck-language');
     await page.waitForFunction(() => document.querySelector('#language-status').textContent.startsWith('1 of 1 saved texts rechecked') && !document.querySelector('#start').disabled);
     assert.equal(await page.locator('#results input[type="checkbox"]').isChecked(), false, 'disabling detection must preserve manual exclusion');
