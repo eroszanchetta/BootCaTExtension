@@ -1,4 +1,5 @@
 import { getExtensionAPI } from './extension-api.js';
+import { confirmAction } from './dialogs.js';
 const ext = getExtensionAPI();
 import { ENGINES } from "./engines.js";
 import { uniqueResults } from "./collection.js";
@@ -64,7 +65,7 @@ export function initSearchUI({ isRunning, seenCollectionIds = [], onChange = () 
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   });
   el("clear-searches").addEventListener("click", async () => {
-    if (!window.confirm("Clear all saved search collections? Export them first if you want to keep them. The URL download list will stay as it is.")) return;
+    if (!await confirmAction({ title: 'Clear saved searches?', message: 'All saved search collections will be cleared. Export them first if you want to keep them. The URL download list will stay as it is.', confirmLabel: 'Clear searches', destructive: true })) return;
     try {
       const reply = await ext.runtime.sendMessage({ type: "clear-collections" });
       if (!reply?.ok) throw new Error(reply?.error || "Could not clear searches");

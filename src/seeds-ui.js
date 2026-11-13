@@ -1,4 +1,5 @@
 import { getExtensionAPI } from './extension-api.js';
+import { confirmAction } from './dialogs.js';
 import { SEARCH_FILE_TYPES, DEFAULT_EXCLUDED_SITES, normalizeSearchFilters } from './search-filters.js';
 import { openWorkspaceSection } from './workspace-sections.js';
 import { openProjectSearch } from './search-tabs-client.js';
@@ -8,12 +9,12 @@ import { parseSeeds, parseQueries, generateTuples, combinationCount } from './tu
 export function initSeedsUI({ draft = {}, onChange = () => {}, getProjectId = () => null, onOpeningChange = () => {} } = {}) {
   const el = id => document.getElementById(id), PAGE_SIZE = 100;
   let prepared = [], bases = null, preparedFilters = null, savingDefaults = false, page = 0, generating = false, opening = false, stopped = false, destroyed = false, controller;
-  let pendingOpens = 0;
+  let pendingOpens = 0, confirming = false;
   const notifyOpening = () => { if (!destroyed) onOpeningChange(opening || pendingOpens > 0); };
   let tabState = { tabs: [], history: [] }, queryRows = [], filterTimer, filterPending = false, filtersValid = true;
   const engineID = () => el('engine').value || ENGINES[0].id;
   const engineName = () => ENGINES.find(engine => engine.id === engineID())?.name || engineID();
-  const busy = () => generating || opening;
+  const busy = () => generating || opening || confirming;
   for (const format of [{ id: '', label: 'No restriction' }, ...SEARCH_FILE_TYPES]) {
     const option = document.createElement('option'); option.value = format.id; option.textContent = format.label; el('search-filetype').append(option);
   }
@@ -224,7 +225,13 @@ export function initSeedsUI({ draft = {}, onChange = () => {}, getProjectId = ()
   el('open-all-queries').addEventListener('click', async () => {
     if (busy() || destroyed || filterPending || !filtersValid || !prepared.length) return;
     const queries = prepared.slice(), engine = engineID();
-    if (!window.confirm(`Open all ${queries.length.toLocaleString()} queries in new ${engineName()} tabs? Search engines may refuse automated batch queries, block requests or show CAPTCHAs. Many tabs may slow your browser.`)) return;
+    const projectAtConfirmation = getProjectId();
+    confirming = true; controls();
+    let approved;
+    try {
+      approved = await confirmAction({ title: 'Run all queries?', message: `Open all ${queries.length.toLocaleString()} queries in new ${engineName()} tabs? Search engines may refuse automated batch queries, block requests or show CAPTCHAs. Many tabs may slow your browser.`, confirmLabel: 'Run all queries' });
+    } finally { confirming = false; if (!destroyed) controls(); }
+    if (!approved || destroyed || getProjectId() !== projectAtConfirmation) return;
     opening = true; stopped = false; notifyOpening(); controls(); let opened = 0;
     try {
       for (const query of queries) {

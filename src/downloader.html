@@ -19,6 +19,7 @@
         <a href="#urls-section">URLs</a>
         <a href="#review-section">Review &amp; Download</a>
         <a href="#preview-section">Preview Text</a>
+        <a href="#log-section">Log</a>
         <a href="https://docs.sslmit.unibo.it/doku.php?id=bootcat:start" target="_blank" rel="noopener noreferrer">Help</a>
       </nav>
     </div>
@@ -84,14 +85,11 @@
       <p class="hint">Normal, Ctrl/Cmd and middle clicks on query links are tracked. Tabs opened through the browser's link context menu or duplicated later must be collected manually. Browser or extension restarts clear tab tracking.</p>
       <p id="project-tab-loading-hint" class="hint" role="status"></p>
       <p id="project-tab-status" role="status" aria-live="polite"></p>
-      <details><summary>Project tab collection details</summary><ul id="project-tab-details" class="query-list"></ul></details>
       <p class="hint">On the results tab, click the BootCaT toolbar icon → Collect results. Collected URLs appear in the download list automatically. Browse more results and collect again as needed. Switch engine here if one stops working.</p>
       <p id="collection-status" role="status" aria-live="polite">Loading saved searches…</p>
       <div class="actions collection-actions">
-        <button id="save-searches" class="secondary" disabled>Export searches JSON</button>
         <button id="clear-searches" class="secondary" disabled>Clear searches</button>
       </div>
-      <details><summary>Review saved results</summary><div class="table-wrap"><table><thead><tr><th scope="col">Title / URL</th><th scope="col">Search sources</th></tr></thead><tbody id="collected-results"></tbody></table></div><p class="hint">Preview shows the first 200 unique URLs. Export includes all saved results. Remove unwanted URLs from the download list below.</p></details>
       </div></details>
     </section>
     <section id="urls-section" aria-labelledby="input-heading" tabindex="-1">
@@ -142,6 +140,13 @@
       <p class="hint">Review the text before export. Extraction may omit useful material or retain boilerplate. HTML, plain text, PDF and DOCX are supported. Scanned PDFs may require OCR; password-protected files are not supported.</p>
       </div></details>
     </section>
+    <section id="log-section" aria-labelledby="log-heading" tabindex="-1">
+      <details class="workspace-panel"><summary><h2 id="log-heading">Log</h2></summary><div class="panel-content">
+      <details><summary>Project tab collection details</summary><ul id="project-tab-details" class="query-list"></ul></details>
+      <details><summary>Review saved results</summary><div class="table-wrap"><table><thead><tr><th scope="col">Title / URL</th><th scope="col">Search sources</th></tr></thead><tbody id="collected-results"></tbody></table></div><p class="hint">Preview shows the first 200 unique URLs. Export includes all saved results. Remove unwanted URLs from the URLs section.</p></details>
+      <div class="actions"><button id="save-searches" class="secondary" disabled>Export searches JSON</button></div>
+      </div></details>
+    </section>
     <footer>Local processing · No BootCaT server · HTML · PDF · DOCX text extraction · No page scripts executed</footer>
   </main>
   <dialog id="project-dialog" aria-labelledby="project-dialog-title" aria-describedby="project-dialog-description">
@@ -157,6 +162,13 @@
       <p class="hint">Choose the language you want to collect, or explicitly choose No language detection. Detection is a suggestion; you can include flagged documents manually.</p>
       <p id="project-dialog-error" class="error" role="alert"></p>
       <div class="actions"><button id="project-dialog-submit" type="submit">Save project name</button><button id="project-dialog-cancel" type="button" class="secondary">Cancel</button></div>
+    </form>
+  </dialog>
+  <dialog id="confirmation-dialog" aria-labelledby="confirmation-title" aria-describedby="confirmation-message">
+    <form method="dialog">
+      <h2 id="confirmation-title">Confirm action</h2>
+      <p id="confirmation-message"></p>
+      <div class="actions"><button id="confirmation-cancel" class="secondary" value="cancel" autofocus>Cancel</button><button id="confirmation-accept" value="confirm">Continue</button></div>
     </form>
   </dialog>
   <script src="vendor/Readability.js"></script>

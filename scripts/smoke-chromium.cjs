@@ -96,7 +96,7 @@ const { createServer } = require('node:http');
     await page.selectOption('#project-dialog-language', 'none'); await page.fill('#project-dialog-name', 'First corpus'); await page.click('#project-dialog-submit');
     await page.locator('#project-dialog[open]').waitFor({ state: 'hidden' });
     await assertCollapsed();
-    assert.equal(await page.locator('.workspace-panel').count(), 5);
+    assert.equal(await page.locator('.workspace-panel').count(), 6);
     assert.equal(await page.evaluate(() => document.querySelector('#review-section .panel-content').lastElementChild.classList.contains('corpus-export')), true);
     assert.equal(await page.locator('#search-form').count(), 0);
     await page.locator('nav a[href="#seeds-section"]').click();
@@ -105,8 +105,24 @@ const { createServer } = require('node:http');
     assert.equal(await page.inputValue('#excluded-sites'), 'youtube.com\nfacebook.com\ninstagram.com\namazon.com');
     await page.fill('#excluded-sites', '');
     await page.waitForFunction(() => document.querySelector('#collection-status').textContent.includes('0 unique URLs'));
-    let acceptDialogs = true; const dialogMessages = [];
-    page.on('dialog', dialog => { dialogMessages.push(dialog.message()); return (acceptDialogs ? dialog.accept() : dialog.dismiss()).catch(() => {}); });
+    const dialogMessages = [];
+    page.on('dialog', dialog => {
+      if (dialog.type() === 'beforeunload') return dialog.accept();
+      errors.push('Unexpected browser dialog: ' + dialog.message()); return dialog.dismiss();
+    });
+    async function clickConfirmed(selector, accept = true) {
+      await page.click(selector); await page.locator('#confirmation-dialog[open]').waitFor();
+      dialogMessages.push(await page.locator('#confirmation-message').innerText());
+      assert.equal(await page.locator('#confirmation-cancel').evaluate(button => button === document.activeElement), true);
+      if (accept === 'escape') await page.keyboard.press('Escape');
+      else await page.click(accept ? '#confirmation-accept' : '#confirmation-cancel');
+      await page.locator('#confirmation-dialog[open]').waitFor({ state: 'hidden' });
+    }
+    const navNames = await page.locator('nav a').allTextContents();
+    assert.equal(navNames.at(-2), 'Log'); assert.equal(navNames.at(-1), 'Help');
+    await page.locator('nav a[href="#log-section"]').click();
+    assert.equal(await page.locator('#log-section .workspace-panel').getAttribute('open'), '');
+    assert.equal(await page.locator('#log-section #save-searches, #log-section #project-tab-details, #log-section #collected-results').count(), 3);
     assert.equal(await page.evaluate(() => document.querySelector('[aria-labelledby="project-heading"]').nextElementSibling.id), 'seeds-section');
     assert.equal(await page.inputValue('#tuple-length'), '3');
     assert.equal(await page.locator('#generate-tuples').isDisabled(), true);
@@ -166,11 +182,11 @@ const { createServer } = require('node:http');
     await page.waitForFunction(() => document.querySelector('#project-tab-count').textContent.startsWith('0 of 0'));
     assert.match(await page.locator('#prepared-queries .query-tab-status').first().innerText(), /Collected/);
     console.log('Leading badge/open icon, popup collection status and manual-close retention passed.');
-    acceptDialogs = false; await page.click('#open-all-queries'); acceptDialogs = true;
+    await clickConfirmed('#open-all-queries', false);
     assert.equal(context.pages().length, tabCount); assert.ok(dialogMessages.at(-1).includes('refuse automated batch queries'));
     const batchPages = [], recordQueryPage = tab => batchPages.push(tab); context.on('page', recordQueryPage);
     const allBatchCreated = context.waitForEvent('page', { predicate: () => batchPages.length >= 2 });
-    await page.click('#open-all-queries');
+    await clickConfirmed('#open-all-queries');
     await allBatchCreated;
     await page.waitForFunction(() => document.querySelector('#query-status').textContent.startsWith('2 of 2 search tabs opened'));
     await Promise.all(batchPages.map(tab => tab.waitForLoadState('domcontentloaded'))); context.off('page', recordQueryPage);
@@ -199,6 +215,16 @@ const { createServer } = require('node:http');
     assert.equal(unrelatedSearch.isClosed(), false);
     await page.waitForFunction(() => document.querySelector('#urls').value.split('\n').filter(Boolean).length === 2);
     assert.ok(!(await page.inputValue('#urls')).includes('unrelated'));
+    const pagesAfterCollection = context.pages().length;
+    await clickConfirmed('#open-all-queries', 'escape');
+    assert.equal(context.pages().length, pagesAfterCollection);
+    const savedSearchDownload = page.waitForEvent('download'); await page.click('#save-searches');
+    const savedSearchPath = join(root, 'saved-searches.json'); await (await savedSearchDownload).saveAs(savedSearchPath);
+    assert.equal(JSON.parse(await readFile(savedSearchPath, 'utf8')).results.length, 2);
+    await clickConfirmed('#clear-searches', false);
+    assert.equal(await page.locator('#collected-results tr').count(), 2);
+    console.log('Styled confirmations, Escape cancellation, Log navigation and search JSON export passed.');
+
     await page.selectOption('#engine', 'google');
     assert.equal(new URL(await page.locator('#prepared-queries a').first().getAttribute('href')).hostname, 'www.google.com');
     console.log('Seed validation, unique tuples, phrase quoting, edits, query links, engine switching, batch confirmation and persistence passed.');
@@ -206,7 +232,7 @@ const { createServer } = require('node:http');
     await page.fill('#tuples', 'delayed\nclose while loading'); await page.click('#prepare-queries');
     const loadingPages = [], recordLoading = tab => loadingPages.push(tab); context.on('page', recordLoading);
     const loadingCreated = context.waitForEvent('page', { predicate: () => loadingPages.length >= 2 });
-    await page.click('#open-all-queries'); await loadingCreated; context.off('page', recordLoading);
+    await clickConfirmed('#open-all-queries'); await loadingCreated; context.off('page', recordLoading);
     await Promise.all(loadingPages.map(tab => tab.waitForURL(url => url.origin === pdfOrigin && url.pathname === '/search-fixture', { waitUntil: 'commit' })));
     await page.waitForFunction(() => document.querySelector('#project-tab-count').textContent.startsWith('0 of 2 project search tabs loaded.'));
     assert.equal(await page.locator('#collect-project-tabs').isDisabled(), true);
@@ -226,7 +252,7 @@ const { createServer } = require('node:http');
     await page.fill('#tuples', 'captcha\npartial\nmoved'); await page.click('#prepare-queries');
     const troublePages = [], recordTrouble = tab => troublePages.push(tab); context.on('page', recordTrouble);
     const troubleReady = context.waitForEvent('page', { predicate: () => troublePages.length >= 3 });
-    await page.click('#open-all-queries'); await troubleReady;
+    await clickConfirmed('#open-all-queries'); await troubleReady;
     await Promise.all(troublePages.map(tab => tab.waitForLoadState('domcontentloaded'))); context.off('page', recordTrouble);
     await page.waitForFunction(() => document.querySelector('#query-status').textContent.startsWith('3 of 3 search tabs opened'));
     const movedPage = troublePages.find(tab => new URL(tab.url()).searchParams.get('q') === 'moved'); await movedPage.goto(pdfOrigin + '/login');
@@ -250,6 +276,10 @@ const { createServer } = require('node:http');
     assert.match(await page.locator('#prepared-queries li').first().innerText(), /Collected/);
     assert.equal(await page.locator('#collect-project-tabs').isDisabled(), false);
 
+    const urlsBeforeClearing = await page.inputValue('#urls');
+    await clickConfirmed('#clear-searches');
+    await page.waitForFunction(() => document.querySelector('#collection-status').textContent.includes('0 unique URLs'));
+    assert.equal(await page.inputValue('#urls'), urlsBeforeClearing);
     await page.click('#new-project');
     await page.selectOption('#project-dialog-language', 'none'); await page.fill('#project-dialog-name', 'Tab reset project'); await page.click('#project-dialog-submit');
     await page.waitForFunction(() => document.querySelector('#collection-status').textContent.includes('0 unique URLs') && document.querySelector('#project-tab-count').textContent.startsWith('0 of 0 project search tabs loaded.'));
@@ -271,13 +301,13 @@ const { createServer } = require('node:http');
     async function deleteAllRows() {
       let count;
       while ((count = await page.locator('#review-lists .delete-button').count())) {
-        await page.locator('#review-lists .delete-button').first().click();
+        await clickConfirmed('#review-lists .delete-button');
         await page.waitForFunction(count => document.querySelectorAll('#review-lists tbody tr').length < count, count);
       }
     }
     for (const extractor of ['readability', 'defuddle']) {
       if (extractor === 'defuddle') {
-        await page.click('#review-lists .delete-button');
+        await clickConfirmed('#review-lists .delete-button');
         await page.fill('#urls', 'https://corpus.test/article');
       }
       await page.selectOption('#extractor', extractor);
@@ -398,7 +428,9 @@ const { createServer } = require('node:http');
     await page.click('#review-lists .preview-button');
     await page.waitForFunction(() => document.querySelector('#preview-text').value.includes('Renewable energy'));
     assert.ok((await page.inputValue('#preview-text')).includes('Renewable energy'));
-    await page.click('#review-lists .delete-button');
+    await clickConfirmed('#review-lists .delete-button', 'escape');
+    assert.equal(await page.locator('#review-lists tbody tr').count(), 1);
+    await clickConfirmed('#review-lists .delete-button');
     await page.waitForFunction(() => document.querySelectorAll('#review-lists tbody tr').length === 0);
     assert.equal(await page.locator('#review-lists tbody tr').count(), 0);
     assert.equal(await page.inputValue('#preview-text'), '');
