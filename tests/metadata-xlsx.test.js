@@ -17,8 +17,8 @@ test('metadata contains only included texts, using detected rather than project 
     entry('disabled', { outcome: 'disabled', detected: 'ita' }), entry('legacy'),
     entry('unchecked', undefined, { included: false }), entry('failed', undefined, { status: 'failed' })
   ]);
-  assert.deepEqual(rows.map(row => row.filename), ['caffè-中文-😀.txt', 'accepted.txt', 'uncertain.txt', 'disabled.txt', 'legacy.txt']);
-  assert.deepEqual(rows.map(row => row.language), ['Italian', 'English', 'Uncertain', 'Not checked', 'Not checked']);
+  assert.deepEqual(rows.map(row => row.filename), ['accepted.txt', 'caffè-中文-😀.txt', 'disabled.txt', 'legacy.txt', 'uncertain.txt']);
+  assert.deepEqual(rows.map(row => row.language), ['English', 'Italian', 'Not checked', 'Not checked', 'Uncertain']);
   assert.equal(rows[0].characters, 1234);
 });
 
@@ -73,5 +73,11 @@ test('legacy capture paths flatten consistently without mutating storage names, 
   assert.equal(layout.entries[0].record.previousAttempt.filename, 'pages/previous.html');
   const names = layout.entries.flatMap(value => value.fileNames);
   assert.equal(new Set(names).size, names.length); assert.ok(names.every(name => !name.includes('/captured/')));
-  assert.equal(corpusMetadataRows(entries)[0].filename, layout.entries[0].doc.textFilename.slice('corpus/'.length));
+  assert.ok(corpusMetadataRows(entries).some(row => row.filename === layout.entries[0].doc.textFilename.slice('corpus/'.length)));
+});
+
+test('report rows default to filename order even when URL order differs, including numeric filename prefixes', () => {
+  const values = [entry('10000-z'), entry('0010-m'), entry('0002-a')];
+  values[0].url = 'https://a.test/'; values[1].url = 'https://m.test/'; values[2].url = 'https://z.test/';
+  assert.deepEqual(corpusMetadataRows(values).map(row => row.filename), ['0002-a.txt', '0010-m.txt', '10000-z.txt']);
 });

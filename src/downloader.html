@@ -129,7 +129,7 @@
       <p id="storage-status" class="hint" role="status" aria-live="polite">Loading saved project…</p>
       <p id="corpus-status" role="status" aria-live="polite">Download pages to extract corpus text.</p>
       <div class="corpus-export"><button id="export" disabled>Save corpus</button>
-      <p class="hint">Includes all original downloaded files, selected corpus text files, search sources and extraction metadata.</p></div>
+      <p class="hint">Includes originals, selected corpus texts, Report.xlsx, URL/seed/tuple lists, search sources and extraction metadata.</p></div>
       </div></details>
     </section>
     <section id="preview-section" aria-labelledby="preview-title" tabindex="-1">
@@ -144,8 +144,7 @@
       <details class="workspace-panel"><summary><h2 id="log-heading">Log</h2></summary><div class="panel-content">
       <details><summary>Project tab collection details</summary><ul id="project-tab-details" class="query-list"></ul></details>
       <details><summary>Review saved results</summary><div class="table-wrap"><table><thead><tr><th scope="col">Title / URL</th><th scope="col">Search sources</th></tr></thead><tbody id="collected-results"></tbody></table></div><p class="hint">Preview shows the first 200 unique URLs. Export includes all saved results. Remove unwanted URLs from the URLs section.</p></details>
-      <div class="actions"><button id="save-searches" class="secondary" disabled>Export searches JSON</button><button id="export-metadata" class="secondary" disabled>Export corpus metadata (.xlsx)</button></div>
-      <p id="metadata-export-status" class="hint" role="status" aria-live="polite"></p>
+      <div class="actions"><button id="save-searches" class="secondary" disabled>Export searches JSON</button></div>
       </div></details>
     </section>
     <footer>Local processing · No BootCaT server · HTML · PDF · DOCX text extraction · No page scripts executed</footer>
