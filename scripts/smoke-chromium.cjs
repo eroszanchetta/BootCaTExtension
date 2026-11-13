@@ -221,7 +221,8 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     await page.waitForFunction(() => document.querySelector('#query-status').textContent.startsWith('2 of 2 search tabs opened'));
     await Promise.all(batchPages.map(tab => tab.waitForLoadState('domcontentloaded'))); context.off('page', recordQueryPage);
     assert.equal(batchPages.length, 2);
-    assert.deepEqual(batchPages.map(tab => new URL(tab.url()).searchParams.get('q')), ['"custom phrase" energy', 'storage generation']);
+    // Playwright can attach to newly created tabs in either order.
+    assert.deepEqual(batchPages.map(tab => new URL(tab.url()).searchParams.get('q')).sort(), ['"custom phrase" energy', 'storage generation'].sort());
     async function waitProjectTabsReady(count) {
       await page.waitForFunction(async count => {
         const ext = globalThis.browser ?? chrome, data = await ext.storage.session.get('projectSearchTabs');
