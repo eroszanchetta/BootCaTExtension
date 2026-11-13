@@ -69,7 +69,7 @@ const assert = require('node:assert/strict');
           else {
             assert.equal((await measure()).y, true, 'long messages must remain scrollable');
             await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
-            assert.ok(await page.evaluate(() => scrollY > 0));
+            await page.waitForFunction(() => scrollY > 0);
           }
           await page.setViewportSize({ width: 300, height: 300 });
           assert.equal((await measure()).x, false, `${name}: ${scenario} narrow-panel overflow`);
