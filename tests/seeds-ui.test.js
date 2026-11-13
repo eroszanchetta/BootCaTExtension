@@ -24,7 +24,7 @@ function fixture(options = {}) {
   get('engine').value = 'google';
   const context = vm.createContext({
     setTimeout, clearTimeout, openWorkspaceSection() {}, combinationCount, SEARCH_FILE_TYPES, DEFAULT_EXCLUDED_SITES, normalizeSearchFilters,
-    document: { getElementById: get, createElement: () => new Element() },
+    document: { getElementById: get, createElement: () => new Element(), createElementNS: () => new Element() },
     window: { confirm(message) { confirmations.push(message); return confirmed; } },
     getExtensionAPI: () => ({ runtime: { sendMessage: async message => options.saveDefaults ? options.saveDefaults(message) : { ok: true } }, tabs: { create: async value => { if (options.open) await options.open(value, opened.length); opened.push(value); } } }),
     getProjectId: () => 'project',
@@ -48,10 +48,10 @@ test('generate, edit and prepare tuples without opening tabs; engine changes upd
   assert.ok(app.get('tuples').value.includes('"solar power"'));
   app.input('tuples', '"custom phrase" energy\nstorage capacity\nstorage capacity'); await app.click('prepare-queries');
   assert.equal(app.get('prepared-queries').children.length, 2); assert.equal(app.opened.length, 0);
-  const link = app.get('prepared-queries').children[0].children[0];
+  const link = app.get('prepared-queries').children[0].children[2];
   assert.equal(new URL(link.href).searchParams.get('q'), '"custom phrase" energy'); assert.equal(link.target, '_blank');
   app.get('engine').value = 'duckduckgo'; app.get('engine').handlers.change();
-  assert.equal(new URL(app.get('prepared-queries').children[0].children[0].href).hostname, 'duckduckgo.com');
+  assert.equal(new URL(app.get('prepared-queries').children[0].children[2].href).hostname, 'duckduckgo.com');
   app.input('tuples', 'changed query'); assert.equal(app.get('prepared-queries').children.length, 0);
   assert.equal(app.get('open-all-queries').disabled, true);
 });
@@ -65,7 +65,7 @@ test('batch opening requires confirmation, warns about engine refusal and opens 
 
 test('normal, Ctrl/Cmd and middle clicks open registered project searches with the appropriate focus', async () => {
   const app = fixture({ draft: { preparedQueries: ['my query'] } });
-  const link = app.get('prepared-queries').children[0].children[0];
+  const link = app.get('prepared-queries').children[0].children[2];
   for (const event of [
     { type: 'click', button: 0 }, { type: 'click', button: 0, ctrlKey: true },
     { type: 'click', button: 0, metaKey: true }, { type: 'auxclick', button: 1 }
@@ -82,7 +82,7 @@ test('stopping tuple generation keeps the previously edited tuples and prepared 
   const app = fixture({ draft: { seeds: 'a\nb\nc\nd\ne', tuples: 'my edited query', preparedQueries: ['my edited query'] } });
   const generation = app.click('generate-tuples'); app.click('stop-tuples'); await generation;
   assert.equal(app.get('tuples').value, 'my edited query');
-  assert.equal(app.get('prepared-queries').children[0].children[0].textContent, 'my edited query');
+  assert.equal(app.get('prepared-queries').children[0].children[2].textContent, 'my edited query');
   assert.match(app.get('tuple-status').textContent, /Generation stopped/); assert.equal(app.ui.isBusy(), false);
 });
 test('batch opening can stop or report partial failures while individual query links remain', async () => {
@@ -99,7 +99,7 @@ test('query pagination retains all links, and destroyed projects stop pending ba
   const queries = Array.from({ length: 205 }, (_, i) => `query${i}`), app = fixture({ draft: { preparedQueries: queries } });
   assert.equal(app.get('prepared-queries').children.length, 100); app.click('next-queries'); app.click('next-queries');
   assert.equal(app.get('prepared-queries').children.length, 5); assert.equal(app.get('prepared-queries').start, 201);
-  assert.equal(app.get('prepared-queries').children[4].children[0].textContent, 'query204');
+  assert.equal(app.get('prepared-queries').children[4].children[2].textContent, 'query204');
   let release; const gate = new Promise(resolve => { release = resolve; });
   const pending = fixture({ draft: { preparedQueries: ['one', 'two'] }, open: async () => gate });
   const opening = pending.click('open-all-queries'); pending.ui.destroy(); release(); await opening;
@@ -136,7 +136,7 @@ test('generation needs five distinct seeds while manual tuples work with none an
   const app = fixture();
   assert.equal(app.get('generate-tuples').disabled, true); assert.equal(app.get('tuples').disabled, false);
   app.input('tuples', 'manual query'); await app.click('prepare-queries');
-  assert.equal(app.get('prepared-queries').children[0].children[0].textContent, 'manual query');
+  assert.equal(app.get('prepared-queries').children[0].children[2].textContent, 'manual query');
   app.input('seeds', 'a\nb\nc\nd\na'); assert.equal(app.get('generate-tuples').disabled, true);
   app.input('seeds', 'a\nb\nc\nd\ne'); assert.equal(app.get('generate-tuples').disabled, false);
   const generation = app.click('generate-tuples'); assert.equal(app.get('tuples').disabled, false);
@@ -151,16 +151,16 @@ test('search restrictions compile once, appear in links and batch tabs, persist,
   app.input('tuples', 'solar energy'); app.input('excluded-sites', 'https://www.youtube.com/watch?v=1\nfacebook.com\nfacebook.com');
   app.get('search-filetype').value = 'pdf'; app.get('search-filetype').handlers.change(); await app.click('prepare-queries');
   const query = 'solar energy filetype:pdf -site:youtube.com -site:facebook.com';
-  assert.equal(app.get('prepared-queries').children[0].children[0].textContent, query);
+  assert.equal(app.get('prepared-queries').children[0].children[2].textContent, query);
   assert.equal(app.get('tuples').value, 'solar energy'); assert.equal(app.draft.preparedQueries[0], query);
   app.get('engine').value = 'ecosia'; app.get('engine').handlers.change();
-  assert.equal(new URL(app.get('prepared-queries').children[0].children[0].href).searchParams.get('q'), query);
+  assert.equal(new URL(app.get('prepared-queries').children[0].children[2].href).searchParams.get('q'), query);
   await app.click('open-all-queries'); assert.equal(new URL(app.opened[0].url).searchParams.get('q'), query);
   await app.click('save-site-defaults'); assert.deepEqual(JSON.parse(JSON.stringify(savedDefault.patch)), { excludedSites: ['youtube.com', 'facebook.com'] });
-  const restored = fixture({ draft: app.draft }); assert.equal(restored.get('prepared-queries').children[0].children[0].textContent, query);
+  const restored = fixture({ draft: app.draft }); assert.equal(restored.get('prepared-queries').children[0].children[2].textContent, query);
   restored.get('search-filetype').value = 'docx'; restored.get('search-filetype').handlers.change();
   assert.equal(restored.get('prepared-queries').children.length, 1); assert.equal(restored.get('open-all-queries').disabled, false);
-  await restored.click('prepare-queries'); assert.equal(restored.get('prepared-queries').children[0].children[0].textContent, query.replace('filetype:pdf', 'filetype:docx'));
+  await restored.click('prepare-queries'); assert.equal(restored.get('prepared-queries').children[0].children[2].textContent, query.replace('filetype:pdf', 'filetype:docx'));
   restored.input('excluded-sites', 'example.com -site:other.com'); await restored.click('prepare-queries');
   assert.equal(restored.get('prepared-queries').children.length, 1); assert.equal(restored.get('open-all-queries').disabled, true); assert.match(restored.get('search-filter-status').textContent, /Invalid excluded website/);
 });
@@ -173,13 +173,13 @@ test('filter edits regenerate in place after typing, preserve page and scroll, a
   app.get('search-filetype').value = 'pdf'; app.get('search-filetype').handlers.change();
   assert.equal(app.get('prepared-queries').start, 101);
   assert.equal(app.get('prepared-queries').scrollTop, 127);
-  assert.equal(app.get('prepared-queries').children[0].children[0].textContent, 'query100 filetype:pdf');
+  assert.equal(app.get('prepared-queries').children[0].children[2].textContent, 'query100 filetype:pdf');
   app.input('excluded-sites', 'example.org');
   assert.equal(app.get('open-all-queries').disabled, true);
-  assert.equal(app.get('prepared-queries').children[0].children[0].href, undefined);
+  assert.equal(app.get('prepared-queries').children[0].children[2].href, undefined);
   await app.click('open-all-queries'); assert.equal(app.opened.length, 0);
   await new Promise(resolve => setTimeout(resolve, 450));
-  assert.equal(app.get('prepared-queries').children[0].children[0].textContent, 'query100 filetype:pdf -site:example.org');
+  assert.equal(app.get('prepared-queries').children[0].children[2].textContent, 'query100 filetype:pdf -site:example.org');
   assert.equal(app.get('prepared-queries').scrollTop, 127); assert.equal(app.get('prepared-queries').start, 101);
   assert.equal(app.draft.preparedQueryBases[100], 'query100'); assert.equal(app.opened.length, 0);
   app.input('excluded-sites', 'example.org -site:other.org');
@@ -187,14 +187,15 @@ test('filter edits regenerate in place after typing, preserve page and scroll, a
   assert.equal(app.get('open-all-queries').disabled, true); assert.equal(app.get('excluded-sites').attributes['aria-invalid'], 'true');
   app.input('excluded-sites', ''); await new Promise(resolve => setTimeout(resolve, 450));
   assert.equal(app.get('open-all-queries').disabled, false);
-  assert.equal(app.get('prepared-queries').children[0].children[0].textContent, 'query100 filetype:pdf');
+  assert.equal(app.get('prepared-queries').children[0].children[2].textContent, 'query100 filetype:pdf');
   app.ui.destroy();
 });
 
 test('query badges track active tabs and closed outcomes without rebuilding links or moving scroll', async () => {
   let focused;
   const app = fixture({ draft: { preparedQueries: ['first', 'second'] }, saveDefaults: async message => { focused = message; return { ok: true }; } });
-  const row = app.get('prepared-queries').children[0], link = row.children[0], badge = row.children[1], inspect = row.children[2];
+  const row = app.get('prepared-queries').children[0], badge = row.children[0], inspect = row.children[1], link = row.children[2];
+  assert.equal(inspect.attributes['aria-label'], 'Open search tab');
   assert.match(badge.textContent, /Not opened/); assert.equal(inspect.hidden, true);
   app.get('prepared-queries').scrollTop = 70;
   app.ui.updateTabState({ tabs: [{ engine: 'google', query: 'first', tabId: 22, status: 'loading' }], history: [] });
@@ -202,10 +203,13 @@ test('query badges track active tabs and closed outcomes without rebuilding link
   app.ui.updateTabState({ tabs: [{ engine: 'google', query: 'first', tabId: 22, status: 'attention', reason: 'CAPTCHA required' }], history: [] });
   assert.match(badge.textContent, /Needs attention/); assert.match(badge.title, /CAPTCHA/);
   await inspect.handlers.click(); assert.equal(focused.type, 'focus-project-search-tab'); assert.equal(focused.tabId, 22);
+  app.ui.updateTabState({ tabs: [{ engine: 'google', query: 'first', tabId: 22, status: 'collected', reason: 'Results saved. This tab remains open.' }], history: [] });
+  assert.match(badge.textContent, /Collected/); assert.equal(inspect.hidden, false);
+  assert.match(badge.title, /remains open/);
   app.ui.updateTabState({ tabs: [], history: [{ engine: 'google', query: 'first', status: 'closed' }, { engine: 'google', query: 'second', status: 'collected' }] });
   assert.match(badge.textContent, /Closed without collecting/); assert.equal(inspect.hidden, true);
-  assert.match(app.get('prepared-queries').children[1].children[1].textContent, /Collected/);
-  assert.equal(app.get('prepared-queries').children[0].children[0], link); assert.equal(app.get('prepared-queries').scrollTop, 70);
+  assert.match(app.get('prepared-queries').children[1].children[0].textContent, /Collected/);
+  assert.equal(app.get('prepared-queries').children[0].children[2], link); assert.equal(app.get('prepared-queries').scrollTop, 70);
 });
 
 test('batch opening holds collection readiness until opening finishes or stops', async () => {

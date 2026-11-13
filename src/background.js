@@ -57,6 +57,7 @@ async function collectPage(tabId, projectId, expected) {
   const tab = await ext.tabs.get(tabId);
   const adapter = adapterForURL(tab.url);
   if (!adapter) throw new Error('Open a Google, DuckDuckGo or Ecosia web results page first.');
+  const marker = expected ? null : await searchTabs.collectionMarker(projectId, tabId, tab.url);
   const injected = await ext.scripting.executeScript({ target: { tabId: tab.id }, func: extractResults, args: [adapter] });
   const result = injected[0]?.result;
   if (!result || result.error) throw new Error(result?.error || 'Could not read this results page.');
@@ -67,6 +68,7 @@ async function collectPage(tabId, projectId, expected) {
     const { collections = [] } = await ext.storage.local.get('collections');
     const collection = { ...result, id: crypto.randomUUID(), collectedAt: new Date().toISOString() };
     await ext.storage.local.set({ collections: addCollection(collections, collection) });
+    if (marker) await searchTabs.markCollectedInQueue(marker, result);
     await ensureWorkspace();
     return { count: result.results.length, unresolved: result.unresolved, engine: adapter.name };
   });

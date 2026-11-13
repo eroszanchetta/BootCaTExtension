@@ -143,7 +143,29 @@ const { createServer } = require('node:http');
     assert.equal(await page.inputValue('#tuples'), '"custom phrase" energy\nstorage generation\nstorage generation');
     const individualEvent = context.waitForEvent('page'); await page.locator('#prepared-queries a').first().click();
     const individual = await individualEvent; await individual.waitForLoadState('domcontentloaded');
-    assert.equal(individual.url(), queryURL); await individual.close(); await page.bringToFront();
+    assert.equal(individual.url(), queryURL);
+    await page.waitForFunction(async () => {
+      const ext = globalThis.browser ?? chrome, data = await ext.storage.session.get('projectSearchTabs');
+      const record = data.projectSearchTabs?.tabs[0];
+      return record && (await ext.tabs.get(record.tabId)).status === 'complete';
+    });
+    // Exercise the same collect message sent by the toolbar popup. Unit tests
+    // additionally verify the popup sender URL and both browser namespaces.
+    const manualCollection = await page.evaluate(async () => {
+      const ext = globalThis.browser ?? chrome, data = await ext.storage.session.get('projectSearchTabs');
+      return ext.runtime.sendMessage({ type: 'collect', tabId: data.projectSearchTabs.tabs[0].tabId });
+    });
+    assert.equal(manualCollection.ok, true); assert.equal(individual.isClosed(), false);
+    await page.waitForFunction(() => document.querySelector('#prepared-queries .query-tab-status').dataset.status === 'collected');
+    assert.equal(await page.locator('#prepared-queries li').first().evaluate(row =>
+      row.children[0].classList.contains('query-tab-status') && row.children[1].classList.contains('query-tab-action') && row.children[2].tagName === 'A'), true);
+    assert.equal(await page.locator('#prepared-queries .query-tab-action').first().getAttribute('aria-label'), 'Open search tab');
+    assert.equal(await page.locator('#prepared-queries .query-tab-action').first().innerText(), '');
+    assert.equal(await page.locator('#prepared-queries .query-tab-action svg').count(), 2);
+    await individual.close(); await page.bringToFront();
+    await page.waitForFunction(() => document.querySelector('#project-tab-count').textContent.startsWith('0 of 0'));
+    assert.match(await page.locator('#prepared-queries .query-tab-status').first().innerText(), /Collected/);
+    console.log('Leading badge/open icon, popup collection status and manual-close retention passed.');
     acceptDialogs = false; await page.click('#open-all-queries'); acceptDialogs = true;
     assert.equal(context.pages().length, tabCount); assert.ok(dialogMessages.at(-1).includes('refuse automated batch queries'));
     const batchPages = [], recordQueryPage = tab => batchPages.push(tab); context.on('page', recordQueryPage);
