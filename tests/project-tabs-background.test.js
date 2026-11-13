@@ -41,6 +41,8 @@ for (const namespace of ['chrome', 'browser']) test(`${namespace}: background re
     const captcha = await request({ type: 'open-project-search', projectId: project.id, engine: 'google', query: 'captcha' });
     tabs.set(100, { id: 100, url: 'https://www.google.com/search?q=random', status: 'complete' });
     assert.equal(good.ok, true); assert.equal(captcha.ok, true);
+    assert.equal((await request({ type: 'collect', projectId: 'stale-project', tabId: good.tabId }, 'popup.html')).ok, false);
+    assert.equal((await request({ type: 'save-page', projectId: 'stale-project', tabId: good.tabId }, 'popup.html')).ok, false);
     assert.equal((await request({ type: 'collect', tabId: good.tabId }, 'popup.html')).ok, true);
     const manuallyCollected = await request({ type: 'get-project-search-tabs', projectId: project.id });
     assert.equal(manuallyCollected.tabs.find(tab => tab.tabId === good.tabId).status, 'collected');

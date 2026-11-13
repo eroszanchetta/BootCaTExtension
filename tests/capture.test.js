@@ -54,7 +54,7 @@ for (const success of [true, false]) test(`popup ${success ? 'keeps save disable
     getExtensionAPI: () => ({
       storage: { onChanged: { addListener() {} } },
       tabs: { query: async () => [{ id: 9, url: 'https://example.org/article' }] },
-      runtime: { sendMessage: async message => { if (message.type === 'get-page-corpus-state') return { ok: true, saved: false, projectId: 'p' }; assert.equal(message.type, 'save-page'); assert.equal(message.tabId, 9); return success ? { ok: true } : { ok: false, error: 'Could not read page' }; } }
+      runtime: { sendMessage: async message => { if (message.type === 'get-project') return { ok: true, project: { id: 'p', name: 'Test corpus', nameConfirmed: true } }; if (message.type === 'get-page-corpus-state') return { ok: true, saved: false, projectId: 'p' }; assert.equal(message.type, 'save-page'); assert.equal(message.tabId, 9); return success ? { ok: true } : { ok: false, error: 'Could not read page' }; } }
     })
   });
   const source = (await readFile(new URL('../src/popup.js', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
@@ -63,6 +63,6 @@ for (const success of [true, false]) test(`popup ${success ? 'keeps save disable
   assert.equal(button.disabled, false);
   await button.handlers.click({ currentTarget: button });
   assert.equal(button.disabled, success);
-  assert.equal(get('page-feedback').textContent, success ? 'Page saved' : 'Could not read page');
+  assert.equal(get('page-feedback').textContent, success ? 'Page already added to corpus' : 'Could not read page');
   assert.equal(get('page-feedback').classList.contains('saved'), success);
 });
