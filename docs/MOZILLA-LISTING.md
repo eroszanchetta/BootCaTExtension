@@ -31,7 +31,7 @@ Developed and independently published by Eros Zanchetta (University of Bologna).
 
 ## Complete before submission
 
-- Add your monitored support contact or public support site in AMO's support fields.
+- Set AMO's support email to **bootcat@dipintra.it**.
 - Publish a matching source download and add its URL to the description.
 - Provide the policy from src/about.html in AMO's privacy field or on a public policy page.
 - Add screenshots of the Firefox workspace and popup. No paid service is required.

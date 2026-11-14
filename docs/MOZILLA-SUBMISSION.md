@@ -1,4 +1,4 @@
-# Mozilla Add-ons submission — BootCaT 2.0.0
+# Mozilla Add-ons submission — BootCaT 2.0.1
 
 Prepared 14 November 2026. This is a submission checklist, not a claim of approval.
 
@@ -15,9 +15,9 @@ npm run lint:firefox
 
 `npm run package` builds both browser extensions and the corresponding source ZIP:
 
-- `dist/packages/bootcat-firefox-2.0.0.zip`: Firefox extension to upload to AMO.
-- `dist/packages/bootcat-source-2.0.0.zip`: source archive to supply to reviewers.
-- `dist/packages/bootcat-chromium-2.0.0.zip`: separate Chrome package; do not upload it to AMO.
+- `dist/packages/bootcat-firefox-2.0.1.zip`: Firefox extension to upload to AMO.
+- `dist/packages/bootcat-source-2.0.1.zip`: source archive to supply to reviewers.
+- `dist/packages/bootcat-chromium-2.0.1.zip`: separate Chrome package; do not upload it to AMO.
 
 Version numbers follow package.json. Do not upload the GitHub repository ZIP as the extension.
 The source package has an explicit allowlist and excludes node_modules, dist, browser profiles
@@ -26,7 +26,9 @@ and Git data. It contains sources, tests, pinned dependency lockfile, licences a
 
 ## Submission steps
 
-1. In https://addons.mozilla.org/developers/addon/submit/distribution choose **On this site**.
+1. For the existing BootCaT listing, open **Manage Status & Versions** and upload a new
+   version. Do not create another listing. For a first submission only, choose **On this site**
+   at https://addons.mozilla.org/developers/addon/submit/distribution.
 2. Upload the Firefox ZIP. Resolve validation errors and inspect warnings before continuing.
 3. Select desktop Firefox on Windows, macOS and Linux. Android has not been tested or supported
    by this release; do not select it.
@@ -34,7 +36,7 @@ and Git data. It contains sources, tests, pinned dependency lockfile, licences a
 5. Use the listing draft in MOZILLA-LISTING.md. Publisher: Eros Zanchetta, independently.
 6. Select GPLv3 or the custom GPL-3.0-or-later wording if needed so the store licence agrees
    with LICENSE. Keep the third-party notices in the package.
-7. Add a real support contact or support site that you monitor, and screenshots from Firefox.
+7. Set the support email to **bootcat@dipintra.it** and add screenshots from Firefox.
    Use the privacy policy in src/about.html for the privacy field; if a URL is requested,
    host the same policy publicly. The repository is currently private: do not give it as
    a public support or privacy URL until its visibility has actually changed.
@@ -57,8 +59,9 @@ All extraction and language detection are local. Normal site requests still disc
 address to the receiving site. Do not describe BootCaT as making no network requests.
 
 The minimum desktop Firefox version is 140, which supports the built-in consent prompt.
-An Android floor of 142 also prevents installation without built-in consent if mobile
-platforms are ever selected; this release is submitted for desktop only.
+The manifest intentionally omits browser_specific_settings.gecko_android. Its presence
+would declare Android compatibility and lock AMO's Android controls. Android has not been
+tested and must not be declared supported merely to silence a validator warning.
 The Firefox manifest sets incognito to not_allowed: private-window pages cannot be saved
 into the persistent corpus. No optional telemetry is implemented. The local About/privacy page is linked in the workspace
 footer. Keep the listing and privacy policy consistent with the actual release behaviour.
@@ -135,7 +138,19 @@ All original code is plain JavaScript, HTML and CSS; it is not minified or trans
 Defuddle/PDF.js include generated upstream bundles, hence the source archive and release
 references. Dependencies needed for building are obtainable through npm with npm ci.
 
+## Extension identity and support
+
+The submitted Firefox extension ID is `bootcat-extension@bootcat.dipintra.it`.
+It is an identifier in email-like syntax, not a support mailbox. Keep this ID for every
+update to preserve the existing listing and extension identity. The actual support email
+is **bootcat@dipintra.it**, which belongs in AMO's support field and the local About page.
+
 ## Automated validator warnings to explain to reviewers
+
+The validator may report KEY_FIREFOX_ANDROID_UNSUPPORTED_BY_MIN_VERSION because the
+desktop minimum is 140 and data consent arrived on Android in 142. This release does not
+declare or target Android. Keep the desktop minimum and omit gecko_android; declaring
+Android support to suppress that warning is incorrect.
 
 Readability and Defuddle use innerHTML internally while manipulating detached documents.
 BootCaT removes active elements before extraction, never inserts extracted HTML into its
