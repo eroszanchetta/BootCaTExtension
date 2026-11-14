@@ -28,6 +28,8 @@ export async function build(target, { outputRoot = join(ROOT, 'dist'), includeTe
   // Only replace this known browser's generated folder, never the source tree.
   await rm(destination, { recursive: true, force: true });
   await cp(join(ROOT, 'src'), destination, { recursive: true });
+  await cp(join(ROOT, 'LICENSE'), join(destination, 'LICENSE.txt'));
+  await cp(join(ROOT, 'NOTICE'), join(destination, 'NOTICE.txt'));
   const pdfDestination = join(destination, 'vendor/pdfjs');
   await mkdir(pdfDestination, { recursive: true });
   for (const name of ['pdf.mjs', 'pdf.worker.mjs']) await cp(join(pdfRoot, 'legacy/build', name), join(pdfDestination, name));

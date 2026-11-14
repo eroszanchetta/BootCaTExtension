@@ -1,9 +1,9 @@
 # Vendored Mozilla Readability
 
-Source: https://raw.githubusercontent.com/mozilla/readability/main/Readability.js
-Retrieved: 2026-11-09.
-Upstream package.json reports 0.6.0. This is a snapshot of main, not a verified 0.6.0 release archive.
-SHA-256 of bundled Readability.js: 87fd63ae01549bb9e19dc5778e5c867a2553d6c4e3bdd9c8f35fb6136c5676f1
+Source: https://raw.githubusercontent.com/mozilla/readability/0.6.0/Readability.js
+Retrieved: 2026-11-14.
+Official tagged release: 0.6.0.
+SHA-256 of bundled Readability.js: 34dcab3d0832d0019f02990eed6b6124e029e8c32b9f0c6f2550544ff8dff174
 
 The source is unmodified. LICENSE-Readability.md and NOTICE-Readability contain its upstream license and notice. This file is a local dependency: no code is fetched at runtime. Load as a classic script before app.js; the library exposes window.Readability.
 
