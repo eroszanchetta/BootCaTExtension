@@ -272,7 +272,7 @@ Every corpus ZIP also contains UTF-8 `url_list.txt`, `seeds.txt` and `tuples.txt
 
 `package.json` → `version` is the single release-version setting. This release is `2.0.0`, displayed as **BootCaT · 2.0** in both badges. Browser manifests and ZIP package filenames take the version from `package.json` during build. Badges and exported JSON read it from the installed manifest at runtime. Storage schema and third-party library versions are independent.
 
-For the next release, run `npm version 2.0.1 --no-git-tag-version` (substitute the intended version). This updates `package.json` and the npm-managed lockfile together without creating a Git tag or commit. Then run `npm run build` and reload the installed extension. Use three numeric components without a prerelease suffix. Do not edit generated files in `dist/` or add version fields to browser manifest templates.
+For the next release, run `npm version 2.0.2 --no-git-tag-version` (substitute the intended version). This updates `package.json` and the npm-managed lockfile together without creating a Git tag or commit. Then run `npm run build` and reload the installed extension. Use three numeric components without a prerelease suffix. Do not edit generated files in `dist/` or add version fields to browser manifest templates.
 
 ## Contextual popup
 
