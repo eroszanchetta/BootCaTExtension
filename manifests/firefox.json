@@ -17,5 +17,6 @@
         ]
       }
     }
-  }
+  },
+  "incognito": "not_allowed"
 }

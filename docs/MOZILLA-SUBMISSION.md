@@ -57,7 +57,8 @@ All extraction and language detection are local. Normal site requests still disc
 address to the receiving site. Do not describe BootCaT as making no network requests.
 
 The minimum desktop Firefox version is 140, which supports the built-in consent prompt.
-No optional telemetry is implemented. The local About/privacy page is linked in the workspace
+The Firefox manifest sets incognito to not_allowed: private-window pages cannot be saved
+into the persistent corpus. No optional telemetry is implemented. The local About/privacy page is linked in the workspace
 footer. Keep the listing and privacy policy consistent with the actual release behaviour.
 
 ## Reviewer notes — copy into the submission

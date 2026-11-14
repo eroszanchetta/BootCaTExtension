@@ -33,6 +33,7 @@ test('both builds contain identical shared files and separate valid manifests', 
     assert.equal(f.minimum_chrome_version, undefined);
     assert.equal(f.browser_specific_settings.gecko.strict_min_version, '140.0');
     assert.ok(f.browser_specific_settings.gecko.id);
+    assert.equal(f.incognito, 'not_allowed');
     assert.deepEqual(f.browser_specific_settings.gecko.data_collection_permissions, {
       required: ['browsingActivity', 'searchTerms', 'websiteContent']
     });
