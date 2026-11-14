@@ -79,14 +79,14 @@ The feature uses the existing `storage`, `scripting` and HTTP(S) website permiss
 
 **Firefox:** open `about:debugging#/runtime/this-firefox`, choose Load Temporary Add-on and select `dist/firefox/manifest.json`. Temporary installs last until Firefox exits. Rebuild and use Reload on the debugging page after changes. Check site-access permissions if search collection or downloading is denied.
 
-For development with Mozilla's optional `web-ext` tool installed:
+For development with Mozilla's `web-ext` tool:
 
 ```sh
 npm run lint:firefox
 npm run dev:firefox
 ```
 
-`dev:firefox` launches a temporary installation. Rebuild after editing `src/`; the running tool watches the generated output. Installing `web-ext` is optional (for example `brew install web-ext` on macOS).
+`dev:firefox` launches a temporary installation. Rebuild after editing `src/`; the running tool watches the generated output. These commands use the pinned web-ext 10.8.0 through npm exec; a global installation is unnecessary. The first invocation needs internet access to populate npm's tool cache.
 
 ## Using BootCaT
 
