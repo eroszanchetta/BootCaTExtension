@@ -24,6 +24,27 @@ jobs:
       - run: npm audit --audit-level=high
       - run: npm test
       - run: npm run package
+      - name: Validate Firefox submission
+        id: amo_lint
+        run: |
+          node --input-type=module <<'JSCODE'
+          import { spawnSync } from 'node:child_process';
+          import { appendFileSync } from 'node:fs';
+          const result = spawnSync('npm', ['exec', '--yes', '--package=web-ext@10.8.0', '--', 'web-ext', 'lint', '--source-dir', 'dist/firefox', '--output=json'], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+          console.log(result.stdout);
+          console.error(result.stderr);
+          let summary;
+          try {
+            const report = JSON.parse(result.stdout);
+            const compact = items => { const counts = new Map(); for (const x of items || []) { const key = x.code + ':' + (x.file || ''); counts.set(key, (counts.get(key) || 0) + 1); } return Object.fromEntries(counts); };
+            summary = JSON.stringify({ errors: report.errors, warnings: compact(report.warnings), notices: compact(report.notices) }).slice(0, 3000);
+          } catch { summary = (result.error?.message || result.stderr || 'No JSON lint report').slice(-3000); }
+          appendFileSync(process.env.GITHUB_OUTPUT, 'summary=' + summary.replace(/[\r\n]/g, ' ') + '\n');
+          process.exit(result.status ?? 1);
+          JSCODE
+      - name: "Firefox validation: ${{ steps.amo_lint.outputs.summary }}"
+        if: always() && steps.amo_lint.outputs.summary != ''
+        run: echo "Firefox validation details are recorded in the preceding step."
       - run: npx playwright install --with-deps chromium firefox
       - run: |
           npm run test:popup > browser-test.log 2>&1

@@ -79,14 +79,14 @@ The feature uses the existing `storage`, `scripting` and HTTP(S) website permiss
 
 **Firefox:** open `about:debugging#/runtime/this-firefox`, choose Load Temporary Add-on and select `dist/firefox/manifest.json`. Temporary installs last until Firefox exits. Rebuild and use Reload on the debugging page after changes. Check site-access permissions if search collection or downloading is denied.
 
-For development with Mozilla's optional `web-ext` tool installed:
+For development with Mozilla's `web-ext` tool:
 
 ```sh
 npm run lint:firefox
 npm run dev:firefox
 ```
 
-`dev:firefox` launches a temporary installation. Rebuild after editing `src/`; the running tool watches the generated output. Installing `web-ext` is optional (for example `brew install web-ext` on macOS).
+`dev:firefox` launches a temporary installation. Rebuild after editing `src/`; the running tool watches the generated output. These commands use the pinned web-ext 10.8.0 through npm exec; a global installation is unnecessary. The first invocation needs internet access to populate npm's tool cache.
 
 ## Using BootCaT
 
@@ -279,3 +279,18 @@ For the next release, run `npm version 2.0.1 --no-git-tag-version` (substitute t
 **Open BootCaT** is always the prominent full-width action. Until project setup is confirmed, the popup asks the user to create a project and hides both collection/capture actions. Named projects show a smaller collection button on supported search pages or a smaller capture button on eligible ordinary pages. Completed actions show only their confirmation; unrelated headings and hints are hidden. Unsupported tabs show a short explanation. Busy actions stay visible and disabled as **Collecting…** or **Saving…**; operation failures restore the action for retry. Project changes hide old actions and reload the popup, and action messages carry the current project ID.
 
 Popup typography and spacing are explicit across browsers. Both the root and body have an explicit preferred width with a shrinking maximum. Firefox measures the body for toolbar-popup sizing, so constraining the root alone is insufficient. Horizontal overflow is prevented. Long messages or smaller panels retain vertical scrolling. `npm run test:popup` checks the real popup document at normal and constrained sizes, including intrinsic body-width probes, in Chromium and Firefox, using extension-API fixtures. These layout checks do not install the Firefox add-on or exercise the browser-owned toolbar panel; visually check the actual toolbar popup when testing a release.
+
+## Licence and publication
+
+Original BootCaT extension code is Copyright © 2026 Eros Zanchetta and licensed under
+GPL-3.0-or-later; see [LICENSE](LICENSE) and [NOTICE](NOTICE). Bundled libraries/fonts
+retain their own notices. Collected documents retain their respective rights.
+
+The workspace footer links to a local About, privacy and licence page. Searches and
+downloads contact the selected engines/source websites; corpus processing stays local.
+
+`npm run package` now also creates a matching `bootcat-source-<version>.zip`. Before
+Mozilla submission, follow [the release checklist](docs/MOZILLA-SUBMISSION.md) and
+complete [the listing draft](docs/MOZILLA-LISTING.md). Public releases need a publicly
+accessible matching source download; sending source privately to AMO reviewers is
+not the same as making it available to recipients.

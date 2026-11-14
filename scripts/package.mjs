@@ -1,6 +1,7 @@
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { build, ROOT, TARGETS } from './build.mjs';
+import { packageSource } from './package-source.mjs';
 import { makeZIP } from '../src/zip.js';
 async function filesIn(root, prefix = '') {
   const files = [];
@@ -22,3 +23,4 @@ for (const name of target === 'all' ? TARGETS : [target]) {
   await writeFile(path, new Uint8Array(await makeZIP(await filesIn(source)).arrayBuffer()));
   console.log(path);
 }
+console.log(await packageSource());

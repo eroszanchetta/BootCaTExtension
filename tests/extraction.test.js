@@ -58,9 +58,9 @@ test('metadata excludes body text; excluded documents disappear only from corpus
   assert.equal(extractionMetadata(docs)[0].originalFilename, 'pages/0001-example.txt');
 });
 
-test('bundled upstream script loads without modification and matches recorded snapshot hash', async () => {
+test('bundled upstream script loads without modification and matches recorded release hash', async () => {
   const script = await readFile(new URL('../src/vendor/Readability.js', import.meta.url));
-  assert.equal(createHash('sha256').update(script).digest('hex'), '87fd63ae01549bb9e19dc5778e5c867a2553d6c4e3bdd9c8f35fb6136c5676f1');
+  assert.equal(createHash('sha256').update(script).digest('hex'), '34dcab3d0832d0019f02990eed6b6124e029e8c32b9f0c6f2550544ff8dff174');
   const context = vm.createContext({}); vm.runInContext(script.toString(), context);
   assert.equal(typeof context.Readability, 'function');
 });

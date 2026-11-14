@@ -33,12 +33,19 @@ test('both builds contain identical shared files and separate valid manifests', 
     assert.equal(f.minimum_chrome_version, undefined);
     assert.equal(f.browser_specific_settings.gecko.strict_min_version, '140.0');
     assert.ok(f.browser_specific_settings.gecko.id);
+    assert.equal(f.incognito, 'not_allowed');
+    assert.equal(f.name, f.name.trim());
+    assert.equal(f.browser_specific_settings.gecko_android.strict_min_version, '142.0');
+    assert.deepEqual(f.browser_specific_settings.gecko.data_collection_permissions, {
+      required: ['browsingActivity', 'searchTerms', 'websiteContent']
+    });
     const source = await list(join(ROOT, 'src'));
     for (const dir of [chromium, firefox]) {
       const generated = (await list(dir)).filter(path => !path.startsWith('vendor/pdfjs/'));
-      assert.deepEqual(generated, [...source, 'manifest.json'].sort());
+      assert.deepEqual(generated, [...source, 'manifest.json', 'LICENSE.txt', 'NOTICE.txt'].sort());
       for (const file of ['pdf.mjs', 'pdf.worker.mjs', 'LICENSE', 'cmaps/Adobe-Japan1-UCS2.bcmap', 'standard_fonts/LICENSE_FOXIT', 'standard_fonts/LICENSE_LIBERATION']) await readFile(join(dir, 'vendor/pdfjs', file));
       assert.match(manifests[0].content_security_policy.extension_pages, /worker-src 'self'/);
+      for (const name of ['LICENSE', 'NOTICE']) assert.deepEqual(await readFile(join(dir, name + '.txt')), await readFile(join(ROOT, name)));
       for (const path of source) assert.deepEqual(await readFile(join(dir, path)), await readFile(join(ROOT, 'src', path)), path);
       for (const file of [c.action.default_popup, ...Object.values(c.icons), 'extension-api.js', 'vendor/Readability.js', 'vendor/Defuddle.js']) await readFile(join(dir, file));
     }

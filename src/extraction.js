@@ -1,7 +1,7 @@
 import { defuddleConstructor, DEFUDDLE_VERSION } from './defuddle-loader.js';
 // Extraction adapters are independent of URL collection and downloads.
 export const EXTRACTOR_ID = 'mozilla-readability';
-export const EXTRACTOR_VERSION = '0.6.0-snapshot-87fd63ae0154';
+export const EXTRACTOR_VERSION = '0.6.0';
 export const EXTRACTION_LIMIT = 3 * 1024 * 1024;
 
 export function decodeResponse(bytes, contentType) {
