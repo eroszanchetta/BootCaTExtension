@@ -44,7 +44,7 @@ async function extractPDF(bytes, { signal, loadPDF = () => import('./vendor/pdfj
     }
     task = pdfjs.getDocument({
       data: bytes.slice(), worker,
-      useWasm: false, disableFontFace: true, useSystemFonts: false,
+      useWasm: false, isEvalSupported: false, disableFontFace: true, useSystemFonts: false,
       useWorkerFetch: false, verbosity: 0,
       cMapUrl: new URL('./vendor/pdfjs/cmaps/', import.meta.url).href, cMapPacked: true,
       standardFontDataUrl: new URL('./vendor/pdfjs/standard_fonts/', import.meta.url).href

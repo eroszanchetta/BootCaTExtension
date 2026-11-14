@@ -36,7 +36,8 @@ jobs:
           let summary;
           try {
             const report = JSON.parse(result.stdout);
-            summary = JSON.stringify({ errors: report.errors, warnings: report.warnings, notices: report.notices }).slice(0, 3000);
+            const compact = items => { const counts = new Map(); for (const x of items || []) { const key = x.code + ':' + (x.file || ''); counts.set(key, (counts.get(key) || 0) + 1); } return Object.fromEntries(counts); };
+            summary = JSON.stringify({ errors: report.errors, warnings: compact(report.warnings), notices: compact(report.notices) }).slice(0, 3000);
           } catch { summary = (result.error?.message || result.stderr || 'No JSON lint report').slice(-3000); }
           appendFileSync(process.env.GITHUB_OUTPUT, 'summary=' + summary.replace(/[\r\n]/g, ' ') + '\n');
           process.exit(result.status ?? 1);

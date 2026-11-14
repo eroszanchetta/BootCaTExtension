@@ -57,6 +57,8 @@ All extraction and language detection are local. Normal site requests still disc
 address to the receiving site. Do not describe BootCaT as making no network requests.
 
 The minimum desktop Firefox version is 140, which supports the built-in consent prompt.
+An Android floor of 142 also prevents installation without built-in consent if mobile
+platforms are ever selected; this release is submitted for desktop only.
 The Firefox manifest sets incognito to not_allowed: private-window pages cannot be saved
 into the persistent corpus. No optional telemetry is implemented. The local About/privacy page is linked in the workspace
 footer. Keep the listing and privacy policy consistent with the actual release behaviour.
@@ -132,3 +134,15 @@ Third-party provenance:
 All original code is plain JavaScript, HTML and CSS; it is not minified or transpiled.
 Defuddle/PDF.js include generated upstream bundles, hence the source archive and release
 references. Dependencies needed for building are obtainable through npm with npm ci.
+
+## Automated validator warnings to explain to reviewers
+
+Readability and Defuddle use innerHTML internally while manipulating detached documents.
+BootCaT removes active elements before extraction, never inserts extracted HTML into its
+UI, and displays only text. Its CSP also blocks remote resources and frame/object loads.
+PDF.js includes Function-constructor feature detection, legacy DOM helpers and other code
+shared with rendering. BootCaT uses getTextContent only, explicitly sets isEvalSupported
+and useWasm to false, uses a local worker, and has no unsafe-eval in its CSP. These upstream
+files are kept unmodified for provenance; do not remove scanner findings by editing them.
+Review all warnings for the submitted version rather than assuming an automatic pass is
+Mozilla approval. The CI job prints the full validator report.
