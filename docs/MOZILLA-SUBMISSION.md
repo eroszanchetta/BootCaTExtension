@@ -44,6 +44,9 @@ and Git data. It contains sources, tests, pinned dependency lockfile, licences a
    the repository and release tag. An AMO source upload is for reviewers and does not by itself
    make source available to users. Put that public source link in the listing.
 9. Review the final listing, disclosures and permissions before submitting for review.
+10. Once 2.0.1 is accepted, disable the old 2.0.0 version if it is still available. That
+    package still declares Android support. Disable only the old version, not the entire
+    BootCaT listing. Keep the same add-on ID for the new upload.
 
 No extension signing credentials or account passwords belong in this repository.
 The publisher must complete the developer agreement and account-specific declarations.
