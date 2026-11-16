@@ -294,3 +294,13 @@ Mozilla submission, follow [the release checklist](docs/MOZILLA-SUBMISSION.md) a
 complete [the listing draft](docs/MOZILLA-LISTING.md). Public releases need a publicly
 accessible matching source download; sending source privately to AMO reviewers is
 not the same as making it available to recipients.
+
+## Chrome Web Store submission
+
+Follow [the Chrome checklist](docs/CHROME-SUBMISSION.md) and
+[listing draft](docs/CHROME-LISTING.md) for the first Chrome submission.
+`npm run package:chromium` creates the Chromium extension ZIP, corresponding source ZIP,
+and a standalone `dist/packages/bootcat-privacy.html` page for public HTTPS hosting.
+`npm run export:privacy` creates just that policy page from the privacy section in
+`src/about.html`, without installing PDF.js. The policy is not published automatically.
+This packaging addition does not change the installed extension or its version.
