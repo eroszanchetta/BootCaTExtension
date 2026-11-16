@@ -43,10 +43,12 @@ can affect reading order and text formatting.
 Free and open source under GPL-3.0-or-later. Bundled libraries retain their own licences.
 Developed and independently published by Eros Zanchetta (University of Bologna).
 
+Source code: https://github.com/eroszanchetta/BootCaTExtension
+
 ## Complete before submission
 
 - Add the live public HTTPS privacy-policy URL in the designated privacy field.
-- Add the matching public source-download URL to this description when it is hosted.
+- Keep the matching version of the source available in the public repository or as a source ZIP.
 - Use the real 128×128 extension icon and screenshots of the Chrome build.
 - Complete permissions/data-use fields and Test instructions using CHROME-SUBMISSION.md.
 - Do not claim Android support or Chrome Web Store approval before acceptance.

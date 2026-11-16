@@ -38,8 +38,9 @@ and Git data. It contains sources, tests, pinned dependency lockfile, licences a
    with LICENSE. Keep the third-party notices in the package.
 7. Set the support email to **bootcat@dipintra.it** and add screenshots from Firefox.
    Use the privacy policy in src/about.html for the privacy field; if a URL is requested,
-   host the same policy publicly. The repository is currently private: do not give it as
-   a public support or privacy URL until its visibility has actually changed.
+   host the same policy publicly. The source repository is now public at
+   https://github.com/eroszanchetta/BootCaTExtension. A public source-code link does not
+   replace a readable privacy-policy page when a policy URL is requested.
 8. Make the matching source archive publicly downloadable alongside the release, or publish
    the repository and release tag. An AMO source upload is for reviewers and does not by itself
    make source available to users. Put that public source link in the listing.

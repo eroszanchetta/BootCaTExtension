@@ -49,8 +49,9 @@ or chrome-extension:// About page is not a public privacy-policy URL. A private 
 repository also cannot serve as that public policy. The website's own cookies/logging,
 if any, need their own accurate disclosures; this exported page contains no tracking code.
 
-Also provide a public matching source download or a public source repository/release.
-Do not present the current private repository as a public source download.
+The source repository is now public: https://github.com/eroszanchetta/BootCaTExtension.
+Use it in the listing and keep the source corresponding to each released version available
+through a release/tag, an exact commit link, or the matching source ZIP.
 
 ## Upload and complete the listing
 
@@ -175,7 +176,8 @@ Use desktop Chrome 120 or later. No BootCaT account or API key is required.
 Broad host permissions serve arbitrary user-chosen sources. No remote executable code,
 analytics or developer backend is involved. For dependency/build provenance see
 MOZILLA-SUBMISSION.md and the bundled vendor notices. The same shared source is used by both
-browser packages, with separate manifests. A public source URL can be added here once hosted.
+browser packages, with separate manifests. Public source:
+https://github.com/eroszanchetta/BootCaTExtension.
 
 ## Official references
 
