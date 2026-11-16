@@ -18,7 +18,8 @@
     "test:popup": "node scripts/smoke-popup.cjs",
     "lint:firefox": "node scripts/build.mjs firefox && npm exec --yes --package=web-ext@10.8.0 -- web-ext lint --source-dir dist/firefox",
     "dev:firefox": "node scripts/build.mjs firefox && npm exec --yes --package=web-ext@10.8.0 -- web-ext run --source-dir dist/firefox",
-    "package:source": "node scripts/package-source.mjs"
+    "package:source": "node scripts/package-source.mjs",
+    "export:privacy": "node scripts/export-privacy.mjs"
   },
   "dependencies": {
     "pdfjs-dist": "6.5.438"
