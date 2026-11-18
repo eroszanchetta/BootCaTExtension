@@ -106,6 +106,18 @@ const assert = require('node:assert/strict');
         assert.equal(await workspace.locator('#project-section .workspace-panel').evaluate(panel => panel.open), false);
         await workspace.locator('nav a[href="#project-section"]').click();
         assert.equal(await workspace.locator('#project-section .workspace-panel').evaluate(panel => panel.open), true);
+        await workspace.route('**/app.js', route => route.fulfill({ contentType: 'text/javascript', body: `
+          import { initWorkspaceSections } from './workspace-sections.js';
+          import { initProjectUI } from './project-ui.js';
+          globalThis.chrome = { runtime: { sendMessage: async () => ({ ok: true, project: null, promptForProject: true }) }, storage: { onChanged: { addListener() {} } } };
+          initWorkspaceSections(); initProjectUI({ onReset() {}, onRename() {} });
+        ` }));
+        await workspace.reload(); await workspace.locator('#project-dialog[open]').waitFor();
+        assert.equal(await workspace.locator('#project-dialog-cancel').isDisabled(), true);
+        await workspace.keyboard.press('Escape');
+        assert.equal(await workspace.locator('#project-dialog[open]').count(), 1);
+        // Resume the isolated disclosure/layout checks without an open modal.
+        await workspace.evaluate(() => document.querySelector('#project-dialog').close());
         await workspace.locator('nav a[href="#search-section"]').click();
         assert.equal(await workspace.locator('#more-search-options').evaluate(panel => panel.open), false);
         assert.equal(await workspace.locator('#search-site').isVisible(), false);
@@ -117,6 +129,7 @@ const assert = require('node:assert/strict');
           await workspace.setViewportSize({ width, height: 850 });
           assert.equal(await workspace.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `${name}: advanced options overflow at ${width}px`);
         }
+        await workspace.route('**/app.js', route => route.fulfill({ contentType: 'text/javascript', body: "import { initWorkspaceSections } from './workspace-sections.js'; initWorkspaceSections();" }));
         await workspace.reload();
         assert.equal(await workspace.locator('#more-search-options').evaluate(panel => panel.open), false);
         await workspace.close();

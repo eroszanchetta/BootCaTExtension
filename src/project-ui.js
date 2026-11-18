@@ -24,7 +24,7 @@ export function initProjectUI({ onReset, onRename }) {
     fillLanguageSelect(dialogLanguage, { requiredChoice: true, value: mode === 'new' ? '' : project?.language || '' });
     dialogName.value = mode === 'new' || project?.name === 'Untitled project' ? '' : project?.name || '';
     document.getElementById('project-dialog-title').textContent = mode === 'new' ? 'Create a new project' : 'Name your project';
-    document.getElementById('project-dialog-warning').hidden = mode !== 'new' || !project;
+    cancel.disabled = !project;
     submit.textContent = mode === 'new' ? 'Create project' : 'Save project name';
     if (!dialog.open) dialog.showModal();
     dialogName.focus();
@@ -69,15 +69,9 @@ export function initProjectUI({ onReset, onRename }) {
     finally { saving--; }
   });
   button.addEventListener('click', () => showDialog('new'));
-  async function cancelCreation() {
-    if (saving) return;
+  function cancelCreation() {
+    if (saving || !project) return;
     dialog.close();
-    if (!project) {
-      try {
-        const reply = await ext.runtime.sendMessage({ type: 'dismiss-project-creation' });
-        if (!reply?.ok) throw new Error(reply?.error || 'Could not save project choice');
-      } catch (error) { status.textContent = error.message; }
-    }
   }
   cancel.addEventListener('click', cancelCreation);
   dialog.addEventListener('cancel', event => { event.preventDefault(); cancelCreation(); });
@@ -88,6 +82,19 @@ export function initProjectUI({ onReset, onRename }) {
     if (!value) { error.textContent = 'Enter a project name.'; dialogName.focus(); return; }
     let chosenLanguage;
     try { chosenLanguage = validateLanguage(dialogLanguage.value); } catch (failure) { error.textContent = failure.message; dialogLanguage.focus(); return; }
+    if (mode === 'new' && project) {
+      // Close the naming dialog before opening our reusable confirmation modal.
+      // A cancelled replacement returns to the entered name and language.
+      saving++; dialog.close();
+      let approved = false;
+      try {
+        approved = await confirmAction({ title: 'Replace current project?', message: 'Creating a new project permanently deletes the current project’s seeds, tuples, searches, URLs, original files and extracted texts from this browser, and stops pending work. All data that you have not exported will be lost. Save your corpus before continuing if you want to keep it. Your preferences will be kept.', confirmLabel: 'Create new project', destructive: true });
+      } catch (failure) { error.textContent = failure.message; }
+      finally { saving--; }
+      if (changingProject || project?.id !== targetId) return;
+      if (!approved) { dialog.showModal(); dialogName.focus(); return; }
+    }
+    if (!dialog.open) dialog.showModal();
     saving++; dialogLanguage.disabled = true; submit.disabled = cancel.disabled = dialogName.disabled = true;
     name.disabled = button.disabled = true; error.textContent = '';
     try {
@@ -96,7 +103,7 @@ export function initProjectUI({ onReset, onRename }) {
       apply(reply.project); if (dialog.open) dialog.close();
     } catch (failure) { error.textContent = failure.message; }
     finally {
-      saving--; dialogLanguage.disabled = false; submit.disabled = cancel.disabled = dialogName.disabled = false;
+      saving--; dialogLanguage.disabled = false; submit.disabled = dialogName.disabled = false; cancel.disabled = !project;
       controls();
     }
   });

@@ -102,11 +102,6 @@ async function handle(message) {
     const promptForProject = !project && previous === undefined && !(await storedProjectState());
     return { project, promptForProject };
   });
-  if (message.type === 'dismiss-project-creation') return serialize(async () => {
-    if (await ensureProject()) throw new Error('The project changed. Reopen BootCaT.');
-    await ext.storage.local.set({ project: null });
-    return { project: null };
-  });
   if (message.type === 'rename-project') return serialize(async () => {
     await assertProject(message.projectId);
     const current = await ensureProject();
