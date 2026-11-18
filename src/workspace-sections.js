@@ -12,6 +12,7 @@ export function initWorkspaceSections() {
     const panel = document.getElementById(id)?.querySelector('details.workspace-panel');
     if (panel) panel.open = false;
   }
+  for (const panel of document.querySelectorAll('details[data-default-collapsed]')) panel.open = false;
   for (const link of document.querySelectorAll('a[href^="#"]')) {
     link.addEventListener('click', () => openWorkspaceSection(link.getAttribute('href').slice(1)));
   }

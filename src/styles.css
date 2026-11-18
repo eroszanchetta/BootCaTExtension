@@ -71,10 +71,10 @@ nav a:hover { background: #c7ddeb; }
 @media (max-width: 500px) { .tuple-settings { grid-template-columns: 1fr; } }
 
 /* Native disclosure and dialog elements provide keyboard and focus handling. */
-.workspace-panel > summary { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; list-style: none; border-radius: 6px; }
-.workspace-panel > summary::-webkit-details-marker { display: none; }
-.workspace-panel > summary::before { content: '›'; color: #007aa6; font-size: 1.6rem; line-height: 1; transform: rotate(0); }
-.workspace-panel[open] > summary::before { transform: rotate(90deg); }
+.workspace-panel > summary, .options-panel > summary { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; list-style: none; border-radius: 6px; }
+.workspace-panel > summary::-webkit-details-marker, .options-panel > summary::-webkit-details-marker { display: none; }
+.workspace-panel > summary::before, .options-panel > summary::before { content: '›'; color: #007aa6; font-size: 1.6rem; line-height: 1; transform: rotate(0); }
+.workspace-panel[open] > summary::before, .options-panel[open] > summary::before { transform: rotate(90deg); }
 .workspace-panel > summary h2 { display: inline; margin: 0 auto 0 0; font-size: 1.2rem; }
 .panel-content { padding-top: 24px; }
 .section-counter { border-radius: 999px; background: #e7f2f8; color: #00658c; padding: 3px 10px; font-size: .8rem; font-variant-numeric: tabular-nums; }
@@ -96,7 +96,9 @@ nav a:hover { background: #c7ddeb; }
 .accept-language { margin-top: 10px; font-size: .85rem; padding: 6px 12px; }
 #project-dialog-language { margin-top: 8px; }
 
-.search-filters { margin: 20px 0; padding: 18px; border: 1px solid #c4d8e7; border-radius: 12px; background: #f4f8fb; }
+.options-panel { margin: 20px 0; border: 1px solid #c4d8e7; border-radius: 12px; background: #f4f8fb; }
+.options-panel > summary { padding: 12px 18px; font-weight: 650; cursor: pointer; }
+.search-filters { padding: 6px 18px 18px; }
 .search-filters label:not(:first-child) { margin-top: 16px; }
 #excluded-sites { min-height: 140px; }
 
@@ -106,7 +108,7 @@ nav a:hover { background: #c7ddeb; }
 .query-tab-action { padding: 3px 8px; font-size: .85em; }
 .query-tab-action svg { display: block; }
 #prepared-queries .query-tab-action { margin-right: 8px; vertical-align: middle; }
-#excluded-sites[aria-invalid="true"] { border-color: #a04420; }
+.search-filters [aria-invalid="true"] { border-color: #a04420; }
 
 button.danger { background: #a22d25; border-color: #a22d25; color: white; }
 button.danger:hover { background: #87352e; }

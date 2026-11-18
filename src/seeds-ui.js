@@ -8,6 +8,17 @@ import { parseSeeds, parseQueries, generateTuples, combinationCount } from './tu
 
 export function initSeedsUI({ draft = {}, onChange = () => {}, getProjectId = () => null, onOpeningChange = () => {} } = {}) {
   const el = id => document.getElementById(id), PAGE_SIZE = 100;
+  // Add future advanced controls here: validation names, project draft keys,
+  // restoration, busy state, and change handling share the same registry.
+  const filterControls = [
+    { id: 'search-filetype', key: 'searchFileType', name: 'fileType', event: 'change', initial: '' },
+    { id: 'search-site', key: 'searchSite', name: 'site', event: 'input', initial: '' },
+    { id: 'excluded-sites', key: 'excludedSites', name: 'excludedSites', event: 'input', initial: DEFAULT_EXCLUDED_SITES.join('\n'), format: value => value.join('\n') }
+  ];
+  const readFilters = () => normalizeSearchFilters(Object.fromEntries(filterControls.map(({ id, name }) => [name, el(id).value])));
+  const markFilterError = error => {
+    for (const { id, name } of filterControls) el(id).setAttribute?.('aria-invalid', String(error?.field === name));
+  };
   let prepared = [], bases = null, preparedFilters = null, savingDefaults = false, page = 0, generating = false, opening = false, stopped = false, destroyed = false, controller;
   let pendingOpens = 0, confirming = false;
   const notifyOpening = () => { if (!destroyed) onOpeningChange(opening || pendingOpens > 0); };
@@ -27,7 +38,7 @@ export function initSeedsUI({ draft = {}, onChange = () => {}, getProjectId = ()
     if (bases && preparedFilters) prepared = bases.map(query => buildSearchQuery(engineID(), query, preparedFilters));
   }
   function controls() {
-    for (const id of ['seeds', 'tuple-length', 'tuple-count', 'search-filetype', 'excluded-sites']) el(id).disabled = busy();
+    for (const id of ['seeds', 'tuple-length', 'tuple-count', ...filterControls.map(field => field.id)]) el(id).disabled = busy();
     el('tuples').disabled = false;
     el('save-site-defaults').disabled = busy() || savingDefaults;
     el('generate-tuples').disabled = busy() || parseSeeds(el('seeds').value).length < 5;
@@ -81,8 +92,8 @@ export function initSeedsUI({ draft = {}, onChange = () => {}, getProjectId = ()
   function applyFilters({ persist = true } = {}) {
     clearTimeout(filterTimer); filterPending = false;
     try {
-      const filters = normalizeSearchFilters({ fileType: el('search-filetype').value, excludedSites: el('excluded-sites').value });
-      filtersValid = true; el('excluded-sites').setAttribute?.('aria-invalid', 'false');
+      const filters = readFilters();
+      filtersValid = true; markFilterError();
       if (bases) {
         // A draft may have been saved during the typing pause, before its links.
         const needsSave = persist || JSON.stringify(preparedFilters) !== JSON.stringify(filters);
@@ -92,7 +103,7 @@ export function initSeedsUI({ draft = {}, onChange = () => {}, getProjectId = ()
       el('search-filter-status').textContent = prepared.length && bases ? 'Search queries updated.' : '';
       render();
     } catch (error) {
-      filtersValid = false; el('excluded-sites').setAttribute?.('aria-invalid', 'true');
+      filtersValid = false; markFilterError(error);
       el('search-filter-status').textContent = error.message; updateLinks(); controls();
     }
   }
@@ -143,8 +154,7 @@ export function initSeedsUI({ draft = {}, onChange = () => {}, getProjectId = ()
     if (busy() || destroyed) return;
     el('seeds').value = saved.seeds ?? ''; el('tuple-length').value = saved.tupleLength ?? '3';
     el('tuple-count').value = saved.tupleCount ?? '10'; el('tuples').value = saved.tuples ?? '';
-    el('search-filetype').value = saved.searchFileType ?? '';
-    el('excluded-sites').value = saved.excludedSites ?? DEFAULT_EXCLUDED_SITES.join('\n');
+    for (const { id, key, initial } of filterControls) el(id).value = saved[key] ?? initial;
     prepared = Array.isArray(saved.preparedQueries) ? saved.preparedQueries : [];
     bases = Array.isArray(saved.preparedQueryBases) ? saved.preparedQueryBases : null;
     preparedFilters = saved.preparedFilters || null;
@@ -185,22 +195,25 @@ export function initSeedsUI({ draft = {}, onChange = () => {}, getProjectId = ()
     if (busy() || destroyed) return;
     clearTimeout(filterTimer); filterPending = false;
     try {
-      const filters = normalizeSearchFilters({ fileType: el('search-filetype').value, excludedSites: el('excluded-sites').value });
+      const filters = readFilters();
       bases = parseQueries(el('tuples').value); preparedFilters = filters; page = 0; rebuildQueries();
-      el('excluded-sites').value = filters.excludedSites.join('\n');
-      onChange({ preparedQueries: prepared, preparedQueryBases: bases, preparedFilters, excludedSites: el('excluded-sites').value, searchFileType: filters.fileType });
-      filtersValid = true; el('excluded-sites').setAttribute?.('aria-invalid', 'false'); el('search-filter-status').textContent = '';
+      const patch = {};
+      for (const { id, key, name, format = value => value } of filterControls) {
+        el(id).value = format(filters[name]); patch[key] = el(id).value;
+      }
+      onChange({ preparedQueries: prepared, preparedQueryBases: bases, preparedFilters, ...patch });
+      filtersValid = true; markFilterError(); el('search-filter-status').textContent = '';
     } catch (error) { applyFilters(); el('query-status').textContent = error.message; return; }
     el('query-status').textContent = prepared.length ? 'Queries are ready. No searches have been opened.' : 'Enter at least one tuple or query, one per line.';
     render();
     if (prepared.length) { openWorkspaceSection('search-section'); el('query-list-heading').scrollIntoView?.({ block: 'nearest' }); }
   });
   el('engine').addEventListener('change', () => { applyFilters(); onChange({ preparedQueries: prepared }); });
-  for (const [id, key, type] of [['search-filetype', 'searchFileType', 'change'], ['excluded-sites', 'excludedSites', 'input']]) {
-    el(id).addEventListener(type, () => {
+  for (const { id, key, event } of filterControls) {
+    el(id).addEventListener(event, () => {
       onChange({ [key]: el(id).value });
       clearTimeout(filterTimer);
-      if (id === 'search-filetype') applyFilters();
+      if (event === 'change') applyFilters();
       else {
         filterPending = true; el('search-filter-status').textContent = 'Updating search queries…';
         updateLinks(); controls();

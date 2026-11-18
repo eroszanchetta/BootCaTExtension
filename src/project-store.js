@@ -2,7 +2,7 @@ import { DEFAULT_EXCLUDED_SITES } from './search-filters.js';
 import { hasLanguageWarning } from './language-detection.js';
 import { transaction, STORES } from './storage-db.js';
 import { parseURLs } from './core.js';
-const initialDraft = (defaults = {}) => ({ key: 'draft', urls: '', query: '', engine: '', extractor: 'readability', seenCollections: [], seeds: '', tupleLength: '3', tupleCount: '10', tuples: '', preparedQueries: [], preparedQueryBases: null, preparedFilters: null, searchFileType: '', excludedSites: (defaults.excludedSites ?? DEFAULT_EXCLUDED_SITES).join('\n') });
+const initialDraft = (defaults = {}) => ({ key: 'draft', urls: '', query: '', engine: '', extractor: 'readability', seenCollections: [], seeds: '', tupleLength: '3', tupleCount: '10', tuples: '', preparedQueries: [], preparedQueryBases: null, preparedFilters: null, searchFileType: '', searchSite: '', excludedSites: (defaults.excludedSites ?? DEFAULT_EXCLUDED_SITES).join('\n') });
 const initialBatch = () => ({ key: 'batch', startedAt: null, state: 'idle', processed: 0, total: 0, nextFileIndex: 0, storedBytes: 0, lastStatus: 'Ready when you are.' });
 function seed(tx, projectId, defaults) {
   const store = tx.objectStore('meta');
@@ -76,7 +76,7 @@ export function saveDraft(projectId, patch) {
     const store = tx.objectStore('meta'), request = store.get('draft');
     request.onsuccess = () => {
       const next = { ...request.result };
-      for (const key of ['urls', 'query', 'engine', 'extractor', 'seenCollections', 'seeds', 'tupleLength', 'tupleCount', 'tuples', 'preparedQueries', 'preparedQueryBases', 'preparedFilters', 'searchFileType', 'excludedSites']) if (Object.hasOwn(patch, key)) next[key] = patch[key];
+      for (const key of ['urls', 'query', 'engine', 'extractor', 'seenCollections', 'seeds', 'tupleLength', 'tupleCount', 'tuples', 'preparedQueries', 'preparedQueryBases', 'preparedFilters', 'searchFileType', 'searchSite', 'excludedSites']) if (Object.hasOwn(patch, key)) next[key] = patch[key];
       store.put(next);
     };
   });

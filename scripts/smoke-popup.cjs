@@ -94,7 +94,28 @@ const assert = require('node:assert/strict');
           assert.equal((await measure()).x, false, `${name}: ${scenario} narrow-panel overflow`);
           assert.deepEqual(errors, []); await page.close();
         }
-        console.log(`${name}: conditional popup actions, confirmations and responsive overflow passed.`);
+        // Native nested disclosures and their real styles must also work in Firefox.
+        // Only workspace startup is isolated here; the full Chromium extension suite
+        // separately checks query updates, persistence and project resets.
+        const workspace = await browser.newPage({ viewport: { width: 1050, height: 850 } });
+        await workspace.route('**/app.js', route => route.fulfill({ contentType: 'text/javascript',
+          body: "import { initWorkspaceSections } from './workspace-sections.js'; initWorkspaceSections();" }));
+        await workspace.goto(`http://127.0.0.1:${server.address().port}/downloader.html`);
+        await workspace.locator('nav a[href="#search-section"]').click();
+        assert.equal(await workspace.locator('#more-search-options').evaluate(panel => panel.open), false);
+        assert.equal(await workspace.locator('#search-site').isVisible(), false);
+        assert.equal(await workspace.locator('#more-search-options #search-filetype, #more-search-options #search-site, #more-search-options #excluded-sites').count(), 3);
+        await workspace.locator('#more-search-options > summary').focus();
+        await workspace.keyboard.press('Enter');
+        assert.equal(await workspace.locator('#search-site').isVisible(), true);
+        for (const width of [1050, 500]) {
+          await workspace.setViewportSize({ width, height: 850 });
+          assert.equal(await workspace.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `${name}: advanced options overflow at ${width}px`);
+        }
+        await workspace.reload();
+        assert.equal(await workspace.locator('#more-search-options').evaluate(panel => panel.open), false);
+        await workspace.close();
+        console.log(`${name}: conditional popup actions, confirmations, advanced disclosure keyboard handling and responsive overflow passed.`);
       } finally { await browser.close(); }
     }
   } finally { await new Promise(resolve => server.close(resolve)); }

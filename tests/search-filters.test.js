@@ -39,3 +39,33 @@ test('user defaults have an independent lifetime, partial updates preserve futur
   await storage.resetStoredProject('next', await readUserDefaults(area)); const draft = (await storage.loadWorkspace('next')).draft;
   assert.equal(draft.excludedSites, 'facebook.com'); assert.equal(draft.searchFileType, ''); assert.deepEqual(draft.preparedQueries, []);
 });
+
+test('site restrictions combine with other modifiers across every provider and reject ambiguous or injected sites', () => {
+  for (const engine of ENGINES) {
+    assert.equal(buildSearchQuery(engine.id, '"renewable energy" storage', {
+      fileType: 'pdf', site: 'https://www.UNIBO.it/research?q=ignored', excludedSites: ['social.unibo.it']
+    }), '"renewable energy" storage filetype:pdf site:unibo.it -site:social.unibo.it');
+    assert.equal(buildSearchQuery(engine.id, 'query', { site: 'https://bücher.de' }), 'query site:xn--bcher-kva.de');
+    assert.equal(buildSearchQuery(engine.id, 'query', { site: 'research.example.org.' }), 'query site:research.example.org');
+    assert.equal(buildSearchQuery(engine.id, 'query', { site: '  ' }), 'query');
+    for (const site of ['example.org OR site:other.org', 'example.org\nother.org', '*.example.org', 'site:example.org', 'ftp://example.org', 'https://user:pass@example.org', 'localhost']) {
+      assert.throws(() => buildSearchQuery(engine.id, 'query', { site }), error => error.field === 'site' && /Invalid search website/.test(error.message));
+    }
+    assert.throws(() => buildSearchQuery(engine.id, 'query', { site: 'research.example.org', excludedSites: ['example.org'] }), /search site is excluded/);
+    assert.equal(buildSearchQuery(engine.id, 'query', { site: 'notexample.org', excludedSites: ['example.org'] }), 'query site:notexample.org -site:example.org');
+  }
+});
+
+test('search-site drafts persist without a schema migration and reset independently of exclusion defaults', async () => {
+  globalThis.indexedDB = new IDBFactory();
+  await storage.ensureStoredProject('restricted');
+  assert.equal((await storage.loadWorkspace('restricted')).draft.searchSite, '');
+  await storage.saveDraft('restricted', { searchSite: 'https://www.unibo.it/research', preparedQueryBases: ['energy'], preparedFilters: { fileType: '', site: 'unibo.it', excludedSites: [] }, preparedQueries: ['energy site:unibo.it'] });
+  const saved = (await storage.loadWorkspace('restricted')).draft;
+  assert.equal(saved.searchSite, 'https://www.unibo.it/research');
+  assert.equal(saved.preparedFilters.site, 'unibo.it');
+  await storage.resetStoredProject('unrestricted', { excludedSites: ['example.org'] });
+  const next = (await storage.loadWorkspace('unrestricted')).draft;
+  assert.equal(next.searchSite, ''); assert.equal(next.excludedSites, 'example.org');
+  assert.deepEqual(next.preparedQueries, []);
+});
