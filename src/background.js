@@ -98,9 +98,7 @@ async function handle(message) {
   });
   if (message.type === 'get-project') return serialize(async () => {
     const project = await ensureProject();
-    const { project: previous } = await ext.storage.local.get('project');
-    const promptForProject = !project && previous === undefined && !(await storedProjectState());
-    return { project, promptForProject };
+    return { project, promptForProject: !project };
   });
   if (message.type === 'rename-project') return serialize(async () => {
     await assertProject(message.projectId);

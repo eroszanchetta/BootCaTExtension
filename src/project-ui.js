@@ -12,6 +12,7 @@ export function initProjectUI({ onReset, onRename }) {
   const language = document.getElementById('project-language'), dialogLanguage = document.getElementById('project-dialog-language');
   const dialogName = document.getElementById('project-dialog-name'), submit = document.getElementById('project-dialog-submit');
   const cancel = document.getElementById('project-dialog-cancel'), error = document.getElementById('project-dialog-error');
+  const closeBootCaT = document.getElementById('project-dialog-close');
   let project = null, saving = 0, mode = 'new', targetId = null, changingProject = false, applied = false, revision = 0;
   function controls() {
     button.disabled = !!saving || changingProject;
@@ -25,6 +26,7 @@ export function initProjectUI({ onReset, onRename }) {
     dialogName.value = mode === 'new' || project?.name === 'Untitled project' ? '' : project?.name || '';
     document.getElementById('project-dialog-title').textContent = mode === 'new' ? 'Create a new project' : 'Name your project';
     cancel.disabled = !project;
+    closeBootCaT.hidden = !!project; closeBootCaT.disabled = false;
     submit.textContent = mode === 'new' ? 'Create project' : 'Save project name';
     if (!dialog.open) dialog.showModal();
     dialogName.focus();
@@ -54,7 +56,7 @@ export function initProjectUI({ onReset, onRename }) {
   const ready = ext.runtime.sendMessage({ type: 'get-project' }).then(reply => {
     if (!reply?.ok) throw new Error(reply?.error || 'Could not load project');
     if (revision === initialRevision) apply(reply.project);
-    if (!changingProject && ((!project && reply.promptForProject) || project?.nameConfirmed === false || (project?.nameConfirmed == null && project?.name === 'Untitled project'))) showDialog(project ? 'name' : 'new');
+    if (!changingProject && (!project || project?.nameConfirmed === false || (project?.nameConfirmed == null && project?.name === 'Untitled project'))) showDialog(project ? 'name' : 'new');
   }).catch(error => { status.textContent = error.message; throw error; });
   // Persist edits as they are made; do not depend on a blur before export.
   name.addEventListener('input', async () => {
@@ -74,6 +76,16 @@ export function initProjectUI({ onReset, onRename }) {
     dialog.close();
   }
   cancel.addEventListener('click', cancelCreation);
+  closeBootCaT.addEventListener('click', async () => {
+    if (project || saving || changingProject) return;
+    closeBootCaT.disabled = submit.disabled = dialogName.disabled = dialogLanguage.disabled = true; error.textContent = '';
+    try {
+      // getCurrent identifies only this workspace, including manually opened tabs.
+      const tab = await ext.tabs.getCurrent();
+      if (!Number.isInteger(tab?.id)) throw new Error('Could not identify this BootCaT tab. Close it using your browser.');
+      await ext.tabs.remove(tab.id);
+    } catch (failure) { error.textContent = failure.message; closeBootCaT.disabled = submit.disabled = dialogName.disabled = dialogLanguage.disabled = false; }
+  });
   dialog.addEventListener('cancel', event => { event.preventDefault(); cancelCreation(); });
   form.addEventListener('submit', async event => {
     event.preventDefault();
@@ -95,7 +107,7 @@ export function initProjectUI({ onReset, onRename }) {
       if (!approved) { dialog.showModal(); dialogName.focus(); return; }
     }
     if (!dialog.open) dialog.showModal();
-    saving++; dialogLanguage.disabled = true; submit.disabled = cancel.disabled = dialogName.disabled = true;
+    saving++; dialogLanguage.disabled = true; submit.disabled = cancel.disabled = dialogName.disabled = closeBootCaT.disabled = true;
     name.disabled = button.disabled = true; error.textContent = '';
     try {
       const reply = await ext.runtime.sendMessage({ type: mode === 'new' ? 'new-project' : 'rename-project', projectId: targetId, name: value, language: chosenLanguage });
@@ -103,7 +115,7 @@ export function initProjectUI({ onReset, onRename }) {
       apply(reply.project); if (dialog.open) dialog.close();
     } catch (failure) { error.textContent = failure.message; }
     finally {
-      saving--; dialogLanguage.disabled = false; submit.disabled = dialogName.disabled = false; cancel.disabled = !project;
+      saving--; dialogLanguage.disabled = false; submit.disabled = dialogName.disabled = closeBootCaT.disabled = false; cancel.disabled = !project;
       controls();
     }
   });

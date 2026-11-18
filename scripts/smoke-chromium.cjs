@@ -139,6 +139,7 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
 
     await page.locator('#project-dialog[open]').waitFor();
     assert.equal(await page.locator('#project-dialog-cancel').isDisabled(), true);
+    assert.equal(await page.locator('#project-dialog-close').isVisible(), true);
     await page.keyboard.press('Escape');
     assert.equal(await page.locator('#project-dialog[open]').count(), 1);
     assert.equal(await page.evaluate(async () => (await (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'get-project' })).project), null);
@@ -389,6 +390,7 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
       const downloadEvent = page.waitForEvent('download'); await page.click('#export');
       const download = await downloadEvent; await download.saveAs(join(root, `${extractor}.zip`));
       assert.equal(await download.failure(), null);
+      assert.equal(download.suggestedFilename(), 'Corpus Energy corpus.zip');
       console.log(`${extractor}: search collection → download → extraction → ZIP passed`);
     }
     await deleteAllRows();
@@ -700,13 +702,18 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
       assert.equal(await workspace.locator('#close-project').isVisible(), false);
       assert.equal(await workspace.locator('#start').isDisabled(), true);
       assert.equal(await workspace.inputValue('#urls'), '');
-      assert.equal(await workspace.locator('#project-dialog[open]').count(), 0);
+      await workspace.locator('#project-dialog[open]').waitFor();
+      assert.equal(await workspace.locator('#project-dialog-close').isVisible(), true);
+      assert.equal(await workspace.locator('#project-dialog-cancel').isDisabled(), true);
     }
     const inactivePopup = await context.newPage(); await inactivePopup.goto(origin + '/popup.html');
     await inactivePopup.waitForFunction(() => document.querySelector('#popup-status').textContent.includes('Create a project'));
     assert.equal(await inactivePopup.locator('#collect-action, #capture-action').evaluateAll(items => items.every(item => item.hidden)), true);
-    await inactivePopup.close(); await secondWorkspace.close(); await page.bringToFront();
-    await page.click('#new-project'); await page.fill('#project-dialog-name', 'After closing');
+    await inactivePopup.close();
+    const workspaceClosed = secondWorkspace.waitForEvent('close');
+    await secondWorkspace.click('#project-dialog-close'); await workspaceClosed;
+    assert.equal(page.isClosed(), false, 'Close BootCaT closes only its own workspace');
+    await page.bringToFront(); await page.fill('#project-dialog-name', 'After closing');
     await page.selectOption('#project-dialog-language', 'none'); await submitProject();
     await page.waitForFunction(() => document.querySelector('#project-name').value === 'After closing' && !document.querySelector('#start').disabled);
     await assertCollapsed(); await openPanels(); await openSearchOptions();

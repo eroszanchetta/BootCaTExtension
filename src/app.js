@@ -61,7 +61,7 @@ async function refreshExportState(saved) {
   const revision = exportRevision, id = projectId;
   const fingerprint = await corpusFingerprint(saved, projectUI.snapshot(), await readCollections());
   if (resetting || id !== projectId || revision !== exportRevision) return;
-  exportSaved = saved.corpusExport?.fingerprint === fingerprint;
+  exportSaved = saved.corpusExport?.fingerprint === fingerprint && saved.corpusExport.filename === `Corpus ${projectFilename(projectUI.snapshot().name)}.zip`;
   ui['export-status'].textContent = exportSaved ? corpusSavedMessage(saved.corpusExport.filename) : 'Save your corpus as a ZIP file to your computer.';
   ui['export-status'].classList.toggle('saved', exportSaved);
   ui.export.textContent = exportSaved ? 'Corpus saved' : 'Save corpus';
@@ -408,7 +408,7 @@ ui.export.addEventListener('click', () => {
     const collections = await readCollections();
     const fingerprint = await corpusFingerprint(saved, project, collections);
     // Another workspace window may have saved this snapshot since our last focus.
-    if (saved.corpusExport?.fingerprint === fingerprint) { await refreshExportState(saved); return; }
+    if (saved.corpusExport?.fingerprint === fingerprint && saved.corpusExport.filename === `Corpus ${projectFilename(project.name)}.zip`) { await refreshExportState(saved); return; }
     if (resetting) return;
     const layout = createExportLayout(saved.entries);
     const exportedAt = new Date().toISOString(), signal = (controller = new AbortController()).signal;
@@ -453,7 +453,7 @@ ui.export.addEventListener('click', () => {
         archiveURL = URL.createObjectURL(archive);
       }
       const link = document.createElement('a'); link.href = archiveURL;
-      link.download = `${projectFilename(project.name)}-${exportedAt.replace(/[:.]/g, '-')}.zip`;
+      link.download = `Corpus ${projectFilename(project.name)}.zip`;
       document.body.append(link); link.click(); link.remove();
       const receipt = { fingerprint, filename: link.download, exportedAt };
       await storage.saveCorpusExport(projectId, receipt);
