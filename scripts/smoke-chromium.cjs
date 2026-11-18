@@ -100,7 +100,7 @@ const { execFileSync } = require('node:child_process');
 
     const openPanels = async () => page.locator('.workspace-panel').evaluateAll(panels => panels.forEach(panel => { panel.open = true; }));
     const assertCollapsed = async () => {
-      assert.equal(await page.locator('.workspace-panel[open]').count(), 0);
+      assert.deepEqual(await page.locator('.workspace-panel[open]').evaluateAll(panels => panels.map(panel => panel.closest('section').id)), []);
       assert.equal(await page.locator('#more-search-options').getAttribute('open'), null);
     };
     const openSearchOptions = async () => {
@@ -149,7 +149,7 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     await page.click('#new-project');
     await page.selectOption('#project-dialog-language', 'none'); await page.fill('#project-dialog-name', 'First corpus'); await page.click('#project-dialog-submit');
     await page.locator('#project-dialog[open]').waitFor({ state: 'hidden' });
-    await page.waitForFunction(() => !document.querySelector('#start').disabled);
+    await page.waitForFunction(() => document.querySelector('#project-name').value === 'First corpus' && !document.querySelector('#start').disabled);
     await assertCollapsed();
     assert.equal(await page.locator('.workspace-panel').count(), 7);
     assert.equal(await page.locator('#export-metadata, #metadata-export-status').count(), 0);
