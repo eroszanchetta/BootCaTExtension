@@ -75,7 +75,7 @@ test('CAPTCHAs, partial results, failed saves, loading tabs and changed queries 
   assert.deepEqual(app.removed, [ids.good]); assert.equal(result.batch.saved, 2); assert.equal(result.batch.skipped, 0);
   assert.equal(result.batch.leftOpen, 3); assert.equal(result.count, 4);
   for (const query of ['captcha', 'partial', 'storage', 'loading', 'moved']) assert.ok(app.tabs.has(ids[query]));
-  assert.ok(result.batch.details.some(detail => /Partial results saved/.test(detail.reason)));
+  assert.ok(result.tabs.some(tab => /Partial results saved/.test(tab.reason)));
 });
 test('navigation during collection or while the final URL check is pending prevents closing', async () => {
   const app = fixture({ collect: async (id, _, { tabs, ext }) => {
@@ -127,14 +127,14 @@ test('a close failure preserves saved results and leaves the tab available for r
   const app = fixture({ remove: async () => { throw new Error('Browser refused close'); } });
   const { tabId } = await app.open('energy'); await app.manager.start('project'); const result = await app.finish();
   assert.equal(result.batch.saved, 1); assert.equal(result.batch.closed, 0); assert.equal(result.count, 1); assert.ok(app.tabs.has(tabId));
-  assert.match(result.batch.details[0].reason, /Results saved.*Browser refused close/);
+  assert.match(result.tabs[0].reason, /Results saved.*Browser refused close/);
 });
 
 test('withheld website permissions keep the tab tracked and open without reading its contents', async () => {
   const app = fixture(); const { tabId } = await app.open('energy'); delete app.tabs.get(tabId).url;
   await app.manager.start('project'); const result = await app.finish();
   assert.equal(result.count, 1); assert.equal(result.batch.skipped, 1); assert.equal(app.collected.length, 0); assert.equal(app.removed.length, 0);
-  assert.match(result.batch.details[0].reason, /permissions/);
+  assert.match(result.tabs[0].reason, /permissions/);
 });
 
 test('recognized provider challenge redirects stay tracked for manual resolution and can be retried', async () => {
@@ -143,7 +143,7 @@ test('recognized provider challenge redirects stay tracked for manual resolution
   app.ext.tabs.onUpdated.emit(tabId, { url: app.tabs.get(tabId).url }, app.tabs.get(tabId));
   await app.manager.start('project'); const blocked = await app.finish();
   assert.equal(blocked.count, 1); assert.equal(app.collected.length, 0); assert.equal(app.removed.length, 0);
-  assert.match(blocked.batch.details[0].reason, /challenge/);
+  assert.match(blocked.tabs[0].reason, /challenge/);
   app.tabs.get(tabId).url = 'https://www.google.com/search?q=energy';
   app.ext.tabs.onUpdated.emit(tabId, { url: app.tabs.get(tabId).url }, app.tabs.get(tabId));
   await app.manager.start('project'); assert.equal((await app.finish()).batch.closed, 1);

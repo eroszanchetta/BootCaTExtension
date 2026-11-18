@@ -19,7 +19,7 @@
         <a href="#urls-section">URLs</a>
         <a href="#review-section">Review &amp; Download</a>
         <a href="#preview-section">Preview Text</a>
-        <a href="#log-section">Log</a>
+        <a href="#save-section">Save corpus</a>
         <a href="https://docs.sslmit.unibo.it/doku.php?id=bootcat:start" target="_blank" rel="noopener noreferrer">Help</a>
       </nav>
     </div>
@@ -135,8 +135,6 @@
       </div>
       <p id="storage-status" class="hint" role="status" aria-live="polite">Loading saved project…</p>
       <p id="corpus-status" role="status" aria-live="polite">Download pages to extract corpus text.</p>
-      <div class="corpus-export"><button id="export" disabled>Save corpus</button>
-      <p class="hint">Includes originals, selected corpus texts, Report.xlsx, URL/seed/tuple lists, search sources and extraction metadata.</p></div>
       </div></details>
     </section>
     <section id="preview-section" aria-labelledby="preview-title" tabindex="-1">
@@ -147,11 +145,11 @@
       <p class="hint">Review the text before export. Extraction may omit useful material or retain boilerplate. HTML, plain text, PDF and DOCX are supported. Scanned PDFs may require OCR; password-protected files are not supported.</p>
       </div></details>
     </section>
-    <section id="log-section" aria-labelledby="log-heading" tabindex="-1">
-      <details class="workspace-panel"><summary><h2 id="log-heading">Log</h2></summary><div class="panel-content">
-      <details><summary>Project tab collection details</summary><ul id="project-tab-details" class="query-list"></ul></details>
-      <details><summary>Review saved results</summary><div class="table-wrap"><table><thead><tr><th scope="col">Title / URL</th><th scope="col">Search sources</th></tr></thead><tbody id="collected-results"></tbody></table></div><p class="hint">Preview shows the first 200 unique URLs. Export includes all saved results. Remove unwanted URLs from the URLs section.</p></details>
-      <div class="actions"><button id="save-searches" class="secondary" disabled>Export searches JSON</button></div>
+    <section id="save-section" aria-labelledby="save-heading" tabindex="-1">
+      <details class="workspace-panel"><summary><h2 id="save-heading">Save corpus</h2></summary><div class="panel-content">
+      <button id="export" disabled>Save corpus</button>
+      <p id="export-status" class="hint" role="status" aria-live="polite">Save your corpus as a ZIP file to your computer.</p>
+      <p class="hint">Includes originals, selected corpus texts, Report.xlsx, URL/seed/tuple lists, search sources and extraction metadata.</p>
       </div></details>
     </section>
     <footer>Local processing · No BootCaT server · HTML · PDF · DOCX text extraction · No page scripts executed · <a href="about.html" target="_blank" rel="noopener noreferrer">About, privacy &amp; licence</a></footer>
@@ -161,7 +159,6 @@
       <span class="badge">BootCaT project</span>
       <h2 id="project-dialog-title">Name your project</h2>
       <p id="project-dialog-description">Choose a name for your new corpus project.</p>
-      <p id="project-dialog-warning" class="project-reset-warning" hidden>Creating this project clears the current project's seeds, tuples, searches, tab tracking, URLs, downloaded pages, corpus texts and preview. Export your corpus first if you want to keep it.</p>
       <label for="project-dialog-name">Project name</label>
       <input id="project-dialog-name" maxlength="120" required autocomplete="off" placeholder="e.g. Renewable energy corpus">
       <label for="project-dialog-language">Project language</label>

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { initWorkspaceSections, openWorkspaceSection, setProjectSectionState } from '../src/workspace-sections.js';
 
 test('workspace sections collapse on initialization; navigation and preview reveal only their target', () => {
-  const ids = ['project-section', 'seeds-section', 'search-section', 'urls-section', 'review-section', 'preview-section', 'log-section'];
+  const ids = ['project-section', 'seeds-section', 'search-section', 'urls-section', 'review-section', 'preview-section', 'save-section'];
   const panels = new Map(ids.map(id => [id, { open: true }]));
   const links = ids.map(id => ({ getAttribute: () => '#' + id, addEventListener(type, handler) { this.click = handler; } }));
   const options = { open: true };
@@ -18,7 +18,7 @@ test('workspace sections collapse on initialization; navigation and preview reve
     openWorkspaceSection('preview-section', { scroll: true }); assert.equal(panels.get('preview-section').open, true);
     openWorkspaceSection('review-section', { scroll: true });
     assert.deepEqual(scrolled, [['preview-section', 'start'], ['review-section', 'start']]);
-    links[6].click(); assert.equal(panels.get('log-section').open, true);
+    links[6].click(); assert.equal(panels.get('save-section').open, true);
     setProjectSectionState(true); assert.equal(panels.get('project-section').open, false);
     setProjectSectionState(false); assert.equal(panels.get('project-section').open, true);
     openWorkspaceSection('top', { scroll: true });

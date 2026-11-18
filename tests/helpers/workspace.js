@@ -1,3 +1,4 @@
+import { corpusFingerprint, corpusSavedMessage } from '../../src/export-state.js';
 import { checkLanguage, hasLanguageWarning, languageMessage } from '../../src/language-detection.js';
 import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
@@ -31,10 +32,10 @@ export const extracted = text => ({ status: 'ok', included: true, text, characte
 export async function workspace(projectId, options = {}) {
   const elements = new Map(), listeners = [], windowListeners = {};
   const get = id => elements.get(id) || (elements.set(id, new Element()), elements.get(id));
-  let archive, confirm = true, reset, fetched = [], language = options.language || 'none';
+  let archive, downloads = 0, confirm = true, reset, fetched = [], language = options.language || 'none';
   const context = vm.createContext({
-    console, navigator: options.navigator || {}, Blob, URL: { createObjectURL: value => { archive = value; return 'blob:test'; }, revokeObjectURL() {} },
-    AbortController, TextEncoder, Date, queueMicrotask,
+    console, navigator: options.navigator || {}, Blob, URL: { createObjectURL: value => { archive = value; downloads++; return 'blob:test'; }, revokeObjectURL() {} },
+    AbortController, TextEncoder, Date, queueMicrotask, corpusFingerprint, corpusSavedMessage,
     setTimeout: (fn, delay) => { if (delay < 1000) { queueMicrotask(fn); return 0; } return setTimeout(fn, delay); }, clearTimeout,
     document: { getElementById: get, createElement: () => new Element(), createElementNS: () => new Element(), createTextNode: text => ({ textContent: text }), body: new Element() },
     confirmAction: async () => confirm,
@@ -47,7 +48,7 @@ export async function workspace(projectId, options = {}) {
     initWorkspaceSections() {}, openWorkspaceSection() {}, setProjectSectionState() {},
     initSeedsUI: () => ({ restore() {}, isBusy: () => false, destroy() {} }),
     initProjectTabsUI: () => ({ refresh() {}, destroy() {} }),
-    DEFUDDLE_AVAILABLE: true, storage: options.storage || storage, ...pages, parseURLs, filenameFor, FILE_LIMIT, urlListWarning, makeStoredZIP, makeMetadataWorkbook, createExportLayout, extractionMetadata, fileWarnings, readPDFFile, formatByMIME, readImportedDocument,
+    DEFUDDLE_AVAILABLE: true, storage: options.storage || storage, ...pages, parseURLs, filenameFor, FILE_LIMIT, urlListWarning, makeStoredZIP, makeMetadataWorkbook: options.makeMetadataWorkbook || makeMetadataWorkbook, createExportLayout, extractionMetadata, fileWarnings, readPDFFile, formatByMIME, readImportedDocument,
     extractionContentType: (bytes, type) => type,
     extractDownloadedDocument: options.extractor || (async () => extracted('Downloaded corpus text')),
     extractDocument: () => extracted('Captured corpus text'),
@@ -62,7 +63,7 @@ export async function workspace(projectId, options = {}) {
   await waitFor(() => vm.runInContext(projectId ? 'ready' : "document.getElementById('status').textContent.startsWith('No active project')", context));
   await waitFor(() => !vm.runInContext('running', context));
   return {
-    get, fetched, reset: () => reset(), setConfirm: value => { confirm = value; }, archive: () => archive,
+    get, fetched, reset: () => reset(), setConfirm: value => { confirm = value; }, archive: () => archive, downloads: () => downloads,
     state: () => vm.runInContext('({ entries, ready, running, pendingWrites, state })', context),
     async input(id, value) { get(id).value = value; await get(id).handlers.input?.(); await waitFor(() => !vm.runInContext('pendingWrites', context)); },
     click: id => get(id).handlers.click(),

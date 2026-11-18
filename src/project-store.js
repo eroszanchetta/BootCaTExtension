@@ -48,7 +48,7 @@ function projectTransaction(projectId, names, mode, operation) {
 export function loadWorkspace(projectId) {
   return projectTransaction(projectId, ['documents'], 'readonly', (tx, done) => {
     const results = {};
-    for (const key of ['draft', 'batch', 'searches']) {
+    for (const key of ['draft', 'batch', 'searches', 'corpusExport']) {
       const request = tx.objectStore('meta').get(key);
       request.onsuccess = () => { results[key] = request.result; };
     }
@@ -201,4 +201,11 @@ export const readRawText = (id, url) => readBlob(id, 'texts', url, 'rawBlob');
 
 export function storedProjectId() {
   return transaction(['meta'], 'readonly', (tx, done) => { const request = tx.objectStore('meta').get('active'); request.onsuccess = () => done(request.result?.projectId); });
+}
+
+// This receipt describes the downloaded snapshot, not a new project content edit.
+export function saveCorpusExport(projectId, receipt) {
+  return projectTransaction(projectId, [], 'readwrite', tx => {
+    tx.objectStore('meta').put({ ...receipt, key: 'corpusExport' });
+  });
 }

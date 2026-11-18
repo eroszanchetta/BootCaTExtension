@@ -100,6 +100,7 @@ const { execFileSync } = require('node:child_process');
 
     const openPanels = async () => page.locator('.workspace-panel').evaluateAll(panels => panels.forEach(panel => { panel.open = true; }));
     const assertCollapsed = async () => {
+      await page.waitForFunction(() => !document.querySelector('#start').disabled);
       assert.deepEqual(await page.locator('.workspace-panel[open]').evaluateAll(panels => panels.map(panel => panel.closest('section').id)), []);
       assert.equal(await page.locator('#more-search-options').getAttribute('open'), null);
     };
@@ -137,23 +138,19 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     }
 
     await page.locator('#project-dialog[open]').waitFor();
-    await page.click('#project-dialog-cancel');
-    await page.waitForFunction(async () => (await (globalThis.browser ?? chrome).storage.local.get('project')).project === null);
-    assert.equal(await page.locator('#project-section .workspace-panel').evaluate(panel => panel.open), true);
-    assert.equal(await page.locator('.workspace-panel[open]').count(), 1);
-    for (const selector of ['#urls', '#start', '#export', '#seeds', '#tuples', '#engine', '#project-name']) assert.equal(await page.locator(selector).isDisabled(), true, selector);
+    assert.equal(await page.locator('#project-dialog-cancel').isDisabled(), true);
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#project-dialog[open]').count(), 1);
     assert.equal(await page.evaluate(async () => (await (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'get-project' })).project), null);
-    await page.reload();
-    await page.waitForFunction(() => document.querySelector('#project-status').textContent.startsWith('No active project'));
-    assert.equal(await page.locator('#project-dialog[open]').count(), 0);
-    await page.click('#new-project');
-    await page.selectOption('#project-dialog-language', 'none'); await page.fill('#project-dialog-name', 'First corpus'); await page.click('#project-dialog-submit');
+    for (const selector of ['#urls', '#start', '#export', '#seeds', '#tuples', '#engine', '#project-name']) assert.equal(await page.locator(selector).isDisabled(), true, selector);
+    await page.selectOption('#project-dialog-language', 'none'); await page.fill('#project-dialog-name', 'First corpus'); await submitProject();
     await page.locator('#project-dialog[open]').waitFor({ state: 'hidden' });
     await page.waitForFunction(() => document.querySelector('#project-name').value === 'First corpus' && !document.querySelector('#start').disabled);
     await assertCollapsed();
     assert.equal(await page.locator('.workspace-panel').count(), 7);
     assert.equal(await page.locator('#export-metadata, #metadata-export-status').count(), 0);
-    assert.equal(await page.evaluate(() => document.querySelector('#review-section .panel-content').lastElementChild.classList.contains('corpus-export')), true);
+    assert.equal(await page.locator('#save-section #export').count(), 1);
+    assert.equal(await page.locator('#review-section #export, #log-section, #save-searches, #collected-results, #project-tab-details').count(), 0);
     assert.equal(await page.locator('#search-form').count(), 0);
     await page.locator('nav a[href="#seeds-section"]').click();
     assert.equal(await page.locator('#seeds-section .workspace-panel').getAttribute('open'), '');
@@ -177,11 +174,22 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
       else await page.click(accept ? '#confirmation-accept' : '#confirmation-cancel');
       await page.locator('#confirmation-dialog[open]').waitFor({ state: 'hidden' });
     }
+    async function submitProject() {
+      const replacing = !!(await page.inputValue('#project-name'));
+      const nextName = await page.inputValue('#project-dialog-name');
+      await page.click('#project-dialog-submit');
+      if (replacing) {
+        await page.locator('#confirmation-dialog[open]').waitFor();
+        assert.match(await page.locator('#confirmation-message').innerText(), /All data that you have not exported will be lost/);
+        await page.click('#confirmation-accept');
+        await page.locator('#confirmation-dialog[open]').waitFor({ state: 'hidden' });
+      }
+      await page.waitForFunction(name => document.querySelector('#project-name').value === name && !document.querySelector('#start').disabled, nextName);
+    }
     const navNames = await page.locator('nav a').allTextContents();
-    assert.equal(navNames.at(-2), 'Log'); assert.equal(navNames.at(-1), 'Help');
-    await page.locator('nav a[href="#log-section"]').click();
-    assert.equal(await page.locator('#log-section .workspace-panel').getAttribute('open'), '');
-    assert.equal(await page.locator('#log-section #save-searches, #log-section #project-tab-details, #log-section #collected-results').count(), 3);
+    assert.equal(navNames.at(-2), 'Save corpus'); assert.equal(navNames.at(-1), 'Help');
+    await page.locator('nav a[href="#save-section"]').click();
+    assert.equal(await page.locator('#save-section .workspace-panel').getAttribute('open'), '');
     assert.equal(await page.evaluate(() => document.querySelector('[aria-labelledby="project-heading"]').nextElementSibling.id), 'seeds-section');
     assert.equal(await page.inputValue('#tuple-length'), '3');
     assert.equal(await page.locator('#generate-tuples').isDisabled(), true);
@@ -278,13 +286,9 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     const pagesAfterCollection = context.pages().length;
     await clickConfirmed('#open-all-queries', 'escape');
     assert.equal(context.pages().length, pagesAfterCollection);
-    const savedSearchDownload = page.waitForEvent('download'); await page.click('#save-searches');
-    const savedSearchPath = join(root, 'saved-searches.json'); await (await savedSearchDownload).saveAs(savedSearchPath);
-    const savedSearchJSON = JSON.parse(await readFile(savedSearchPath, 'utf8'));
-    assert.equal(savedSearchJSON.results.length, 2); assert.equal(savedSearchJSON.version, releaseVersion);
     await clickConfirmed('#clear-searches', false);
-    assert.equal(await page.locator('#collected-results tr').count(), 2);
-    console.log('Styled confirmations, Escape cancellation, Log navigation and search JSON export passed.');
+    assert.match(await page.locator('#collection-status').innerText(), /2 unique URLs/);
+    console.log('Styled confirmations, Save corpus navigation and URL collection without Log passed.');
 
     await page.selectOption('#engine', 'google');
     assert.equal(new URL(await page.locator('#prepared-queries a').first().getAttribute('href')).hostname, 'www.google.com');
@@ -323,9 +327,7 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     await page.click('#collect-project-tabs');
     await page.waitForFunction(() => document.querySelector('#project-tab-status').textContent.startsWith('Finished.') && document.querySelector('#project-tab-status').textContent.includes('1 result page saved; 0 tabs closed'));
     assert.ok(troublePages.every(tab => !tab.isClosed())); assert.equal(unrelatedSearch.isClosed(), false);
-    await page.locator('summary').filter({ hasText: 'Project tab collection details' }).click();
-    assert.match(await page.locator('#project-tab-details').innerText(), /CAPTCHA/);
-    assert.match(await page.locator('#project-tab-details').innerText(), /Partial results saved/);
+    assert.match(await page.locator('#prepared-queries .query-tab-status').allTextContents().then(items => items.join(' ')), /Needs attention/);
     assert.equal(await page.locator('.query-tab-status[data-status="attention"]').count(), 2);
     assert.equal(await page.locator('#collect-project-tabs').isDisabled(), false);
     resolvedQueries.add('captcha');
@@ -342,7 +344,7 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     await page.waitForFunction(() => document.querySelector('#collection-status').textContent.includes('0 unique URLs'));
     assert.equal(await page.inputValue('#urls'), urlsBeforeClearing);
     await page.click('#new-project');
-    await page.selectOption('#project-dialog-language', 'none'); await page.fill('#project-dialog-name', 'Tab reset project'); await page.click('#project-dialog-submit');
+    await page.selectOption('#project-dialog-language', 'none'); await page.fill('#project-dialog-name', 'Tab reset project'); await submitProject();
     await page.waitForFunction(() => document.querySelector('#collection-status').textContent.includes('0 unique URLs') && document.querySelector('#project-tab-count').textContent.startsWith('0 of 0 project search tabs loaded.'));
     await assertCollapsed(); await openPanels();
     await openSearchOptions();
@@ -411,6 +413,16 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     const documentsDownload = page.waitForEvent('download'); await page.click('#export');
     await (await documentsDownload).saveAs(join(root, 'documents.zip'));
     await checkCorpusReport(join(root, 'documents.zip'));
+    await page.waitForFunction(() => document.querySelector('#export').textContent === 'Corpus saved');
+    assert.equal(await page.locator('#export').isDisabled(), true);
+    assert.match(await page.locator('#export-status').innerText(), /Corpus saved.*Downloads folder/);
+    await page.reload(); await assertCollapsed(); await openPanels();
+    await page.waitForFunction(() => !document.querySelector('#start').disabled);
+    assert.equal(await page.locator('#export').isDisabled(), true);
+    assert.match(await page.locator('#export-status').innerText(), /Corpus saved/);
+    await page.locator('#results input[type="checkbox"]').first().uncheck();
+    await page.waitForFunction(() => !document.querySelector('#export').disabled);
+    assert.match(await page.locator('#export-status').innerText(), /Project changed/);
     console.log('PDF/DOCX download, local extraction, preview and ZIP passed.');
     await deleteAllRows();
     await page.fill('#urls', 'https://corpus.test/large.docx'); await page.click('#start');
@@ -571,7 +583,13 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     await page.click('#project-dialog-cancel');
     assert.equal(await page.inputValue('#urls'), 'https://corpus.test/keep-on-cancel');
     await page.click('#new-project');
-    await page.selectOption('#project-dialog-language', 'none'); await page.fill('#project-dialog-name', 'Fresh corpus'); await page.click('#project-dialog-submit');
+    await page.selectOption('#project-dialog-language', 'none'); await page.fill('#project-dialog-name', 'Fresh corpus');
+    await page.click('#project-dialog-submit'); await page.locator('#confirmation-dialog[open]').waitFor();
+    await page.click('#confirmation-cancel'); await page.locator('#project-dialog[open]').waitFor();
+    assert.equal(await page.inputValue('#project-name'), 'Energy corpus');
+    assert.equal(await page.inputValue('#urls'), 'https://corpus.test/keep-on-cancel');
+    assert.equal(await page.inputValue('#project-dialog-name'), 'Fresh corpus');
+    await submitProject();
     await page.waitForFunction(() => document.querySelector('#project-name')?.value === 'Fresh corpus' && !document.querySelector('#new-project').disabled);
     await page.waitForFunction(() => document.querySelector('#collection-status').textContent.includes('0 unique URLs'));
     assert.equal(await page.inputValue('#urls'), '');
@@ -652,7 +670,7 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     assert.equal(await page.inputValue('#search-site'), 'https://research.example.edu/path');
     assert.ok((await page.locator('#prepared-queries a').innerText()).includes('site:research.example.edu'));
     await page.click('#new-project'); await page.fill('#project-dialog-name', 'Saved defaults');
-    await page.selectOption('#project-dialog-language', 'none'); await page.click('#project-dialog-submit');
+    await page.selectOption('#project-dialog-language', 'none'); await submitProject();
     await page.waitForFunction(() => document.querySelector('#project-name').value === 'Saved defaults' && !document.querySelector('#start').disabled);
     await assertCollapsed(); await openPanels();
     assert.equal(await page.inputValue('#excluded-sites'), 'youtube.com\nfacebook.com\nexample.org');
@@ -689,7 +707,7 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     assert.equal(await inactivePopup.locator('#collect-action, #capture-action').evaluateAll(items => items.every(item => item.hidden)), true);
     await inactivePopup.close(); await secondWorkspace.close(); await page.bringToFront();
     await page.click('#new-project'); await page.fill('#project-dialog-name', 'After closing');
-    await page.selectOption('#project-dialog-language', 'none'); await page.click('#project-dialog-submit');
+    await page.selectOption('#project-dialog-language', 'none'); await submitProject();
     await page.waitForFunction(() => document.querySelector('#project-name').value === 'After closing' && !document.querySelector('#start').disabled);
     await assertCollapsed(); await openPanels(); await openSearchOptions();
     assert.equal(await page.inputValue('#excluded-sites'), 'youtube.com\nfacebook.com\nexample.org');

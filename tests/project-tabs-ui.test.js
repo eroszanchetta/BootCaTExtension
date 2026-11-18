@@ -34,7 +34,7 @@ test('project-tab UI shows running/final outcomes and ignores replies from a des
   reply = { ok: true, count: 1, batch: { ...reply.batch, running: false, processed: 2, saved: 1, closed: 1, leftOpen: 1, details: [{ query: 'captcha', reason: 'CAPTCHA: left open' }] } };
   changed({ [SEARCH_TABS_KEY]: {} }, 'session'); await new Promise(resolve => setImmediate(resolve));
   assert.match(get('project-tab-status').textContent, /1 result page saved; 1 tab closed/);
-  assert.equal(get('project-tab-details').children[0].textContent, 'captcha: CAPTCHA: left open');
+  assert.equal(elements.has('project-tab-details'), false, 'removed Log elements are never accessed');
   const previous = get('project-tab-status').textContent; vm.runInContext('ui.destroy()', context);
   reply = { ok: true, count: 100, batch: null }; changed({ [SEARCH_TABS_KEY]: {} }, 'session');
   await new Promise(resolve => setImmediate(resolve)); assert.equal(get('project-tab-status').textContent, previous);

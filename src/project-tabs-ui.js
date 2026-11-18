@@ -16,19 +16,16 @@ export function initProjectTabsUI({ getProjectId, onState = () => {} }) {
     el('project-tab-loading-hint').textContent = skip.hidden ? '' : 'Some tabs are taking a long time to load. Inspect or close them, or collect the loaded tabs and leave the others open.';
     el('stop-project-tabs').hidden = !batch?.running;
     el('stop-project-tabs').disabled = !!batch?.stopping;
-    el('project-tab-details').replaceChildren();
     if (!batch) { el('project-tab-status').textContent = 'Open queries using BootCaT to include their tabs here.'; return; }
     const prefix = batch.interrupted ? 'Collection was interrupted. Saved results remain; click Collect again to continue. ' : batch.stopping ? 'Stopping… ' : batch.stopped ? 'Stopped. ' : batch.running ? 'Collecting… ' : 'Finished. ';
-    el('project-tab-status').textContent = `${prefix}${batch.processed} of ${batch.total} tab${batch.total === 1 ? '' : 's'} processed. ${batch.saved} result page${batch.saved === 1 ? '' : 's'} saved; ${batch.closed} tab${batch.closed === 1 ? '' : 's'} closed; ${batch.leftOpen} left open; ${batch.skipped} skipped.${batch.processed > 100 ? ' Showing the first 100 outcomes below.' : ''}`;
+    el('project-tab-status').textContent = `${prefix}${batch.processed} of ${batch.total} tab${batch.total === 1 ? '' : 's'} processed. ${batch.saved} result page${batch.saved === 1 ? '' : 's'} saved; ${batch.closed} tab${batch.closed === 1 ? '' : 's'} closed; ${batch.leftOpen} left open; ${batch.skipped} skipped.`;
     if (collectingBatchId && batch.id === collectingBatchId && !batch.running) {
       collectingBatchId = null;
       if (!state.count && batch.total > 0 && batch.closed === batch.total && batch.saved === batch.total && batch.processed === batch.total && !batch.leftOpen && !batch.skipped && !batch.stopped && !batch.stopping && !batch.interrupted) {
         openWorkspaceSection('urls-section', { scroll: true });
       }
     }
-    for (const detail of batch.details) {
-      const item = document.createElement('li'); item.textContent = `${detail.query}: ${detail.reason}`; el('project-tab-details').append(item);
-    }
+
   }
   async function refresh() {
     const request = ++revision, projectId = getProjectId();

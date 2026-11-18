@@ -43,8 +43,6 @@ for (const namespace of ['chrome', 'browser']) test(`${namespace}: inactive proj
       { type: 'new-project', projectId: null, name: '  ' }
     ]) assert.equal((await request(message)).ok, false, message.type);
     assert.equal(injections, 0); assert.equal(tabs.size, 0);
-    await request({ type: 'dismiss-project-creation' });
-    assert.equal((await request({ type: 'get-project' })).promptForProject, false);
     const { project } = await request({ type: 'new-project', projectId: null, name: 'Corpus', language: 'none' });
     assert.ok(project.id); assert.equal(project.nameConfirmed, true);
     await request({ type: 'save-user-defaults', projectId: project.id, patch: { excludedSites: ['example.org'] } });
