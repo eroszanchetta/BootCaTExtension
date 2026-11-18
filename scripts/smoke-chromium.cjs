@@ -327,7 +327,6 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     await page.click('#collect-project-tabs');
     await page.waitForFunction(() => document.querySelector('#project-tab-status').textContent.startsWith('Finished.') && document.querySelector('#project-tab-status').textContent.includes('1 result page saved; 0 tabs closed'));
     assert.ok(troublePages.every(tab => !tab.isClosed())); assert.equal(unrelatedSearch.isClosed(), false);
-    await page.locator('summary').filter({ hasText: 'Project tab collection details' }).click();
     assert.match(await page.locator('#prepared-queries .query-tab-status').allTextContents().then(items => items.join(' ')), /Needs attention/);
     assert.equal(await page.locator('.query-tab-status[data-status="attention"]').count(), 2);
     assert.equal(await page.locator('#collect-project-tabs').isDisabled(), false);
