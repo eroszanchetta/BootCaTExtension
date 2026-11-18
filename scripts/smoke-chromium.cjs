@@ -634,8 +634,10 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     await page.fill('#search-site', 'https://research.example.edu/path');
     await page.waitForFunction(() => document.querySelector('#prepared-queries a').textContent.includes('site:research.example.edu'));
     assert.equal(context.pages().length, filteredTabsBefore);
+    await page.waitForFunction(() => document.querySelector('#storage-status').textContent.startsWith('Saved in this browser'));
     await page.locator('#more-search-options > summary').click();
     await page.reload(); await assertCollapsed(); await openPanels();
+    await page.waitForFunction(() => !document.querySelector('#start').disabled && document.querySelectorAll('#prepared-queries a').length === 1);
     assert.equal(await page.inputValue('#search-site'), 'https://research.example.edu/path');
     assert.ok((await page.locator('#prepared-queries a').innerText()).includes('site:research.example.edu'));
     await page.click('#new-project'); await page.fill('#project-dialog-name', 'Saved defaults');
