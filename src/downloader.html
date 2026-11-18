@@ -27,14 +27,15 @@
   <main>
     <header><span id="app-version" class="badge">BootCaT</span><h1>Create corpora from the web</h1>
       <p>Find pages. Extract useful text. Build a corpus.</p></header>
-    <section id="project-section" aria-labelledby="project-heading">
-      <h2 id="project-heading">Project</h2>
+    <section id="project-section" aria-labelledby="project-heading" tabindex="-1">
+      <details class="workspace-panel" open><summary><h2 id="project-heading">Project</h2></summary><div class="panel-content">
       <label for="project-name">Project name</label>
-      <div class="project-controls"><input id="project-name" maxlength="120" value="Untitled project" autocomplete="off"><button id="new-project" class="secondary">New project</button></div>
+      <div class="project-controls"><input id="project-name" maxlength="120" placeholder="No active project" autocomplete="off" disabled><button id="new-project" class="secondary" disabled>New project</button><button id="close-project" class="secondary" hidden disabled>Close project</button></div>
       <div class="language-settings"><label for="project-language">Project language</label><select id="project-language" disabled></select>
       <button id="recheck-language" type="button" class="secondary" disabled>Recheck saved texts</button></div>
       <p id="language-status" class="hint" role="status" aria-live="polite">Language detection is optional and runs locally. Changing this setting does not recheck existing texts until you click Recheck saved texts.</p>
-      <p id="project-status" class="hint" role="status" aria-live="polite"></p>
+      <p id="project-status" class="hint" role="status" aria-live="polite">Loading project…</p>
+      </div></details>
     </section>
     <section id="seeds-section" aria-labelledby="seeds-heading" tabindex="-1">
       <details class="workspace-panel"><summary><h2 id="seeds-heading">Seeds &amp; Tuples</h2><span id="seeds-counter" class="section-counter">0 seeds</span><span id="tuples-counter" class="section-counter">0 tuples</span></summary><div class="panel-content">
@@ -60,7 +61,7 @@
     <section id="search-section" aria-labelledby="search-heading" tabindex="-1">
       <details class="workspace-panel"><summary><h2 id="search-heading">Search</h2></summary><div class="panel-content">
       <label for="engine">Search engine</label>
-      <select id="engine"></select>
+      <select id="engine" disabled></select>
       <details id="more-search-options" class="options-panel" data-default-collapsed>
         <summary>More search options</summary>
         <div class="search-filters">
@@ -101,12 +102,12 @@
     <section id="urls-section" aria-labelledby="input-heading" tabindex="-1">
       <details class="workspace-panel"><summary><h2 id="input-heading">URLs</h2><span id="urls-counter" class="section-counter">0 URLs</span></summary><div class="panel-content">
       <label for="urls">One URL per line. URLs collect from search engines will be added here. You can also add them manually</label>
-      <textarea id="urls" spellcheck="false" placeholder="https://example.com/&#10;https://www.iana.org/help/example-domains"></textarea>
+      <textarea id="urls" disabled spellcheck="false" placeholder="https://example.com/&#10;https://www.iana.org/help/example-domains"></textarea>
       <p class="hint">Blank lines are ignored. Duplicates and URL fragments are removed. Large URL lists may take longer to process.</p>
       <p id="urls-warning" class="hint performance-warning" role="status" aria-live="polite"></p>
       <div class="extractor-setting">
         <label for="extractor">Text extractor for the next batch</label>
-        <select id="extractor"><option value="readability" selected>Mozilla Readability (default)</option><option value="defuddle">Defuddle</option></select>
+        <select id="extractor" disabled><option value="readability" selected>Mozilla Readability (default)</option><option value="defuddle">Defuddle</option></select>
         <p class="hint">The choice applies to HTML pages. PDF, DOCX and plain-text files use their own extraction with either setting.</p>
       </div>
       <div class="actions"><button id="start">Download URLs</button><button id="stop" class="secondary" disabled>Stop</button></div>

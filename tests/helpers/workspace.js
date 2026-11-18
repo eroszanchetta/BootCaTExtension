@@ -13,6 +13,7 @@ import { formatByMIME, readImportedDocument } from '../../src/document-formats.j
 class Element {
   constructor() { this.value = ''; this.textContent = ''; this.children = []; this.handlers = {}; this.disabled = false; this.attributes = {}; this.classList = { toggle: (name, enabled) => { const classes = new Set((this.className || '').split(/\s+/).filter(Boolean)); if (enabled) classes.add(name); else classes.delete(name); this.className = [...classes].join(' '); }, contains: name => (this.className || '').split(/\s+/).includes(name) }; }
   querySelector() { return new Element(); }
+  querySelectorAll() { return []; }
   addEventListener(type, fn) { this.handlers[type] = fn; }
   setAttribute(name, value) { this.attributes[name] = value; }
   get parentNode() { return this.parent; }
@@ -39,11 +40,11 @@ export async function workspace(projectId, options = {}) {
     confirmAction: async () => confirm,
     window: { location: { reload() {} }, addEventListener(type, fn) { windowListeners[type] = fn; } },
     getExtensionAPI: () => ({ storage: { onChanged: { addListener(fn) { listeners.push(fn); } } } }),
-    initProjectUI: callbacks => { reset = callbacks.onReset; return { ready: Promise.resolve(), snapshot: () => ({ id: projectId, name: 'Test corpus', language }), setLanguage: async value => { language = value; } }; },
+    initProjectUI: callbacks => { reset = callbacks.onReset; return { ready: Promise.resolve(), snapshot: () => projectId ? { id: projectId, name: 'Test corpus', language } : null, setLanguage: async value => { language = value; } }; },
     checkLanguage, hasLanguageWarning, languageMessage,
-    initSearchUI: () => ({ flush() {} }), readCollections: async () => [], projectFilename: name => name,
+    initSearchUI: () => ({ flush() {}, destroy() {} }), readCollections: async () => [], projectFilename: name => name,
     initVersionBadge: () => '2.0.0',
-    initWorkspaceSections() {}, openWorkspaceSection() {},
+    initWorkspaceSections() {}, openWorkspaceSection() {}, setProjectSectionState() {},
     initSeedsUI: () => ({ restore() {}, isBusy: () => false, destroy() {} }),
     initProjectTabsUI: () => ({ refresh() {}, destroy() {} }),
     DEFUDDLE_AVAILABLE: true, storage: options.storage || storage, ...pages, parseURLs, filenameFor, FILE_LIMIT, urlListWarning, makeStoredZIP, makeMetadataWorkbook, createExportLayout, extractionMetadata, fileWarnings, readPDFFile, formatByMIME, readImportedDocument,
@@ -58,7 +59,7 @@ export async function workspace(projectId, options = {}) {
   });
   const source = (await readFile(new URL('../../src/app.js', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
   vm.runInContext(source, context);
-  await waitFor(() => vm.runInContext('ready', context));
+  await waitFor(() => vm.runInContext(projectId ? 'ready' : "document.getElementById('status').textContent.startsWith('No active project')", context));
   await waitFor(() => !vm.runInContext('running', context));
   return {
     get, fetched, reset: () => reset(), setConfirm: value => { confirm = value; }, archive: () => archive,

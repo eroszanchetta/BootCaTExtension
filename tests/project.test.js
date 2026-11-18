@@ -53,6 +53,7 @@ test('project dialog cancels without clearing, requires a name, and submits name
   const project = { id: 'one', name: 'Initial project' };
   const context = vm.createContext({
     fillLanguageSelect: (select, { value }) => { select.value = value; }, validateLanguage, document: { getElementById: get }, window: { confirm: () => confirm },
+    setProjectSectionState() {}, confirmAction: async () => confirm,
     onReset: () => { resets++; }, onRename: () => { renamed++; },
     getExtensionAPI: () => ({
       storage: { onChanged: { addListener(fn) { notify = fn; } } },
@@ -92,7 +93,7 @@ test('first-use dialog names the existing project without clearing it; confirmed
   const source = (await readFile(new URL('../src/project-ui.js', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '').replace(/^export /gm, '');
   for (const confirmed of [false, true]) {
     const get = fixture(), requests = [];
-    const context = vm.createContext({ fillLanguageSelect: (select, { value }) => { select.value = value; }, validateLanguage, document: { getElementById: get }, getExtensionAPI: () => ({
+    const context = vm.createContext({ setProjectSectionState() {}, fillLanguageSelect: (select, { value }) => { select.value = value; }, validateLanguage, document: { getElementById: get }, getExtensionAPI: () => ({
       storage: { onChanged: { addListener() {} } }, runtime: { sendMessage: async request => {
         requests.push(request); return { ok: true, project: { id: 'one', name: request.name || 'Untitled project', nameConfirmed: request.type === 'rename-project' || confirmed } };
       } }
@@ -105,4 +106,61 @@ test('first-use dialog names the existing project without clearing it; confirmed
       assert.equal(requests.at(-1).type, 'rename-project'); assert.equal(get('project-dialog').open, false);
     }
   }
+});
+
+test('cancelling first creation leaves no project; creation remains available and initial modal uses no placeholder project', async () => {
+  const source = (await readFile(new URL('../src/project-ui.js', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '').replace(/^export /gm, '');
+  for (const cancelEvent of ['click', 'cancel']) {
+    const get = fixture(), requests = [], sectionStates = [];
+    let resets = 0;
+    const context = vm.createContext({
+      document: { getElementById: get }, validateLanguage,
+      fillLanguageSelect: (select, { value }) => { select.value = value; },
+      setProjectSectionState: active => sectionStates.push(active),
+      getExtensionAPI: () => ({ storage: { onChanged: { addListener() {} } }, runtime: { sendMessage: async request => {
+        requests.push(request);
+        return request.type === 'new-project' ? { ok: true, project: { id: 'created', name: request.name, language: request.language } } : { ok: true, project: null, promptForProject: request.type === 'get-project' };
+      } } }), onReset() { resets++; }
+    });
+    vm.runInContext(source + '\nglobalThis.ui = initProjectUI({ onReset, onRename() {} });', context);
+    await vm.runInContext('ui.ready', context);
+    assert.equal(get('project-dialog').open, true); assert.equal(get('project-dialog-warning').hidden, true);
+    assert.equal(get('project-name').disabled, true); assert.equal(get('close-project').hidden, true);
+    assert.deepEqual(sectionStates, [false]); assert.equal(vm.runInContext('ui.snapshot()', context), null);
+    if (cancelEvent === 'click') await get('project-dialog-cancel').handlers.click();
+    else { get('project-dialog').handlers.cancel({ preventDefault() {} }); await new Promise(resolve => setImmediate(resolve)); }
+    assert.equal(get('project-dialog').open, false); assert.equal(resets, 0);
+    assert.equal(requests.at(-1).type, 'dismiss-project-creation');
+    assert.equal(requests.some(request => ['new-project', 'rename-project'].includes(request.type)), false);
+    assert.equal(get('new-project').disabled, false);
+    get('new-project').handlers.click(); get('project-dialog-name').value = 'First corpus'; get('project-dialog-language').value = 'none';
+    await get('project-form').handlers.submit({ preventDefault() {} });
+    assert.equal(requests.at(-1).type, 'new-project'); assert.equal(requests.at(-1).projectId, null);
+    assert.equal(resets, 1);
+  }
+});
+
+test('close project requires confirmation, reports failures without clearing and reacts to removal in another window', async () => {
+  const source = (await readFile(new URL('../src/project-ui.js', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '').replace(/^export /gm, '');
+  const get = fixture(), requests = []; let notify, approved = false, fail = true, resets = 0;
+  const context = vm.createContext({
+    document: { getElementById: get }, validateLanguage, setProjectSectionState() {},
+    fillLanguageSelect: (select, { value }) => { select.value = value; },
+    confirmAction: async options => { assert.equal(options.destructive, true); return approved; },
+    getExtensionAPI: () => ({ storage: { onChanged: { addListener(fn) { notify = fn; } } }, runtime: { sendMessage: async request => {
+      requests.push(request);
+      if (request.type === 'close-project') return fail ? { ok: false, error: 'Storage unavailable' } : { ok: true, project: null };
+      return { ok: true, project: { id: 'one', name: 'Corpus', nameConfirmed: true } };
+    } } }), onReset() { resets++; }
+  });
+  vm.runInContext(source + '\nglobalThis.ui = initProjectUI({ onReset, onRename() {} });', context);
+  await vm.runInContext('ui.ready', context);
+  assert.equal(get('close-project').hidden, false);
+  await get('close-project').handlers.click(); assert.equal(requests.length, 1); assert.equal(resets, 0);
+  approved = true; await get('close-project').handlers.click();
+  assert.equal(requests.at(-1).projectId, 'one'); assert.match(get('project-status').textContent, /Storage unavailable/);
+  assert.equal(vm.runInContext('ui.snapshot().id', context), 'one'); assert.equal(get('close-project').disabled, false);
+  fail = false; await get('close-project').handlers.click();
+  assert.equal(resets, 1); assert.equal(vm.runInContext('ui.snapshot()', context), null);
+  notify({ project: { oldValue: { id: 'one' }, newValue: null } }, 'local'); assert.equal(resets, 1);
 });

@@ -4,9 +4,9 @@ import { transaction, STORES } from './storage-db.js';
 import { parseURLs } from './core.js';
 const initialDraft = (defaults = {}) => ({ key: 'draft', urls: '', query: '', engine: '', extractor: 'readability', seenCollections: [], seeds: '', tupleLength: '3', tupleCount: '10', tuples: '', preparedQueries: [], preparedQueryBases: null, preparedFilters: null, searchFileType: '', searchSite: '', excludedSites: (defaults.excludedSites ?? DEFAULT_EXCLUDED_SITES).join('\n') });
 const initialBatch = () => ({ key: 'batch', startedAt: null, state: 'idle', processed: 0, total: 0, nextFileIndex: 0, storedBytes: 0, lastStatus: 'Ready when you are.' });
-function seed(tx, projectId, defaults) {
+function seed(tx, projectId, defaults, project) {
   const store = tx.objectStore('meta');
-  store.put({ key: 'active', projectId }); store.put(initialDraft(defaults)); store.put(initialBatch()); store.put({ key: 'searches', collections: [] });
+  store.put({ key: 'active', projectId, ...(project ? { project } : {}) }); store.put(initialDraft(defaults)); store.put(initialBatch()); store.put({ key: 'searches', collections: [] });
 }
 export function ensureStoredProject(projectId, defaults) {
   if (!projectId) throw new Error('Project identity is missing. Reopen BootCaT.');
@@ -18,17 +18,29 @@ export function ensureStoredProject(projectId, defaults) {
     };
   });
 }
-export function resetStoredProject(projectId, defaults) {
+export function resetStoredProject(projectId, defaults, project) {
+  if (!projectId) throw new Error('Project identity is missing.');
   return transaction(STORES, 'readwrite', tx => {
     for (const name of STORES) tx.objectStore(name).clear();
-    seed(tx, projectId, defaults);
+    seed(tx, projectId, defaults, project);
   });
+}
+// Keep an explicit inactive marker: stale windows cannot seed a closed project,
+// and a restart between database deletion and storage.local notification is safe.
+export function closeStoredProject(projectId) {
+  return projectTransaction(projectId, STORES, 'readwrite', tx => {
+    for (const name of STORES) tx.objectStore(name).clear();
+    tx.objectStore('meta').put({ key: 'active', projectId: null });
+  });
+}
+export function storedProjectState() {
+  return transaction(['meta'], 'readonly', (tx, done) => { const request = tx.objectStore('meta').get('active'); request.onsuccess = () => done(request.result); });
 }
 function projectTransaction(projectId, names, mode, operation) {
   return transaction([...new Set(['meta', ...names])], mode, (tx, done, fail) => {
     const request = tx.objectStore('meta').get('active');
     request.onsuccess = () => {
-      if (request.result?.projectId !== projectId) { fail(new Error('The project changed. Reopen BootCaT.')); return; }
+      if (!projectId || request.result?.projectId !== projectId) { fail(new Error('The project changed. Reopen BootCaT.')); return; }
       try { operation(tx, done, fail); } catch (error) { fail(error); }
     };
   });

@@ -1,6 +1,6 @@
 import { checkLanguage, hasLanguageWarning, languageMessage } from './language-detection.js';
 import { confirmAction } from './dialogs.js';
-import { initWorkspaceSections, openWorkspaceSection } from './workspace-sections.js';
+import { initWorkspaceSections, openWorkspaceSection, setProjectSectionState } from './workspace-sections.js';
 import { extractDownloadedDocument, extractionContentType } from './binary-extraction.js';
 import { fileWarnings, readPDFFile } from './pdf-recovery.js';
 import { formatByMIME, readImportedDocument } from './document-formats.js';
@@ -34,9 +34,11 @@ if (!DEFUDDLE_AVAILABLE) ui.extractor.querySelector('option[value="defuddle"]').
 const projectUI = initProjectUI({
   onRename: invalidateArchive,
   onReset: () => {
-    resetting = true; controller?.abort(); seedsUI?.destroy(); projectTabsUI?.destroy(); running = false;
+    resetting = true; ready = false; stopping = true; controller?.abort(); seedsUI?.destroy(); searchUI?.destroy(); projectTabsUI?.destroy(); running = false; updateControls();
     invalidateArchive(); ui.urls.value = ''; clearPreview();
-    document.getElementById('project-name').value = 'Untitled project';
+    document.getElementById('project-name').value = '';
+    entries = []; state = null; documentImportTarget = null; ui['import-document-picker'].value = '';
+    renderEntries();
     window.location.reload();
   }
 });
@@ -69,7 +71,7 @@ function pendingURLs() {
 }
 function updateControls() {
   ui.start.disabled = !ready || running; ui.export.disabled = !ready || running || !entries.length;
-  ui.urls.disabled = ui.extractor.disabled = running;
+  ui.urls.disabled = ui.extractor.disabled = !ready || running;
   ui['project-language'].disabled = !ready || running; ui['recheck-language'].disabled = !ready || running || !entries.some(entry => entry.doc?.extraction.status === 'ok');
   ui.start.textContent = !running && ready && ['running', 'stopped'].includes(state.batch.state) && pendingURLs().length ? 'Resume downloads' : 'Download URLs';
   for (const items of controls.values()) { items.trash.disabled = running; if (items.importDocument) items.importDocument.disabled = running; if (items.acceptLanguage) items.acceptLanguage.disabled = running; if (items.checkbox) items.checkbox.disabled = running || items.failed; }
@@ -256,11 +258,12 @@ async function work(task) {
   const execute = async lock => {
     try {
       if (!lock) { ui.status.textContent = 'Another BootCaT window is processing this project. Return here when it finishes.'; return false; }
+      if (resetting || !ready) return false;
       await task(); return true;
     }
     catch (error) { report(error); return false; }
     finally {
-      running = false; if (!resetting) { updateControls(); searchUI?.flush(); }
+      controller = null; running = false; if (!resetting) { updateControls(); searchUI?.flush(); }
     }
   };
   const result = await (navigator.locks ? navigator.locks.request('bootcat-project-work', { ifAvailable: true }, execute) : execute({}));
@@ -322,8 +325,9 @@ ui.start.addEventListener('click', () => work(async () => {
 async function storeCapture({ url, finalURL, bytes, contentType, source, capturedAt, captureId }) {
   const index = await storage.allocateFileIndex(projectId);
   const filename = filenameFor(url, contentType, index);
+  const signal = (controller = new AbortController()).signal;
   const extraction = formatByMIME(contentType)
-    ? await extractDownloadedDocument(bytes, contentType, { sourceURL: finalURL })
+    ? await extractDownloadedDocument(bytes, contentType, { sourceURL: finalURL, signal })
     : extractDocument(bytes, contentType, { extractor: ui.extractor.value, sourceURL: finalURL });
   if (resetting) return;
   const checkedExtraction = await checkLanguage(extraction, projectUI.snapshot().language || 'none');
@@ -415,7 +419,9 @@ ui.export.addEventListener('click', () => work(async () => {
         ];
         for (const [name, value] of json) yield { name, blob: new Blob([JSON.stringify(value, null, 2)]) };
       }
-      archiveURL = URL.createObjectURL(await makeStoredZIP(files(), { signal }));
+      const archive = await makeStoredZIP(files(), { signal });
+      if (resetting || signal.aborted) return;
+      archiveURL = URL.createObjectURL(archive);
     }
     const link = document.createElement('a'); link.href = archiveURL;
     link.download = `${projectFilename(project.name)}-${exportedAt.replace(/[:.]/g, '-')}.zip`;
@@ -433,7 +439,18 @@ window.addEventListener('focus', async () => {
 });
 (async () => {
   try {
-    await projectUI.ready; projectId = projectUI.snapshot().id;
+    await projectUI.ready; projectId = projectUI.snapshot()?.id;
+    if (!projectId) {
+      setProjectSectionState(false);
+      for (const id of ['seeds-section', 'search-section', 'urls-section', 'review-section', 'preview-section', 'log-section']) {
+        for (const control of document.getElementById(id).querySelectorAll('button, input, select, textarea')) control.disabled = true;
+      }
+      ui.status.textContent = 'No active project. Create a project to download and extract documents.';
+      ui['storage-status'].textContent = 'No project data is stored.';
+      document.getElementById('collection-status').textContent = 'No active project.';
+      document.getElementById('project-tab-count').textContent = 'No active project.';
+      return;
+    }
     await storage.ensureStoredProject(projectId);
     await restore();
     searchUI = initSearchUI({ isRunning: () => running, seenCollectionIds: state.draft.seenCollections, getProjectId: () => projectId, onChange: patch => { queueDraft(patch); warnURLs(); } });

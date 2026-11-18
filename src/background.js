@@ -1,7 +1,7 @@
 import { resetProjectLocalState } from './project-local-state.js';
 import { readUserDefaults, saveUserDefaults } from './user-defaults.js';
 import { validateLanguage } from './language-detection.js';
-import { ensureStoredProject, resetStoredProject, storedProjectId, hasStoredPage } from './project-store.js';
+import { ensureStoredProject, resetStoredProject, closeStoredProject, storedProjectState, hasStoredPage } from './project-store.js';
 import { captureTabDocument } from './pdf-recovery.js';
 import { savePage } from './page-store.js';
 import { getExtensionAPI } from './extension-api.js';
@@ -10,6 +10,7 @@ import { adapterForURL, extractResults } from "./engines.js";
 import { addCollection } from "./collection.js";
 import { createProjectSearchTabs, matchesProjectSearch } from './project-search-tabs.js';
 let searchTabs;
+const captures = new Map();
 
 // Serialize storage read/modify/write operations, including Clear.
 let writes = Promise.resolve();
@@ -20,23 +21,34 @@ function serialize(task) {
 }
 async function ensureProject() {
   let { project } = await ext.storage.local.get('project');
-  const storedId = await storedProjectId();
+  const stored = await storedProjectState(), storedId = stored?.projectId;
+  if (storedId === null) {
+    await searchTabs?.resetInQueue();
+    if (project) await resetProjectLocalState(ext.storage.local, null);
+    return null;
+  }
   if (storedId && project?.id !== storedId) {
     // Recover a reset interrupted between the atomic database clear and the
     // storage.local notification. Never attach an old project's collections.
-    project = { id: storedId, name: 'Untitled project', nameConfirmed: false };
+    project = stored.project || { id: storedId, name: 'Untitled project', nameConfirmed: false };
     await searchTabs?.resetInQueue();
     await resetProjectLocalState(ext.storage.local, project);
   }
   if (!project) {
-    project = { id: crypto.randomUUID(), name: 'Untitled project', nameConfirmed: false };
-    await ext.storage.local.set({ project });
+    return null;
   }
   await ensureStoredProject(project.id, !storedId ? await readUserDefaults(ext.storage.local) : undefined);
   return project;
 }
 async function assertProject(id) {
-  if ((await ensureProject()).id !== id) throw new Error('The project changed. Collect or save the page again for the new project.');
+  const project = await ensureProject();
+  if (!project) throw new Error('No active project. Create a project in BootCaT first.');
+  if (project.id !== id) throw new Error('The project changed. Collect or save the page again for the new project.');
+}
+async function requireProject() {
+  const project = await ensureProject();
+  if (!project) throw new Error('No active project. Create a project in BootCaT first.');
+  return project;
 }
 async function workspaceTabs() {
   const url = ext.runtime.getURL('downloader.html');
@@ -84,7 +96,17 @@ async function handle(message) {
     await assertProject(message.projectId);
     return { defaults: await saveUserDefaults(ext.storage.local, message.patch) };
   });
-  if (message.type === 'get-project') return serialize(async () => ({ project: await ensureProject() }));
+  if (message.type === 'get-project') return serialize(async () => {
+    const project = await ensureProject();
+    const { project: previous } = await ext.storage.local.get('project');
+    const promptForProject = !project && previous === undefined && !(await storedProjectState());
+    return { project, promptForProject };
+  });
+  if (message.type === 'dismiss-project-creation') return serialize(async () => {
+    if (await ensureProject()) throw new Error('The project changed. Reopen BootCaT.');
+    await ext.storage.local.set({ project: null });
+    return { project: null };
+  });
   if (message.type === 'rename-project') return serialize(async () => {
     await assertProject(message.projectId);
     const current = await ensureProject();
@@ -99,13 +121,24 @@ async function handle(message) {
   });
   if (message.type === 'new-project') return serialize(async () => {
     // Serialize with collection/capture writes so stale work cannot survive reset.
-    if (message.projectId) await assertProject(message.projectId);
+    const current = await ensureProject();
+    if ((message.projectId ?? null) !== (current?.id ?? null)) throw new Error('The project changed. Reopen BootCaT before creating a project.');
     const chosenName = typeof message.name === 'string' ? message.name.trim().slice(0, 120) : '';
-    const project = { language: validateLanguage(message.language ?? 'none'), id: crypto.randomUUID(), name: chosenName || 'Untitled project', nameConfirmed: Boolean(chosenName) };
-    await resetStoredProject(project.id, await readUserDefaults(ext.storage.local));
+    if (!chosenName) throw new Error('Enter a project name.');
+    const project = { language: validateLanguage(message.language ?? 'none'), id: crypto.randomUUID(), name: chosenName, nameConfirmed: true };
+    for (const controller of captures.values()) controller.abort();
+    await resetStoredProject(project.id, await readUserDefaults(ext.storage.local), project);
     await searchTabs.resetInQueue();
     await resetProjectLocalState(ext.storage.local, project);
     return { project };
+  });
+  if (message.type === 'close-project') return serialize(async () => {
+    await assertProject(message.projectId);
+    for (const controller of captures.values()) controller.abort();
+    await closeStoredProject(message.projectId);
+    try { await searchTabs.resetInQueue(); }
+    finally { await resetProjectLocalState(ext.storage.local, null); }
+    return { project: null };
   });
   if (message.type === "open-workspace") {
     const url = ext.runtime.getURL("downloader.html");
@@ -117,6 +150,7 @@ async function handle(message) {
     return {};
   }
   if (message.type === "clear-collections") return serialize(async () => {
+    await assertProject(message.projectId);
     await ext.storage.local.set({ collections: [] });
     return {};
   });
@@ -124,29 +158,33 @@ async function handle(message) {
     const tab = await ext.tabs.get(message.tabId);
     return serialize(async () => {
       const project = await ensureProject();
-      return { projectId: project.id, saved: await hasStoredPage(project.id, tab.url) };
+      return { projectId: project?.id ?? null, saved: project ? await hasStoredPage(project.id, tab.url) : false };
     });
   }
   if (message.type === 'save-page') {
-    const project = await serialize(ensureProject);
+    const project = await serialize(requireProject);
     if (message.projectId && message.projectId !== project.id) throw new Error('The project changed. Reopen the BootCaT popup.');
     const tab = await ext.tabs.get(message.tabId);
     if (!/^https?:\/\//.test(tab.url || '')) throw new Error('Open a web page first.');
     if (adapterForURL(tab.url)) throw new Error('Use Collect results from this tab for a search results page.');
     const saved = await serialize(async () => { await assertProject(project.id); return hasStoredPage(project.id, tab.url); });
     if (saved) { await ensureWorkspace(); return { alreadySaved: true }; }
-    const page = await captureTabDocument(tab, ext.scripting);
-    return serialize(async () => {
-      await assertProject(project.id);
-      if (await hasStoredPage(project.id, page.url)) return { alreadySaved: true };
-      await savePage({ ...page, id: crypto.randomUUID() });
-      try { await ext.storage.local.set({ captureRevision: crypto.randomUUID() }); } catch {}
-      await ensureWorkspace();
-      return {};
-    });
+    const controller = new AbortController(), token = crypto.randomUUID();
+    await serialize(async () => { await assertProject(project.id); captures.set(token, controller); });
+    try {
+      const page = await captureTabDocument(tab, ext.scripting, { signal: controller.signal });
+      return await serialize(async () => {
+        await assertProject(project.id);
+        if (await hasStoredPage(project.id, page.url)) return { alreadySaved: true };
+        await savePage({ ...page, id: crypto.randomUUID() }, project.id);
+        try { await ext.storage.local.set({ captureRevision: crypto.randomUUID() }); } catch {}
+        await ensureWorkspace();
+        return {};
+      });
+    } finally { captures.delete(token); }
   }
   if (message.type !== "collect") throw new Error("Unknown request");
-  const project = await serialize(ensureProject);
+  const project = await serialize(requireProject);
   if (message.projectId && message.projectId !== project.id) throw new Error('The project changed. Reopen the BootCaT popup.');
   return collectPage(message.tabId, project.id);
 }
