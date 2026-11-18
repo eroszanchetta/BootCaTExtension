@@ -61,9 +61,14 @@
       <details class="workspace-panel"><summary><h2 id="search-heading">Search</h2></summary><div class="panel-content">
       <label for="engine">Search engine</label>
       <select id="engine"></select>
-      <div class="search-filters">
+      <details id="more-search-options" class="options-panel" data-default-collapsed>
+        <summary>More search options</summary>
+        <div class="search-filters">
         <label for="search-filetype">File type</label>
         <select id="search-filetype" disabled></select>
+        <label for="search-site">Restrict search to site/domain</label>
+        <input id="search-site" type="text" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" disabled aria-describedby="search-site-hint search-filter-status" placeholder="e.g. unibo.it or https://www.unibo.it/">
+        <p id="search-site-hint" class="hint">Optional. Enter one domain or website URL. URLs use only their domain; leave blank to search all websites.</p>
         <label for="excluded-sites">Excluded websites, one per line</label>
         <textarea id="excluded-sites" spellcheck="false" disabled placeholder="youtube.com&#10;facebook.com"></textarea>
         <p class="hint">Enter domains or website URLs. Restrictions are added to search queries; engines may not honour every operator. Ecosia support depends on its search provider.</p>
@@ -71,6 +76,7 @@
         <button id="save-site-defaults" type="button" class="secondary" disabled>Save exclusions as my default</button>
         <p id="site-default-status" class="hint" role="status" aria-live="polite">Edits apply to this project. Saving as your default uses this list for new projects in this browser.</p>
       </div>
+      </details>
       <h3 id="query-list-heading">Search queries</h3>
       <p id="query-summary" role="status" aria-live="polite">No search queries prepared yet.</p>
       <ol id="prepared-queries" class="query-list"></ol>

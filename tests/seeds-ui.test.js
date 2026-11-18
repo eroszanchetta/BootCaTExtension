@@ -219,3 +219,35 @@ test('batch opening holds collection readiness until opening finishes or stops',
   app.click('stop-query-tabs'); release(); await pending;
   assert.deepEqual(opening, [true, false]); assert.equal(app.opened.length, 1);
 });
+
+test('site edits update queries, validate the correct field, restore saved inputs and never replace tuples or exclusions', async () => {
+  const app = fixture({ draft: { tuples: 'energy storage', searchFileType: 'pdf', excludedSites: 'facebook.com' } });
+  assert.equal(app.get('search-site').value, '', 'old drafts start unrestricted');
+  await app.click('prepare-queries');
+  app.input('search-site', 'https://www.UNIBO.it/research');
+  assert.equal(app.get('open-all-queries').disabled, true);
+  assert.equal(app.get('prepared-queries').children[0].children[2].href, undefined);
+  await new Promise(resolve => setTimeout(resolve, 450));
+  const query = 'energy storage filetype:pdf site:unibo.it -site:facebook.com';
+  assert.equal(app.get('prepared-queries').children[0].children[2].textContent, query);
+  assert.equal(app.get('tuples').value, 'energy storage'); assert.equal(app.get('excluded-sites').value, 'facebook.com');
+  assert.equal(app.draft.searchSite, 'https://www.UNIBO.it/research'); assert.equal(app.opened.length, 0);
+  const restored = fixture({ draft: app.draft });
+  assert.equal(restored.get('search-site').value, 'https://www.UNIBO.it/research');
+  assert.equal(restored.get('prepared-queries').children[0].children[2].textContent, query);
+  restored.get('engine').value = 'ecosia'; restored.get('engine').handlers.change();
+  assert.equal(new URL(restored.get('prepared-queries').children[0].children[2].href).searchParams.get('q'), query);
+  await restored.click('open-all-queries'); assert.equal(new URL(restored.opened[0].url).searchParams.get('q'), query);
+  restored.input('search-site', 'facebook.com'); await new Promise(resolve => setTimeout(resolve, 450));
+  assert.equal(restored.get('search-site').attributes['aria-invalid'], 'true');
+  assert.equal(restored.get('excluded-sites').attributes['aria-invalid'], 'false');
+  assert.match(restored.get('search-filter-status').textContent, /search site is excluded/);
+  assert.equal(restored.get('open-all-queries').disabled, true);
+  restored.input('search-site', 'example.org OR site:other.org');
+  await new Promise(resolve => setTimeout(resolve, 450));
+  assert.match(restored.get('search-filter-status').textContent, /Invalid search website/);
+  restored.input('search-site', ''); await new Promise(resolve => setTimeout(resolve, 450));
+  assert.equal(restored.get('open-all-queries').disabled, false);
+  assert.equal(restored.get('prepared-queries').children[0].children[2].textContent, query.replace(' site:unibo.it', ''));
+  app.ui.destroy(); restored.ui.destroy();
+});

@@ -99,7 +99,13 @@ const { execFileSync } = require('node:child_process');
     await versionPopup.close(); await page.bringToFront();
 
     const openPanels = async () => page.locator('.workspace-panel').evaluateAll(panels => panels.forEach(panel => { panel.open = true; }));
-    const assertCollapsed = async () => assert.equal(await page.locator('.workspace-panel[open]').count(), 0);
+    const assertCollapsed = async () => {
+      assert.equal(await page.locator('.workspace-panel[open]').count(), 0);
+      assert.equal(await page.locator('#more-search-options').getAttribute('open'), null);
+    };
+    const openSearchOptions = async () => {
+      if (!await page.locator('#more-search-options').evaluate(panel => panel.open)) await page.locator('#more-search-options > summary').click();
+    };
     async function checkCorpusReport(zipPath, language = 'Not checked') {
       execFileSync('python3', ['-c', `
 import sys,json,zipfile,io,xml.etree.ElementTree as E
@@ -141,7 +147,10 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     await page.locator('nav a[href="#seeds-section"]').click();
     assert.equal(await page.locator('#seeds-section .workspace-panel').getAttribute('open'), '');
     await openPanels();
+    assert.equal(await page.locator('#search-site').isVisible(), false);
+    await openSearchOptions();
     assert.equal(await page.inputValue('#excluded-sites'), 'youtube.com\nfacebook.com\ninstagram.com\namazon.com');
+    await openSearchOptions();
     await page.fill('#excluded-sites', '');
     await page.waitForFunction(() => document.querySelector('#collection-status').textContent.includes('0 unique URLs'));
     const dialogMessages = [];
@@ -325,6 +334,7 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     await page.selectOption('#project-dialog-language', 'none'); await page.fill('#project-dialog-name', 'Tab reset project'); await page.click('#project-dialog-submit');
     await page.waitForFunction(() => document.querySelector('#collection-status').textContent.includes('0 unique URLs') && document.querySelector('#project-tab-count').textContent.startsWith('0 of 0 project search tabs loaded.'));
     await assertCollapsed(); await openPanels();
+    await openSearchOptions();
     await page.fill('#excluded-sites', '');
     assert.ok(troublePages.filter(tab => tab !== captchaPage).every(tab => !tab.isClosed())); assert.equal(unrelatedSearch.isClosed(), false);
     for (const tab of [...troublePages, unrelatedSearch].filter(tab => !tab.isClosed())) await tab.close();
@@ -592,9 +602,11 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     await deleteAllRows();
     console.log('Local franc mismatch, review/override, saved-text recheck and language metadata export passed.');
     assert.deepEqual(await page.locator('#search-filetype option').allTextContents(), ['No restriction', 'PDF', 'DOCX']);
+    await openSearchOptions();
+    await page.fill('#search-site', 'https://www.UNIBO.it/research');
     await page.fill('#excluded-sites', 'https://www.youtube.com/watch?v=1\nfacebook.com\nhttps://www.example.org/path');
     await page.selectOption('#search-filetype', 'pdf'); await page.fill('#tuples', 'energy storage'); await page.click('#prepare-queries');
-    const filteredQuery = 'energy storage filetype:pdf -site:youtube.com -site:facebook.com -site:example.org';
+    const filteredQuery = 'energy storage filetype:pdf site:unibo.it -site:youtube.com -site:facebook.com -site:example.org';
     assert.equal(await page.locator('#prepared-queries a').innerText(), filteredQuery);
     assert.equal(new URL(await page.locator('#prepared-queries a').getAttribute('href')).searchParams.get('q'), filteredQuery);
     await page.click('#save-site-defaults');
@@ -603,11 +615,13 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     await page.reload(); await assertCollapsed(); await openPanels();
     await page.waitForFunction(() => document.querySelectorAll('#prepared-queries a').length === 1);
     assert.equal(await page.locator('#prepared-queries a').innerText(), filteredQuery);
+    assert.equal(await page.inputValue('#search-site'), 'unibo.it');
+    await openSearchOptions();
     await page.selectOption('#search-filetype', 'docx'); assert.equal(await page.locator('#prepared-queries a').count(), 1);
     assert.equal(await page.locator('#prepared-queries a').innerText(), filteredQuery.replace('filetype:pdf', 'filetype:docx'));
     const filteredTabsBefore = context.pages().length;
     await page.fill('#excluded-sites', 'example.net');
-    await page.waitForFunction(() => document.querySelector('#prepared-queries a').textContent === 'energy storage filetype:docx -site:example.net');
+    await page.waitForFunction(() => document.querySelector('#prepared-queries a').textContent === 'energy storage filetype:docx site:unibo.it -site:example.net');
     assert.equal(context.pages().length, filteredTabsBefore);
     assert.equal(await page.inputValue('#tuples'), 'energy storage');
     await page.fill('#excluded-sites', 'example.net -site:bad.test');
@@ -617,13 +631,21 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     await page.fill('#excluded-sites', 'example.net');
     await page.waitForFunction(() => !document.querySelector('#open-all-queries').disabled);
 
+    await page.fill('#search-site', 'https://research.example.edu/path');
+    await page.waitForFunction(() => document.querySelector('#prepared-queries a').textContent.includes('site:research.example.edu'));
+    assert.equal(context.pages().length, filteredTabsBefore);
+    await page.locator('#more-search-options > summary').click();
+    await page.reload(); await assertCollapsed(); await openPanels();
+    assert.equal(await page.inputValue('#search-site'), 'https://research.example.edu/path');
+    assert.ok((await page.locator('#prepared-queries a').innerText()).includes('site:research.example.edu'));
     await page.click('#new-project'); await page.fill('#project-dialog-name', 'Saved defaults');
     await page.selectOption('#project-dialog-language', 'none'); await page.click('#project-dialog-submit');
     await page.waitForFunction(() => document.querySelector('#project-name').value === 'Saved defaults' && !document.querySelector('#start').disabled);
     await assertCollapsed(); await openPanels();
     assert.equal(await page.inputValue('#excluded-sites'), 'youtube.com\nfacebook.com\nexample.org');
+    assert.equal(await page.inputValue('#search-site'), '');
     assert.equal(await page.inputValue('#search-filetype'), ''); assert.equal(await page.locator('#prepared-queries a').count(), 0);
-    console.log('Search file restrictions, canonical site exclusions, regenerated links and cross-project defaults passed.');
+    console.log('Collapsed advanced options, site/file restrictions, canonical exclusions, regenerated links and cross-project defaults passed.');
     await page.fill('#urls', Array.from({ length: 501 }, (_, i) => `https://corpus.test/large/${i}`).join('\n'));
     await page.waitForFunction(() => document.querySelector('#storage-status').textContent.startsWith('Saved in this browser'));
     assert.match(await page.locator('#urls-warning').innerText(), /501 URLs/);
