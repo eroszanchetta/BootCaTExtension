@@ -25,6 +25,7 @@ test('saving once disables duplicate downloads across focus and reload; edits an
     const otherWindow = await workspace('saved');
     await app.click('export');
     assert.equal(app.downloads(), 1); assert.equal(app.get('export').disabled, true);
+    assert.equal(app.filename(), 'Corpus Test corpus.zip');
     assert.match(app.get('export-status').textContent, /Corpus saved.*Downloads folder/);
     await app.click('export'); assert.equal(app.downloads(), 1);
     await otherWindow.click('export'); assert.equal(otherWindow.downloads(), 0, 'a stale second window must not repeat the saved download');
@@ -39,6 +40,10 @@ test('saving once disables duplicate downloads across focus and reload; edits an
     await storage.setIncluded('saved', 'https://example.org/', false);
     await reopened.focus(); assert.equal(reopened.get('export').disabled, false);
     await reopened.click('export'); assert.equal(reopened.downloads(), 2);
+    const receipt = (await storage.loadWorkspace('saved')).corpusExport;
+    await storage.saveCorpusExport('saved', { ...receipt, filename: 'Test corpus-2026-11-18.zip' });
+    await reopened.focus(); assert.equal(reopened.get('export').disabled, false, 'old timestamped downloads can be replaced by the clearer filename');
+    await reopened.click('export'); assert.equal(reopened.filename(), 'Corpus Test corpus.zip');
     await storage.resetStoredProject('new');
     assert.equal((await storage.loadWorkspace('new')).corpusExport, undefined);
   } finally { delete globalThis.indexedDB; }

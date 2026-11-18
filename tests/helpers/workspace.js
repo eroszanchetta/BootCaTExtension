@@ -32,12 +32,12 @@ export const extracted = text => ({ status: 'ok', included: true, text, characte
 export async function workspace(projectId, options = {}) {
   const elements = new Map(), listeners = [], windowListeners = {};
   const get = id => elements.get(id) || (elements.set(id, new Element()), elements.get(id));
-  let archive, downloads = 0, confirm = true, reset, fetched = [], language = options.language || 'none';
+  let archive, lastFilename, downloads = 0, confirm = true, reset, fetched = [], language = options.language || 'none';
   const context = vm.createContext({
     console, navigator: options.navigator || {}, Blob, URL: { createObjectURL: value => { archive = value; downloads++; return 'blob:test'; }, revokeObjectURL() {} },
     AbortController, TextEncoder, Date, queueMicrotask, corpusFingerprint, corpusSavedMessage,
     setTimeout: (fn, delay) => { if (delay < 1000) { queueMicrotask(fn); return 0; } return setTimeout(fn, delay); }, clearTimeout,
-    document: { getElementById: get, createElement: () => new Element(), createElementNS: () => new Element(), createTextNode: text => ({ textContent: text }), body: new Element() },
+    document: { getElementById: get, createElement: tag => { const node = new Element(); if (tag === 'a') node.click = () => { lastFilename = node.download; }; return node; }, createElementNS: () => new Element(), createTextNode: text => ({ textContent: text }), body: new Element() },
     confirmAction: async () => confirm,
     window: { location: { reload() {} }, addEventListener(type, fn) { windowListeners[type] = fn; } },
     getExtensionAPI: () => ({ storage: { onChanged: { addListener(fn) { listeners.push(fn); } } } }),
@@ -63,7 +63,7 @@ export async function workspace(projectId, options = {}) {
   await waitFor(() => vm.runInContext(projectId ? 'ready' : "document.getElementById('status').textContent.startsWith('No active project')", context));
   await waitFor(() => !vm.runInContext('running', context));
   return {
-    get, fetched, reset: () => reset(), setConfirm: value => { confirm = value; }, archive: () => archive, downloads: () => downloads,
+    get, fetched, reset: () => reset(), setConfirm: value => { confirm = value; }, archive: () => archive, downloads: () => downloads, filename: () => lastFilename,
     state: () => vm.runInContext('({ entries, ready, running, pendingWrites, state })', context),
     async input(id, value) { get(id).value = value; await get(id).handlers.input?.(); await waitFor(() => !vm.runInContext('pendingWrites', context)); },
     click: id => get(id).handlers.click(),

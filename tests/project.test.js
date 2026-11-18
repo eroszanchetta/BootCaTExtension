@@ -68,7 +68,7 @@ test('project dialog cancels without clearing, requires a name, and submits name
   assert.equal(requests.at(-1).type, 'rename-project'); assert.equal(requests.at(-1).name, 'Energy corpus');
   assert.equal(vm.runInContext('ui.snapshot().name', context), 'Energy corpus');
   await get('new-project').handlers.click();
-  assert.equal(get('project-dialog').open, true); assert.equal(get('project-dialog-cancel').disabled, false);
+  assert.equal(get('project-dialog').open, true); assert.equal(get('project-dialog-cancel').disabled, false); assert.equal(get('project-dialog-close').hidden, true);
   assert.equal(requests.filter(item => item.type === 'new-project').length, 0);
   get('project-dialog-cancel').handlers.click(); assert.equal(get('project-dialog').open, false);
   await get('new-project').handlers.click();
@@ -158,4 +158,23 @@ test('close project requires confirmation, reports failures without clearing and
   fail = false; await get('close-project').handlers.click();
   assert.equal(resets, 1); assert.equal(vm.runInContext('ui.snapshot()', context), null);
   notify({ project: { oldValue: { id: 'one' }, newValue: null } }, 'local'); assert.equal(resets, 1);
+});
+
+test('every inactive workspace offers creation and closes only its own tab, with retry after failure', async () => {
+  const source = (await readFile(new URL('../src/project-ui.js', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '').replace(/^export /gm, '');
+  for (const promptForProject of [false, undefined]) {
+    const get = fixture(), removed = []; let fail = true;
+    const context = vm.createContext({ document: { getElementById: get }, validateLanguage, setProjectSectionState() {},
+      fillLanguageSelect: (select, { value }) => { select.value = value; },
+      getExtensionAPI: () => ({ tabs: { getCurrent: async () => ({ id: 42 }), remove: async id => { if (fail) throw new Error('Could not close tab'); removed.push(id); } },
+        storage: { onChanged: { addListener() {} } }, runtime: { sendMessage: async () => ({ ok: true, project: null, promptForProject }) } })
+    });
+    vm.runInContext(source + '\nglobalThis.ui = initProjectUI({ onReset() {}, onRename() {} });', context);
+    await vm.runInContext('ui.ready', context);
+    assert.equal(get('project-dialog').open, true); assert.equal(get('project-dialog-close').hidden, false);
+    await get('project-dialog-close').handlers.click();
+    assert.match(get('project-dialog-error').textContent, /Could not close tab/); assert.equal(get('project-dialog-close').disabled, false);
+    fail = false; await get('project-dialog-close').handlers.click(); assert.deepEqual(removed, [42]);
+    assert.equal(vm.runInContext('ui.snapshot()', context), null);
+  }
 });

@@ -109,11 +109,12 @@ const assert = require('node:assert/strict');
         await workspace.route('**/app.js', route => route.fulfill({ contentType: 'text/javascript', body: `
           import { initWorkspaceSections } from './workspace-sections.js';
           import { initProjectUI } from './project-ui.js';
-          globalThis.chrome = { runtime: { sendMessage: async () => ({ ok: true, project: null, promptForProject: true }) }, storage: { onChanged: { addListener() {} } } };
+          globalThis.chrome = { runtime: { sendMessage: async () => ({ ok: true, project: null, promptForProject: false }) }, storage: { onChanged: { addListener() {} } } };
           initWorkspaceSections(); initProjectUI({ onReset() {}, onRename() {} });
         ` }));
         await workspace.reload(); await workspace.locator('#project-dialog[open]').waitFor();
         assert.equal(await workspace.locator('#project-dialog-cancel').isDisabled(), true);
+        assert.equal(await workspace.locator('#project-dialog-close').isVisible(), true);
         await workspace.keyboard.press('Escape');
         assert.equal(await workspace.locator('#project-dialog[open]').count(), 1);
         // Resume the isolated disclosure/layout checks without an open modal.
