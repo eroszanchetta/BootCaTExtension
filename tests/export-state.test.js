@@ -9,6 +9,7 @@ test('export identity covers project settings, lists, review choices and search 
   const saved = { draft: { seeds: 'energy', tuples: 'energy storage', urls: 'https://example.org/' }, batch: { state: 'idle' }, entries: [{ doc: { filename: 'pages/1.html', extraction: { included: true } } }] };
   const project = { id: 'p', name: 'Corpus', language: 'none' }, collections = [{ query: 'energy', results: [] }];
   const first = await corpusFingerprint(saved, project, collections);
+  assert.equal(await corpusFingerprint(saved, { language: project.language, name: project.name, id: project.id }, collections), first);
   assert.equal(await corpusFingerprint({ ...saved, corpusExport: { fingerprint: first } }, project, collections), first);
   for (const key of ['seeds', 'tuples', 'urls']) assert.notEqual(await corpusFingerprint({ ...saved, draft: { ...saved.draft, [key]: 'edited' } }, project, collections), first);
   for (const key of ['name', 'language']) assert.notEqual(await corpusFingerprint(saved, { ...project, [key]: 'changed' }, collections), first);
