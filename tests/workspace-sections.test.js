@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { initWorkspaceSections, openWorkspaceSection } from '../src/workspace-sections.js';
+import { initWorkspaceSections, openWorkspaceSection, setProjectSectionState } from '../src/workspace-sections.js';
 
 test('workspace sections collapse on initialization; navigation and preview reveal only their target', () => {
-  const ids = ['seeds-section', 'search-section', 'urls-section', 'review-section', 'preview-section', 'log-section'];
+  const ids = ['project-section', 'seeds-section', 'search-section', 'urls-section', 'review-section', 'preview-section', 'log-section'];
   const panels = new Map(ids.map(id => [id, { open: true }]));
   const links = ids.map(id => ({ getAttribute: () => '#' + id, addEventListener(type, handler) { this.click = handler; } }));
   const options = { open: true };
@@ -11,16 +11,18 @@ test('workspace sections collapse on initialization; navigation and preview reve
   const previous = globalThis.document;
   globalThis.document = { getElementById: id => panels.has(id) ? { querySelector: () => panels.get(id), scrollIntoView(options) { assert.equal(panels.get(id).open, true, 'expand before scrolling'); scrolled.push([id, options.block]); } } : null, querySelectorAll: selector => selector === 'details[data-default-collapsed]' ? [options] : links };
   try {
-    initWorkspaceSections(); assert.ok([...panels.values()].every(panel => !panel.open)); assert.equal(options.open, false);
-    links[1].click(); assert.equal(panels.get('search-section').open, true);
+    initWorkspaceSections(); assert.ok([...panels.entries()].every(([id, panel]) => panel.open === (id === 'project-section'))); assert.equal(options.open, false);
+    links[2].click(); assert.equal(panels.get('search-section').open, true);
     assert.equal(panels.get('urls-section').open, false);
     assert.deepEqual(scrolled, []);
     openWorkspaceSection('preview-section', { scroll: true }); assert.equal(panels.get('preview-section').open, true);
     openWorkspaceSection('review-section', { scroll: true });
     assert.deepEqual(scrolled, [['preview-section', 'start'], ['review-section', 'start']]);
-    links[5].click(); assert.equal(panels.get('log-section').open, true);
+    links[6].click(); assert.equal(panels.get('log-section').open, true);
+    setProjectSectionState(true); assert.equal(panels.get('project-section').open, false);
+    setProjectSectionState(false); assert.equal(panels.get('project-section').open, true);
     openWorkspaceSection('top', { scroll: true });
     options.open = true;
-    initWorkspaceSections(); assert.ok([...panels.values()].every(panel => !panel.open)); assert.equal(options.open, false);
+    initWorkspaceSections(); assert.ok([...panels.entries()].every(([id, panel]) => panel.open === (id === 'project-section'))); assert.equal(options.open, false);
   } finally { globalThis.document = previous; }
 });

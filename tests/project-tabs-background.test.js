@@ -28,8 +28,9 @@ for (const namespace of ['chrome', 'browser']) test(`${namespace}: background re
   await import(`../src/background.js?tracked-test=${namespace}`);
   const request = (message, page = 'downloader.html') => new Promise(resolve => listener(message, { id: 'test', url: origin + page }, resolve));
   try {
-    const { project } = await request({ type: 'get-project' });
-    assert.equal(project.nameConfirmed, false);
+    assert.equal((await request({ type: 'get-project' })).project, null);
+    const { project } = await request({ type: 'new-project', projectId: null, name: 'Initial corpus', language: 'none' });
+    assert.equal(project.nameConfirmed, true);
     const named = await request({ type: 'rename-project', projectId: project.id, name: 'Initial corpus' });
     assert.equal(named.project.nameConfirmed, true);
     const language = await request({ type: 'set-project-language', projectId: project.id, language: 'ita' });

@@ -12,13 +12,15 @@ function webURL(value) {
   url.hash = ''; return url.href;
 }
 export const readPDFFile = (file, limit = PDF_IMPORT_LIMIT) => readDocumentFile(file, 'pdf', limit);
-export async function captureTabDocument(tab, scripting) {
+export async function captureTabDocument(tab, scripting, { signal } = {}) {
+  signal?.throwIfAborted();
   const url = webURL(tab.url);
   let pdfURL = url;
   if (!/\.pdf$/i.test(new URL(url).pathname)) {
     let page;
     try { page = (await scripting.executeScript({ target: { tabId: tab.id }, func: captureCurrentPage }))[0]?.result; }
     catch { /* Built-in PDF viewers reject script injection. Retry as a PDF below. */ }
+    signal?.throwIfAborted();
     if (page?.error) throw new Error(page.error);
     if (page && !page.pdf) return page;
     if (page?.pdf) pdfURL = webURL(page.url);
@@ -26,7 +28,8 @@ export async function captureTabDocument(tab, scripting) {
   try {
     // This is an explicit user action. Ordinary batch downloads still omit cookies.
     // Re-fetching may reuse login/CAPTCHA cookies, but cannot read viewer memory.
-    const response = await fetchFile(pdfURL, AbortSignal.timeout(30000), FILE_LIMIT, { credentials: 'include' });
+    const timeout = AbortSignal.timeout(30000);
+    const response = await fetchFile(pdfURL, signal ? AbortSignal.any([signal, timeout]) : timeout, FILE_LIMIT, { credentials: 'include' });
     if (!hasPDFSignature(response.bytes)) throw new Error('The server returned a page instead of a PDF');
     return {
       kind: 'pdf', url: pdfURL, finalURL: response.finalURL || pdfURL,

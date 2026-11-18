@@ -100,6 +100,7 @@ for (const namespace of ['chrome', 'browser']) test(`${namespace}: background se
     assert.equal(listener(message, { id: 'test', url: origin + 'popup.html' }, resolve), true);
   });
   try {
+    const initial = await request({ type: 'new-project', projectId: null, name: 'Initial corpus', language: 'none' });
     const replies = await Promise.all([request({ type: 'collect', tabId: 1 }), request({ type: 'collect', tabId: 2 })]);
     assert.equal(replies.every(r => r.ok), true);
     assert.equal(collections.length, 2);
@@ -110,7 +111,7 @@ for (const namespace of ['chrome', 'browser']) test(`${namespace}: background se
     assert.equal(failed.ok, false);
     assert.match(failed.error, /No usable results/);
     assert.equal(collections.length, 2);
-    await request({ type: 'clear-collections' });
+    await request({ type: 'clear-collections', projectId: initial.project.id });
     assert.equal(collections.length, 0);
     assert.equal((await request({ type: 'open-workspace' })).ok, true);
     assert.equal(focused, 1); assert.equal(opened, 0);
@@ -133,9 +134,9 @@ for (const namespace of ['chrome', 'browser']) test(`${namespace}: background se
     await savePage({ url: 'https://pending.test/', id: 'pending', html: '<p>Saved page</p>' });
     const oldCollection = request({ type: 'collect', tabId: 4 });
     await started;
-    const reset = await request({ type: 'new-project' });
+    const reset = await request({ type: 'new-project', projectId: project.id, name: 'New corpus', language: 'none' });
     assert.equal(reset.ok, true); assert.notEqual(reset.project.id, project.id);
-    assert.equal(reset.project.name, 'Untitled project');
+    assert.equal(reset.project.name, 'New corpus');
     assert.equal((await readSavedPages()).length, 0);
     assert.equal((await loadWorkspace(reset.project.id)).entries.length, 0); assert.equal(stored.unrelatedOldState, undefined);
     assert.equal(collections.length, 0);

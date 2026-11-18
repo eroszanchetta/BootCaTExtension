@@ -100,7 +100,7 @@ const { execFileSync } = require('node:child_process');
 
     const openPanels = async () => page.locator('.workspace-panel').evaluateAll(panels => panels.forEach(panel => { panel.open = true; }));
     const assertCollapsed = async () => {
-      assert.equal(await page.locator('.workspace-panel[open]').count(), 0);
+      assert.deepEqual(await page.locator('.workspace-panel[open]').evaluateAll(panels => panels.map(panel => panel.closest('section').id)), []);
       assert.equal(await page.locator('#more-search-options').getAttribute('open'), null);
     };
     const openSearchOptions = async () => {
@@ -137,10 +137,21 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     }
 
     await page.locator('#project-dialog[open]').waitFor();
+    await page.click('#project-dialog-cancel');
+    await page.waitForFunction(async () => (await (globalThis.browser ?? chrome).storage.local.get('project')).project === null);
+    assert.equal(await page.locator('#project-section .workspace-panel').evaluate(panel => panel.open), true);
+    assert.equal(await page.locator('.workspace-panel[open]').count(), 1);
+    for (const selector of ['#urls', '#start', '#export', '#seeds', '#tuples', '#engine', '#project-name']) assert.equal(await page.locator(selector).isDisabled(), true, selector);
+    assert.equal(await page.evaluate(async () => (await (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'get-project' })).project), null);
+    await page.reload();
+    await page.waitForFunction(() => document.querySelector('#project-status').textContent.startsWith('No active project'));
+    assert.equal(await page.locator('#project-dialog[open]').count(), 0);
+    await page.click('#new-project');
     await page.selectOption('#project-dialog-language', 'none'); await page.fill('#project-dialog-name', 'First corpus'); await page.click('#project-dialog-submit');
     await page.locator('#project-dialog[open]').waitFor({ state: 'hidden' });
+    await page.waitForFunction(() => document.querySelector('#project-name').value === 'First corpus' && !document.querySelector('#start').disabled);
     await assertCollapsed();
-    assert.equal(await page.locator('.workspace-panel').count(), 6);
+    assert.equal(await page.locator('.workspace-panel').count(), 7);
     assert.equal(await page.locator('#export-metadata, #metadata-export-status').count(), 0);
     assert.equal(await page.evaluate(() => document.querySelector('#review-section .panel-content').lastElementChild.classList.contains('corpus-export')), true);
     assert.equal(await page.locator('#search-form').count(), 0);
@@ -656,7 +667,36 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     await page.waitForFunction(() => document.querySelector('#urls').value.split('\n').length === 501 && !document.querySelector('#start').disabled);
     assert.match(await page.locator('#urls-warning').innerText(), /501 URLs/);
     assert.equal(await page.locator('#urls-counter').innerText(), '501 URLs');
+    // Lifecycle closure propagates to other workspace windows and retains defaults.
+    const secondWorkspace = await context.newPage(); await secondWorkspace.goto(origin + '/downloader.html');
+    await secondWorkspace.waitForFunction(() => !document.querySelector('#start').disabled);
+    await page.bringToFront();
+    await clickConfirmed('#close-project', false);
+    assert.equal(await page.inputValue('#project-name'), 'Saved defaults');
+    assert.equal(await page.locator('#start').isDisabled(), false);
+    await clickConfirmed('#close-project');
+    for (const workspace of [page, secondWorkspace]) {
+      await workspace.waitForFunction(() => document.querySelector('#project-status').textContent.startsWith('No active project'));
+      assert.equal(await workspace.locator('#project-section .workspace-panel').evaluate(panel => panel.open), true);
+      assert.equal(await workspace.locator('.workspace-panel[open]').count(), 1);
+      assert.equal(await workspace.locator('#close-project').isVisible(), false);
+      assert.equal(await workspace.locator('#start').isDisabled(), true);
+      assert.equal(await workspace.inputValue('#urls'), '');
+      assert.equal(await workspace.locator('#project-dialog[open]').count(), 0);
+    }
+    const inactivePopup = await context.newPage(); await inactivePopup.goto(origin + '/popup.html');
+    await inactivePopup.waitForFunction(() => document.querySelector('#popup-status').textContent.includes('Create a project'));
+    assert.equal(await inactivePopup.locator('#collect-action, #capture-action').evaluateAll(items => items.every(item => item.hidden)), true);
+    await inactivePopup.close(); await secondWorkspace.close(); await page.bringToFront();
+    await page.click('#new-project'); await page.fill('#project-dialog-name', 'After closing');
+    await page.selectOption('#project-dialog-language', 'none'); await page.click('#project-dialog-submit');
+    await page.waitForFunction(() => document.querySelector('#project-name').value === 'After closing' && !document.querySelector('#start').disabled);
+    await assertCollapsed(); await openPanels(); await openSearchOptions();
+    assert.equal(await page.inputValue('#excluded-sites'), 'youtube.com\nfacebook.com\nexample.org');
+    assert.equal(await page.inputValue('#urls'), '');
+    assert.equal(await page.locator('#review-lists tbody tr').count(), 0);
     assert.deepEqual(errors, []);
+    console.log('Inactive state, initial cancellation, project closure across windows and preference retention passed.');
     console.log('Workspace reuse, saved-search persistence and zero page errors passed.');
   } finally { await context?.close(); if (pdfServer) await new Promise(resolve => pdfServer.close(resolve)); await rm(root, { recursive: true, force: true }); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

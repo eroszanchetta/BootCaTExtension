@@ -13,7 +13,7 @@ export async function readCollections() {
 export function initSearchUI({ isRunning, seenCollectionIds = [], onChange = () => {}, getProjectId = () => null }) {
   const el = id => document.getElementById(id);
   let collections = [];
-  let changed = false;
+  let changed = false, destroyed = false;
   const seenCollections = new Set(seenCollectionIds), pending = new Set(), pendingCollections = new Set();
   const status = el("collection-status");
   for (const engine of ENGINES) {
@@ -35,7 +35,7 @@ export function initSearchUI({ isRunning, seenCollectionIds = [], onChange = () 
     }
   }
   function flush() {
-    if (!pending.size && !pendingCollections.size) return;
+    if (destroyed || (!pending.size && !pendingCollections.size)) return;
     if (isRunning()) { status.textContent += ' New URLs will be added after the current batch finishes.'; return; }
     const input = el('urls');
     const current = parseURLs(input.value);
@@ -48,6 +48,7 @@ export function initSearchUI({ isRunning, seenCollectionIds = [], onChange = () 
     onChange({ urls: input.value, seenCollections: [...seenCollections] });
   }
   function receive(saved) {
+    if (destroyed) return;
     collections = saved;
     if (!saved.length) { pending.clear(); pendingCollections.clear(); }
     for (const collection of collections) {
@@ -68,7 +69,7 @@ export function initSearchUI({ isRunning, seenCollectionIds = [], onChange = () 
   el("clear-searches").addEventListener("click", async () => {
     if (!await confirmAction({ title: 'Clear saved searches?', message: 'All saved search collections will be cleared. Export them first if you want to keep them. The URL download list will stay as it is.', confirmLabel: 'Clear searches', destructive: true })) return;
     try {
-      const reply = await ext.runtime.sendMessage({ type: "clear-collections" });
+      const reply = await ext.runtime.sendMessage({ type: "clear-collections", projectId: getProjectId() });
       if (!reply?.ok) throw new Error(reply?.error || "Could not clear searches");
     } catch (error) { status.textContent = error.message; }
   });
@@ -76,5 +77,5 @@ export function initSearchUI({ isRunning, seenCollectionIds = [], onChange = () 
     if (area === "local" && changes.collections) { changed = true; receive(changes.collections.newValue || []); }
   });
   readCollections().then(saved => { if (!changed) receive(saved); }, error => { status.textContent = `Could not load saved searches: ${error.message}`; });
-  return { flush };
+  return { flush, destroy() { destroyed = true; pending.clear(); pendingCollections.clear(); collections = []; } };
 }

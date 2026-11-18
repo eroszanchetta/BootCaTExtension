@@ -16,13 +16,18 @@ export const removeSavedPage = page => transaction('readwrite', store => {
   // Do not delete a newer snapshot saved while the old one was importing.
   request.onsuccess = () => { if (request.result?.id === page.id) store.delete(page.url); };
 });
-export const savePage = page => transaction('readwrite', (store, done, fail) => {
-  const request = store.getAll();
-  request.onsuccess = () => {
-    try {
-      validateSavedPages([...request.result.filter(old => old.url !== page.url), page]);
-      store.put(page); done(page);
-    } catch (error) { fail(error); }
+export const savePage = (page, projectId) => dbTransaction(['pages', 'meta'], 'readwrite', (tx, done, fail) => {
+  const store = tx.objectStore('pages');
+  const active = tx.objectStore('meta').get('active');
+  active.onsuccess = () => {
+    if (projectId !== undefined && active.result?.projectId !== projectId) { fail(new Error('The project changed. Reopen BootCaT.')); return; }
+    const request = store.getAll();
+    request.onsuccess = () => {
+      try {
+        validateSavedPages([...request.result.filter(old => old.url !== page.url), page]);
+        store.put(page); done(page);
+      } catch (error) { fail(error); }
+    };
   };
 });
 export const listSavedPages = () => transaction('readonly', (store, done) => {

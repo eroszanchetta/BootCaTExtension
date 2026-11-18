@@ -101,6 +101,11 @@ const assert = require('node:assert/strict');
         await workspace.route('**/app.js', route => route.fulfill({ contentType: 'text/javascript',
           body: "import { initWorkspaceSections } from './workspace-sections.js'; initWorkspaceSections();" }));
         await workspace.goto(`http://127.0.0.1:${server.address().port}/downloader.html`);
+        assert.equal(await workspace.locator('#project-section .workspace-panel').evaluate(panel => panel.open), true);
+        await workspace.locator('#project-section .workspace-panel > summary').focus(); await workspace.keyboard.press('Enter');
+        assert.equal(await workspace.locator('#project-section .workspace-panel').evaluate(panel => panel.open), false);
+        await workspace.locator('nav a[href="#project-section"]').click();
+        assert.equal(await workspace.locator('#project-section .workspace-panel').evaluate(panel => panel.open), true);
         await workspace.locator('nav a[href="#search-section"]').click();
         assert.equal(await workspace.locator('#more-search-options').evaluate(panel => panel.open), false);
         assert.equal(await workspace.locator('#search-site').isVisible(), false);
