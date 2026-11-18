@@ -211,7 +211,6 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
           if (current && outcome !== 'closed') { current.status = current.status === 'loading' ? 'loading' : 'attention'; current.reason = reason || 'Inspect this tab, then retry collection.'; }
           batch.processed++; if (saved) batch.saved++;
           if (outcome === 'closed') batch.closed++; else if (outcome === 'skipped') batch.skipped++; else batch.leftOpen++;
-          if (batch.details.length < 100) batch.details.push({ query: record.query, outcome, reason: reason || 'Results saved and tab closed.' });
         });
         if (!exists) break;
       }
@@ -231,7 +230,7 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
       const records = data.tabs.filter(record => record.projectId === projectId && (!loadedOnly || (record.status !== 'loading' && !record.unloaded)));
       if (!records.length) throw new Error('No loaded project search tabs to collect.');
       const run = { id: crypto.randomUUID(), projectId, stopped: false };
-      data.batch = { id: run.id, projectId, workerToken, running: true, total: records.length, processed: 0, saved: 0, closed: 0, skipped: 0, leftOpen: 0, details: [] };
+      data.batch = { id: run.id, projectId, workerToken, running: true, total: records.length, processed: 0, saved: 0, closed: 0, skipped: 0, leftOpen: 0 };
       await write(data); activeBatch = run;
       return { run, records, state: status(data, projectId) };
     });

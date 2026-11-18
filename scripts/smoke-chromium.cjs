@@ -100,6 +100,7 @@ const { execFileSync } = require('node:child_process');
 
     const openPanels = async () => page.locator('.workspace-panel').evaluateAll(panels => panels.forEach(panel => { panel.open = true; }));
     const assertCollapsed = async () => {
+      await page.waitForFunction(() => !document.querySelector('#start').disabled);
       assert.deepEqual(await page.locator('.workspace-panel[open]').evaluateAll(panels => panels.map(panel => panel.closest('section').id)), []);
       assert.equal(await page.locator('#more-search-options').getAttribute('open'), null);
     };
@@ -175,6 +176,7 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     }
     async function submitProject() {
       const replacing = !!(await page.inputValue('#project-name'));
+      const nextName = await page.inputValue('#project-dialog-name');
       await page.click('#project-dialog-submit');
       if (replacing) {
         await page.locator('#confirmation-dialog[open]').waitFor();
@@ -182,6 +184,7 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
         await page.click('#confirmation-accept');
         await page.locator('#confirmation-dialog[open]').waitFor({ state: 'hidden' });
       }
+      await page.waitForFunction(name => document.querySelector('#project-name').value === name && !document.querySelector('#start').disabled, nextName);
     }
     const navNames = await page.locator('nav a').allTextContents();
     assert.equal(navNames.at(-2), 'Save corpus'); assert.equal(navNames.at(-1), 'Help');
