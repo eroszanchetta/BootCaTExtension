@@ -188,7 +188,7 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
       await page.waitForFunction(name => document.querySelector('#project-name').value === name && !document.querySelector('#start').disabled, nextName);
     }
     const navNames = await page.locator('nav a').allTextContents();
-    assert.equal(navNames.at(-2), 'Save corpus'); assert.equal(navNames.at(-1), 'Help');
+    assert.equal(navNames.at(-2), 'Save'); assert.equal(navNames.at(-1), 'Help');
     await page.locator('nav a[href="#save-section"]').click();
     assert.equal(await page.locator('#save-section .workspace-panel').getAttribute('open'), '');
     assert.equal(await page.evaluate(() => document.querySelector('[aria-labelledby="project-heading"]').nextElementSibling.id), 'seeds-section');
@@ -289,7 +289,7 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     assert.equal(context.pages().length, pagesAfterCollection);
     await clickConfirmed('#clear-searches', false);
     assert.match(await page.locator('#collection-status').innerText(), /2 unique URLs/);
-    console.log('Styled confirmations, Save corpus navigation and URL collection without Log passed.');
+    console.log('Styled confirmations, Save navigation and URL collection without Log passed.');
 
     await page.selectOption('#engine', 'google');
     assert.equal(new URL(await page.locator('#prepared-queries a').first().getAttribute('href')).hostname, 'www.google.com');
@@ -382,7 +382,7 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
       await search.goto('https://corpus.test/article');
       assert.equal((await page.evaluate(tabId => (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'get-page-corpus-state', tabId }), tabId)).saved, true, 'batch downloads count as already saved');
       assert.equal(await page.inputValue('#preview-text'), '');
-      assert.equal(await page.locator('#preview-title').innerText(), 'Preview Text');
+      assert.equal(await page.locator('#preview-title').innerText(), 'Preview');
       await page.click('#review-lists .preview-button');
       await page.waitForFunction(() => document.querySelector('#preview-text').value.includes('Renewable energy'));
       assert.ok((await page.inputValue('#preview-text')).includes('Renewable energy'));
