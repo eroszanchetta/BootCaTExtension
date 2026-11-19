@@ -291,3 +291,13 @@ test('closing a second uncollected copy cannot erase successful collection histo
   assert.equal((await app.state()).history.find(item => item.query === 'energy').status, 'collected');
   assert.equal((await app.manager.open({ projectId: 'project', engine: 'google', query: 'energy', onlyMissing: true })).opened, false);
 });
+
+test('restoring already-collected provenance does not write again when browser storage reorders object fields', async () => {
+  const app = fixture({ collections: [{ engine: 'google', query: 'done', results: [{ url: 'https://example.org' }], unresolved: 0 }] });
+  const first = await app.state();
+  const data = app.session[SEARCH_TABS_KEY];
+  data.history = data.history.map(item => Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])));
+  const second = await app.state();
+  assert.equal(second.revision, first.revision, 'unchanged completion must not trigger another storage event and refresh');
+  assert.equal((await app.state()).revision, first.revision);
+});

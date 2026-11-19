@@ -64,16 +64,19 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
   async function restoreCollected(data, projectId) {
     // Saved search provenance outlives workspace and browser restarts. Partial
     // snapshots are deliberately excluded: those queries still need collection.
-    const before = JSON.stringify(data.history || []);
+    let changed = false;
     const { collections = [] } = await ext.storage.local?.get('collections') || {};
     const history = new Map((data.history || []).map(item => [JSON.stringify([item.projectId, queryKey(item.engine, item.query)]), item]));
     for (const collection of collections) {
       if (typeof collection.query !== 'string' || !collection.engine || collection.unresolved || !collection.results?.length) continue;
       const item = { projectId, engine: collection.engine, query: collection.query, status: 'collected', reason: 'Results saved in this project.' };
-      history.set(JSON.stringify([projectId, queryKey(item.engine, item.query)]), item);
+      const key = JSON.stringify([projectId, queryKey(item.engine, item.query)]);
+      // Browser storage may reorder object fields. Compare the actual completion
+      // value, rather than JSON object order, to avoid an onChanged refresh loop.
+      if (history.get(key)?.status === 'collected') continue;
+      history.set(key, item); changed = true;
     }
-    data.history = [...history.values()];
-    if (JSON.stringify(data.history) !== before) await write(data);
+    if (changed) { data.history = [...history.values()]; await write(data); }
   }
   async function open({ projectId, engine, query, active, onlyMissing = false }) {
     if (typeof query !== 'string' || !query.trim()) throw new Error('Enter a search query first.');
