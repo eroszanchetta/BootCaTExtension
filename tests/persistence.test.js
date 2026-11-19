@@ -196,7 +196,7 @@ test('Stop persists completed pages and resume retries only unfinished URLs', as
   assert.equal((await storage.loadWorkspace('one')).entries.length, 2);
 });
 
-test('pending browser lock acquisition disables edits immediately so deletion cannot erase a subsequent edit', async () => {
+test('pending document locks disable the affected row without blocking unrelated edits', async () => {
   fresh();
   const navigator = { locks: { request: async (name, options, callback) => {
     await new Promise(resolve => setImmediate(resolve));
@@ -206,7 +206,8 @@ test('pending browser lock acquisition disables edits immediately so deletion ca
   await app.input('urls', 'https://race.test/'); await app.click('start');
   const trash = app.get('results').children[0].children[3].children[0];
   const deletion = trash.handlers.click();
-  assert.equal(app.get('urls').disabled, true, 'edits must be blocked before the lock callback starts');
+  assert.equal(trash.disabled, true, 'the affected row is reserved before lock acquisition');
+  assert.equal(app.get('urls').disabled, false, 'unrelated inputs remain available');
   assert.equal(app.get('start').disabled, true);
   await deletion;
   await app.input('urls', 'https://race.test/');

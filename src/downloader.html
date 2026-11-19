@@ -117,6 +117,7 @@
       <details class="workspace-panel"><summary><h2 id="results-heading">Download</h2></summary><div class="panel-content">
       <p class="hint" id="pdf-notice">PDF reading order, columns, headers and line breaks may need review. OCR is not performed.</p>
       <p class="hint">New PDF extractions replace newlines with spaces unless the preceding character is a dot. Hyphens are preserved. Raw PDF text is retained in the ZIP's raw-pdf folder for comparison.</p>
+      <p id="download-activity" class="hint" role="status"></p>
       <p id="status" role="status" aria-live="polite">Ready when you are.</p>
       <progress id="progress" value="0" max="1" aria-label="URLs processed"></progress>
       <p id="saved-status" role="status" aria-live="polite"></p>
@@ -125,12 +126,11 @@
       <p class="hint">Check below to see the download status of each URL</p>
       <div id="review-lists">
       <div class="table-wrap"><table aria-label="Documents with usable text"><thead><tr><th scope="col">Include</th><th scope="col">URL</th><th scope="col">Download / extraction</th><th scope="col">Delete</th></tr></thead><tbody id="results"></tbody></table></div>
-      <div id="attention-section" class="attention-section" aria-labelledby="attention-heading" hidden>
-        <h3 id="attention-heading">Documents needing attention</h3>
-        <p id="attention-count" class="hint" role="status" aria-live="polite">0 documents</p>
-        <p class="hint">These documents have not produced usable corpus text. Resolve download problems using the guidance below, or remove unwanted documents. Successfully recovered documents return to the main list.</p>
+      <details id="attention-section" class="attention-section" aria-labelledby="attention-heading" data-default-collapsed hidden>
+        <summary><h3 id="attention-heading">Documents with issues</h3><span id="attention-count" class="section-counter">0 documents</span></summary>
+        <p class="hint">These documents are not included in the corpus. Review them if you wish, or leave them here. Successfully recovered documents return to the main list.</p>
         <div class="table-wrap"><table aria-labelledby="attention-heading"><thead><tr><th scope="col">Include</th><th scope="col">URL</th><th scope="col">Download / extraction</th><th scope="col">Delete</th></tr></thead><tbody id="problem-results"></tbody></table></div>
-      </div>
+      </details>
       </div>
       <p id="storage-status" class="hint" role="status" aria-live="polite">Loading saved project…</p>
       <p id="corpus-status" role="status" aria-live="polite">Download pages to extract corpus text.</p>

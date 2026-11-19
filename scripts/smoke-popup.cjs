@@ -106,6 +106,13 @@ const assert = require('node:assert/strict');
         assert.equal(await workspace.locator('#project-section .workspace-panel').evaluate(panel => panel.open), false);
         await workspace.locator('nav a[href="#project-section"]').click();
         assert.equal(await workspace.locator('#project-section .workspace-panel').evaluate(panel => panel.open), true);
+        await workspace.evaluate(() => { document.querySelector('#attention-section').hidden = false; });
+        assert.equal(await workspace.locator('#attention-heading').innerText(), 'Documents with issues');
+        assert.equal(await workspace.locator('#attention-section').evaluate(panel => panel.open), false);
+        await workspace.locator('#attention-section > summary').focus(); await workspace.keyboard.press('Enter');
+        assert.equal(await workspace.locator('#attention-section').evaluate(panel => panel.open), true);
+        await workspace.keyboard.press('Enter');
+        assert.equal(await workspace.locator('#attention-section').evaluate(panel => panel.open), false);
         await workspace.route('**/app.js', route => route.fulfill({ contentType: 'text/javascript', body: `
           import { initWorkspaceSections } from './workspace-sections.js';
           import { initProjectUI } from './project-ui.js';

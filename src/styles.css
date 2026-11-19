@@ -82,7 +82,10 @@ nav a:hover { background: #c7ddeb; }
 #project-dialog .actions, #confirmation-dialog .actions { margin-top: 24px; flex-wrap: wrap; }
 
 .attention-section { margin-top: 24px; padding: 20px; border: 1px solid #d5b976; border-radius: 12px; background: #fffbf2; }
-.attention-section h3 { margin-top: 0; }
+.attention-section summary { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.attention-section summary::before { content: "▸"; }
+.attention-section[open] > summary::before { content: "▾"; }
+.attention-section h3 { display: inline; margin: 0; }
 #review-lists tr.preview-selected > td { background: #dceef8; }
 #review-lists tr.preview-selected > td:first-child { box-shadow: inset 4px 0 #007aa6; }
 
@@ -125,3 +128,5 @@ button.danger:hover { background: #87352e; }
 #text-review-status { margin: 0; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 @media (max-width: 600px) { #text-review-dialog { padding: 16px; } .text-review-footer { flex-direction: column; align-items: stretch; gap: 8px; } .text-review-footer .actions { justify-content: flex-end; } }
+
+.document-activity:empty { display: none; }

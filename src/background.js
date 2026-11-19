@@ -1,7 +1,7 @@
 import { resetProjectLocalState } from './project-local-state.js';
 import { readUserDefaults, saveUserDefaults } from './user-defaults.js';
 import { validateLanguage } from './language-detection.js';
-import { ensureStoredProject, resetStoredProject, closeStoredProject, storedProjectState, hasStoredPage } from './project-store.js';
+import { ensureStoredProject, resetStoredProject, closeStoredProject, storedProjectState, hasStoredPage, getDeletionVersion } from './project-store.js';
 import { captureTabDocument } from './pdf-recovery.js';
 import { savePage } from './page-store.js';
 import { getExtensionAPI } from './extension-api.js';
@@ -163,13 +163,13 @@ async function handle(message) {
     const saved = await serialize(async () => { await assertProject(project.id); return hasStoredPage(project.id, tab.url); });
     if (saved) { await ensureWorkspace(); return { alreadySaved: true }; }
     const controller = new AbortController(), token = crypto.randomUUID();
-    await serialize(async () => { await assertProject(project.id); captures.set(token, controller); });
+    const deletionVersion = await serialize(async () => { await assertProject(project.id); const version = await getDeletionVersion(project.id, tab.url); captures.set(token, controller); return version; });
     try {
       const page = await captureTabDocument(tab, ext.scripting, { signal: controller.signal });
       return await serialize(async () => {
         await assertProject(project.id);
         if (await hasStoredPage(project.id, page.url)) return { alreadySaved: true };
-        await savePage({ ...page, id: crypto.randomUUID() }, project.id);
+        await savePage({ ...page, id: crypto.randomUUID() }, project.id, { url: tab.url, version: deletionVersion });
         try { await ext.storage.local.set({ captureRevision: crypto.randomUUID() }); } catch {}
         await ensureWorkspace();
         return {};
