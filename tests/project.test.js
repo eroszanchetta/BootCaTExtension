@@ -68,6 +68,8 @@ test('project dialog cancels without clearing, requires a name, and submits name
   get('rename-project').handlers.click(); get('project-dialog-name').value = 'Energy corpus'; get('project-dialog-language').value = 'none'; await get('project-form').handlers.submit({ preventDefault() {} });
   assert.equal(requests.at(-1).type, 'rename-project'); assert.equal(requests.at(-1).name, 'Energy corpus');
   assert.equal(vm.runInContext('ui.snapshot().name', context), 'Energy corpus');
+  notify({ project: { newValue: { ...project, name: 'Renamed in another window' } } }, 'local');
+  assert.equal(get('project-name').value, 'Renamed in another window');
   await get('new-project').handlers.click();
   assert.equal(get('project-dialog').open, true); assert.equal(get('project-dialog-cancel').disabled, false);
   assert.equal(requests.filter(item => item.type === 'new-project').length, 0);

@@ -1,6 +1,7 @@
 import { makeStoredZIP } from './zip-blob.js';
 import { readPortableZIP, safeArchivePath } from './portable-zip.js';
 import { validateLanguage } from './language-detection.js';
+import { normalizeSearchFilters } from './search-filters.js';
 import { STORES } from './storage-db.js';
 export const PROJECT_FORMAT = 'BootCaTProject', PROJECT_VERSION = 1;
 const fail = message => { throw new Error(`Cannot open project: ${message}`); };
@@ -44,6 +45,7 @@ export function validateProjectSnapshot(snapshot) {
   for (const key of ['seenCollections', 'preparedQueries']) if (!Array.isArray(draft[key]) || !draft[key].every(string)) fail(`invalid ${key} list.`);
   if (draft.preparedQueryBases !== null && (!Array.isArray(draft.preparedQueryBases) || !draft.preparedQueryBases.every(string))) fail('invalid query bases.');
   if (draft.preparedFilters !== null && (!object(draft.preparedFilters) || !string(draft.preparedFilters.fileType) || !string(draft.preparedFilters.site) || !Array.isArray(draft.preparedFilters.excludedSites) || !draft.preparedFilters.excludedSites.every(string))) fail('invalid query filters.');
+  if (draft.preparedFilters) normalizeSearchFilters(draft.preparedFilters);
   for (const key of ['processed', 'total', 'nextFileIndex', 'storedBytes']) if (!integer(batch[key])) fail('invalid progress metadata.');
   if (!string(batch.state) || !string(batch.lastStatus)) fail('invalid progress state.');
   const collections = meta.get('searches').collections;

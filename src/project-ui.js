@@ -58,7 +58,7 @@ export function initProjectUI({ onReset, onRename, onSaveProject = async () => {
     if (!applied) setProjectSectionState(!!project);
     applied = true;
     fillLanguageSelect(language, { value: next?.language || 'none' });
-    if (document.activeElement !== name) name.value = next?.name || '';
+    name.value = next?.name || '';
     status.textContent = next ? '' : 'No active project. Open or create a project to start collecting.';
     controls(); onRename();
   }
@@ -123,7 +123,9 @@ export function initProjectUI({ onReset, onRename, onSaveProject = async () => {
   close.addEventListener('click', async () => {
     if (!project || saving || changingProject) return;
     const closingId = project.id;
-    const approved = await confirmReplacement({ title: 'Close project?', message: 'Stop pending work and permanently delete this project’s seeds, tuples, searches, tab tracking, URLs, original files and extracted texts from this browser. Save your project first if you want to keep it. Your saved preferences will be kept.', confirmLabel: 'Close project', destructive: true });
+    let approved;
+    try { approved = await confirmReplacement({ title: 'Close project?', message: 'Stop pending work and permanently delete this project’s seeds, tuples, searches, tab tracking, URLs, original files and extracted texts from this browser. Save your project first if you want to keep it. Your saved preferences will be kept.', confirmLabel: 'Close project', destructive: true }); }
+    catch (error) { status.textContent = error.message; return; }
     if (!approved || changingProject || project?.id !== closingId) return;
     saving++; controls();
     try {
