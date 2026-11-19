@@ -70,6 +70,7 @@ jobs:
       - run: |
           runuser -u pwuser -- npm run test:popup > browser-test.log 2>&1
           runuser -u pwuser -- npm run test:browser >> browser-test.log 2>&1
+          runuser -u pwuser -- npm run test:portable >> browser-test.log 2>&1
       - name: Report browser failure
         id: browser_report
         if: failure()

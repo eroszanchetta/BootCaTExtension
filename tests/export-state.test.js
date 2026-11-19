@@ -55,7 +55,7 @@ test('an export failure keeps saving available and stores no successful-export r
     const app = await workspace('failed', { makeMetadataWorkbook: async () => { throw new Error('ZIP preparation failed'); } });
     await app.input('urls', 'https://example.org/'); await app.click('start'); await app.click('export');
     assert.equal(app.get('export').disabled, false); assert.equal(app.downloads(), 0);
-    assert.match(app.get('export-status').textContent, /Could not save corpus.*Please try again/);
+    assert.match(app.get('export-status').textContent, /Could not export corpus.*Please try again/);
     assert.equal((await storage.loadWorkspace('failed')).corpusExport, undefined);
   } finally { delete globalThis.indexedDB; }
 });

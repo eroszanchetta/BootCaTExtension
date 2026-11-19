@@ -81,13 +81,13 @@ and closure. The popup also supports explicitly collecting a single current resu
 A minimal test:
 
 1. Install in desktop Firefox 140 or later. Open the toolbar popup and click Open BootCaT.
-2. Name a project and select No language detection. Sections start collapsed.
+2. Choose New Project, name it and select No language detection. Project starts expanded; other sections start collapsed.
 3. Expand Seeds & Tuples, enter five seeds (e.g. renewable energy, solar, wind, storage,
    electricity), generate a few tuples and create search queries. Select DuckDuckGo.
 4. Open an individual query or use Open all queries after its warning. Wait for loading
    badges, then collect results and close project search tabs. The URLs section opens.
 5. Alternatively paste https://www.iana.org/help/example-domains into URLs. Download URLs.
-   Review extracted text with Preview text, then Save corpus. The ZIP includes text files,
+   Review extracted text with Preview text, then Export Corpus. The ZIP includes text files,
    original documents, Report.xlsx, url_list.txt, seeds.txt and tuples.txt.
 6. Visit an ordinary HTML page and use Add page to corpus from the popup. Reopen the popup:
    it should report Page already added to corpus.
@@ -165,3 +165,5 @@ and useWasm to false, uses a local worker, and has no unsafe-eval in its CSP. Th
 files are kept unmodified for provenance; do not remove scanner findings by editing them.
 Review all warnings for the submitted version rather than assuming an automatic pass is
 Mozilla approval. The CI job prints the full validator report.
+
+Portable project review: Save Project downloads a .bootcat ZIP containing all project records and source/text files. Open Project reads a user-selected local file, validates it, then atomically replaces the current project after confirmation. No archive content is executed or sent to a server. User preferences remain on the receiving browser.

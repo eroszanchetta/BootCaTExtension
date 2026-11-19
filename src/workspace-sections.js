@@ -1,4 +1,4 @@
-const sectionIds = ['project-section', 'seeds-section', 'search-section', 'urls-section', 'review-section', 'save-section'];
+const sectionIds = ['project-section', 'seeds-section', 'search-section', 'urls-section', 'review-section'];
 export function openWorkspaceSection(id, { scroll = false } = {}) {
   const section = document.getElementById(id);
   const panel = section?.querySelector('details.workspace-panel');
@@ -25,5 +25,5 @@ export function initWorkspaceSections() {
 
 export function setProjectSectionState(active) {
   const panel = document.getElementById('project-section')?.querySelector('details.workspace-panel');
-  if (panel) panel.open = !active;
+  if (panel) panel.open = true;
 }

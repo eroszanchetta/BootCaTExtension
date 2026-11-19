@@ -1,3 +1,5 @@
+import { stageProject, readStagedProject, removeStagedProject } from './project-transfer.js';
+import { validateProjectSnapshot, restoredProjectSnapshot } from './portable-project.js';
 import { readCollectionControls, saveCollectionControls } from './collection-preferences.js';
 import { createCollectionActions } from './collection-actions.js';
 import { createFloatingManager } from './floating-manager.js';
@@ -5,7 +7,7 @@ import { readSettings, readSettingsState, saveSettings } from './settings.js';
 import { resetProjectLocalState } from './project-local-state.js';
 import { readUserDefaults, saveUserDefaults } from './user-defaults.js';
 import { validateLanguage } from './language-detection.js';
-import { ensureStoredProject, resetStoredProject, closeStoredProject, storedProjectState, hasStoredPage, getDeletionVersion } from './project-store.js';
+import { ensureStoredProject, resetStoredProject, closeStoredProject, storedProjectState, hasStoredPage, getDeletionVersion, snapshotStoredProject, replaceStoredProject } from './project-store.js';
 import { captureTabDocument } from './pdf-recovery.js';
 import { savePage, listSavedPages } from './page-store.js';
 import { getExtensionAPI } from './extension-api.js';
@@ -36,7 +38,7 @@ async function ensureProject() {
     // storage.local notification. Never attach an old project's collections.
     project = stored.project || { id: storedId, name: 'Untitled project', nameConfirmed: false };
     await searchTabs?.resetInQueue();
-    await resetProjectLocalState(ext.storage.local, project);
+    await resetProjectLocalState(ext.storage.local, project, stored.collections || []);
   }
   if (!project) {
     return null;
@@ -190,6 +192,31 @@ async function handle(message) {
   if (message.type === 'get-project') return serialize(async () => {
     const project = await ensureProject();
     return { project, promptForProject: !project };
+  });
+  if (message.type === 'prepare-project-save') return serialize(async () => {
+    await assertProject(message.projectId);
+    const tracking = (await ext.storage.session.get('projectSearchTabs')).projectSearchTabs;
+    if (captures.size || tracking?.batch?.running) throw new Error('Wait for collection and page saving to finish before saving a project.');
+    const project = await ensureProject(), snapshot = await snapshotStoredProject(project);
+    const { collections = [] } = await ext.storage.local.get('collections');
+    snapshot.stores.meta = snapshot.stores.meta.map(r => r.key === 'searches' ? { key: 'searches', collections } : r);
+    validateProjectSnapshot(snapshot);
+    return { token: await stageProject(snapshot) };
+  });
+  if (message.type === 'open-portable-project') return serialize(async () => {
+    const current = await ensureProject(), expected = message.projectId ?? null;
+    if (expected !== (current?.id ?? null)) throw new Error('The project changed. Open the project file again.');
+    const snapshot = await readStagedProject(message.token);
+    if (!snapshot) throw new Error('The project file is no longer available. Select it again.');
+    const restored = restoredProjectSnapshot(snapshot), project = restored.project;
+    for (const controller of captures.values()) controller.abort();
+    await replaceStoredProject(expected, restored, project);
+    // The active database marker is authoritative. A restart after this commit
+    // recovers both identity and imported search results before notifying views.
+    try { await searchTabs.resetInQueue(); }
+    finally { await resetProjectLocalState(ext.storage.local, project, restored.stores.meta.find(r => r.key === 'searches').collections); }
+    await removeStagedProject(message.token).catch(() => {});
+    return { project };
   });
   if (message.type === 'rename-project') return serialize(async () => {
     await assertProject(message.projectId);

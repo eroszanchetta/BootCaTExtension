@@ -158,14 +158,14 @@ form and actual extension must stay consistent.
 
 Use desktop Chrome 120 or later. No BootCaT account or API key is required.
 
-1. Open the toolbar popup and click Open BootCaT. Name a project and select No language detection.
+1. Open the toolbar popup and click Open BootCaT. Choose New Project, name it and select No language detection.
 2. Expand Seeds & Tuples. Enter five seeds, generate a few tuples, and prepare searches.
    Use DuckDuckGo or Ecosia; Google may require its own login or CAPTCHA.
 3. Open project searches individually or with the warned Open all queries action. Wait for
    loading badges, then collect results and close project search tabs. Only tabs opened for
    the current project are tracked for this batch action.
 4. Alternatively enter https://www.iana.org/help/example-domains into URLs and download it.
-   Review extracted text with Preview text, then Save corpus. Export contains original
+   Review extracted text with Preview text, then Export Corpus. Export contains original
    documents, texts, Report.xlsx and plain-text seeds/tuples/URL lists.
 5. Visit a normal HTML page and use Add page to corpus in the popup. Reopening the popup should
    indicate that the page is already included in the current corpus.
@@ -188,3 +188,5 @@ https://github.com/eroszanchetta/BootCaTExtension.
 - Local processing disclosures: https://developer.chrome.com/docs/webstore/program-policies/user-data-faq
 - Privacy policy: https://developer.chrome.com/docs/webstore/program-policies/privacy
 - Listing images: https://developer.chrome.com/docs/webstore/images
+
+Portable project review: Save Project downloads a .bootcat ZIP containing all project records and source/text files. Open Project reads a user-selected local file, validates it, then atomically replaces the current project after confirmation. No archive content is executed or sent to a server. User preferences remain on the receiving browser.

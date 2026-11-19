@@ -57,18 +57,21 @@ test('project dialog cancels without clearing, requires a name, and submits name
     onReset: () => { resets++; }, onRename: () => { renamed++; },
     getExtensionAPI: () => ({
       storage: { onChanged: { addListener(fn) { notify = fn; } } },
-      runtime: { sendMessage: async message => { requests.push(message); return { ok: true, project }; } }
+      runtime: { sendMessage: async message => { requests.push(message); if (message.type === 'rename-project') Object.assign(project, { name: message.name, language: message.language }); return { ok: true, project }; } }
     })
   });
   const source = (await readFile(new URL('../src/project-ui.js', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '').replace(/^export /gm, '');
   vm.runInContext(source + '\nglobalThis.ui = initProjectUI({ onReset, onRename });', context);
   await vm.runInContext('ui.ready', context);
   assert.equal(get('project-name').value, 'Initial project');
-  get('project-name').value = 'Energy corpus'; await get('project-name').handlers.input();
+  assert.equal(get('project-name').readOnly, true); assert.equal(get('project-name').handlers.input, undefined);
+  get('rename-project').handlers.click(); get('project-dialog-name').value = 'Energy corpus'; get('project-dialog-language').value = 'none'; await get('project-form').handlers.submit({ preventDefault() {} });
   assert.equal(requests.at(-1).type, 'rename-project'); assert.equal(requests.at(-1).name, 'Energy corpus');
   assert.equal(vm.runInContext('ui.snapshot().name', context), 'Energy corpus');
+  notify({ project: { newValue: { ...project, name: 'Renamed in another window' } } }, 'local');
+  assert.equal(get('project-name').value, 'Renamed in another window');
   await get('new-project').handlers.click();
-  assert.equal(get('project-dialog').open, true); assert.equal(get('project-dialog-cancel').disabled, false); assert.equal(get('project-dialog-close').hidden, true);
+  assert.equal(get('project-dialog').open, true); assert.equal(get('project-dialog-cancel').disabled, false);
   assert.equal(requests.filter(item => item.type === 'new-project').length, 0);
   get('project-dialog-cancel').handlers.click(); assert.equal(get('project-dialog').open, false);
   await get('new-project').handlers.click();
@@ -112,7 +115,7 @@ test('first-use dialog names the existing project without clearing it; confirmed
   }
 });
 
-test('initial creation cannot be cancelled by button or Escape and still has no placeholder project', async () => {
+test('startup chooser returns after cancelled creation and still has no placeholder project', async () => {
   const source = (await readFile(new URL('../src/project-ui.js', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '').replace(/^export /gm, '');
   const get = fixture(), requests = []; let resets = 0;
   const context = vm.createContext({
@@ -125,11 +128,16 @@ test('initial creation cannot be cancelled by button or Escape and still has no 
   });
   vm.runInContext(source + '\nglobalThis.ui = initProjectUI({ onReset, onRename() {} });', context);
   await vm.runInContext('ui.ready', context);
-  assert.equal(get('project-dialog').open, true); assert.equal(get('project-dialog-cancel').disabled, true);
+  assert.equal(get('project-choice-dialog').open, true);
+  get('project-choice-new').handlers.click();
+  assert.equal(get('project-dialog').open, true); assert.equal(get('project-dialog-cancel').disabled, false);
   get('project-dialog-cancel').handlers.click();
+  assert.equal(get('project-choice-dialog').open, true); assert.equal(get('project-dialog').open, false);
+  get('project-choice-new').handlers.click();
   let prevented = false; get('project-dialog').handlers.cancel({ preventDefault() { prevented = true; } });
-  assert.equal(prevented, true); assert.equal(get('project-dialog').open, true);
+  assert.equal(prevented, true); assert.equal(get('project-choice-dialog').open, true);
   assert.equal(vm.runInContext('ui.snapshot()', context), null); assert.equal(requests.length, 1);
+  get('project-choice-new').handlers.click();
   get('project-dialog-name').value = 'First corpus'; get('project-dialog-language').value = 'none';
   await get('project-form').handlers.submit({ preventDefault() {} });
   assert.equal(requests.at(-1).type, 'new-project'); assert.equal(requests.at(-1).projectId, null); assert.equal(resets, 1);
@@ -171,10 +179,10 @@ test('every inactive workspace offers creation and closes only its own tab, with
     });
     vm.runInContext(source + '\nglobalThis.ui = initProjectUI({ onReset() {}, onRename() {} });', context);
     await vm.runInContext('ui.ready', context);
-    assert.equal(get('project-dialog').open, true); assert.equal(get('project-dialog-close').hidden, false);
-    await get('project-dialog-close').handlers.click();
-    assert.match(get('project-dialog-error').textContent, /Could not close tab/); assert.equal(get('project-dialog-close').disabled, false);
-    fail = false; await get('project-dialog-close').handlers.click(); assert.deepEqual(removed, [42]);
+    assert.equal(get('project-choice-dialog').open, true);
+    await get('project-choice-close').handlers.click();
+    assert.match(get('project-choice-error').textContent, /Could not close tab/); assert.equal(get('project-choice-close').disabled, false);
+    fail = false; await get('project-choice-close').handlers.click(); assert.deepEqual(removed, [42]);
     assert.equal(vm.runInContext('ui.snapshot()', context), null);
   }
 });

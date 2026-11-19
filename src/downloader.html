@@ -18,7 +18,6 @@
         <a href="#search-section" class="menu-item"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><span>Search</span></a>
         <a href="#urls-section" class="menu-item"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m10 14 4-4M8 16l-1 1a4 4 0 0 1-6-6l4-4a4 4 0 0 1 6 0m2 2 1-1a4 4 0 0 1 6 6l-4 4a4 4 0 0 1-6 0" transform="translate(1 -1)"/></svg><span>URLs</span></a>
         <a href="#review-section" class="menu-item"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-5-5 5 5 5-5M4 15v6h16v-6"/></svg><span>Download</span></a>
-        <a href="#save-section" class="menu-item"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3h13l4 4v14H3V3Zm3 0v6h10V3M7 21v-8h10v8"/></svg><span>Save</span></a>
         <a href="https://docs.sslmit.unibo.it/doku.php?id=bootcat:start" target="_blank" rel="noopener noreferrer" class="menu-item"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9 9a3 3 0 0 1 6 0c0 2-3 2-3 5m0 3h.01"/></svg><span>Help</span></a>
         <button id="open-settings" class="menu-item" type="button"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m9 3-.6 2.2-2 .8-2-.7L2 9l1.6 1.5v3L2 15l2.4 3.7 2-.7 2 .8L9 21h6l.6-2.2 2-.8 2 .7L22 15l-1.6-1.5v-3L22 9l-2.4-3.7-2 .7-2-.8L15 3Z"/><circle cx="12" cy="12" r="3"/></svg><span>Settings</span></button>
       </nav>
@@ -30,10 +29,17 @@
     <section id="project-section" aria-labelledby="project-heading" tabindex="-1">
       <details class="workspace-panel" open><summary><h2 id="project-heading">Project</h2></summary><div class="panel-content">
       <label for="project-name">Project name</label>
-      <div class="project-controls"><input id="project-name" maxlength="120" placeholder="No active project" autocomplete="off" disabled><button id="new-project" class="secondary" disabled>New project</button><button id="close-project" class="secondary" hidden disabled>Close project</button></div>
+      <div class="project-name-row"><input id="project-name" maxlength="120" placeholder="No active project" readonly disabled><button id="rename-project" type="button" class="secondary project-button" disabled><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m4 16 12-12 4 4L8 20H4Z"/></svg><span>Rename</span></button></div>
+      <div class="project-controls"><button id="new-project" type="button" class="secondary project-button" disabled><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg><span>New Project</span></button><button id="open-project" type="button" class="secondary project-button" disabled><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h7l2 3h9l-3 10H3ZM3 7V4h7l2 3"/></svg><span>Open Project</span></button><button id="save-project" type="button" class="secondary project-button" disabled><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3h13l4 4v14H3V3ZM7 3v6h10V3M7 21v-8h10v8"/></svg><span>Save Project</span></button><button id="close-project" type="button" class="secondary project-button" disabled><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 6 12 12M18 6 6 18"/></svg><span>Close Project</span></button></div>
+      <input id="project-file-picker" type="file" accept=".bootcat" hidden>
+      <p id="project-file-status" class="hint" role="status" aria-live="polite"></p>
       <div class="language-settings"><label for="project-language">Project language</label><select id="project-language" disabled></select>
       <button id="recheck-language" type="button" class="secondary" disabled>Recheck saved texts</button></div>
       <p id="language-status" class="hint" role="status" aria-live="polite">Language detection is optional and runs locally. Changing this setting does not recheck existing texts until you click Recheck saved texts.</p>
+      <div class="project-export">      <button id="export" class="project-button" disabled><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-5-5 5 5 5-5M4 15v6h16v-6"/></svg><span id="export-label">Export Corpus</span></button>
+      <p id="export-status" class="hint" role="status" aria-live="polite">Export your corpus as a ZIP file to your computer.</p>
+      <p class="hint">Includes source files, selected corpus texts, original extractions in raw-text, raw PDF text in raw-pdf, Report.xlsx, URL/seed/tuple lists, search sources and extraction metadata.</p>
+</div>
       <p id="project-status" class="hint" role="status" aria-live="polite">Loading project…</p>
       </div></details>
     </section>
@@ -138,13 +144,6 @@
       <p id="corpus-status" role="status" aria-live="polite">Download pages to extract corpus text.</p>
       </div></details>
     </section>
-    <section id="save-section" aria-labelledby="save-heading" tabindex="-1">
-      <details class="workspace-panel"><summary><h2 id="save-heading">Save</h2></summary><div class="panel-content">
-      <button id="export" disabled>Save corpus</button>
-      <p id="export-status" class="hint" role="status" aria-live="polite">Save your corpus as a ZIP file to your computer.</p>
-      <p class="hint">Includes source files, selected corpus texts, original extractions in raw-text, raw PDF text in raw-pdf, Report.xlsx, URL/seed/tuple lists, search sources and extraction metadata.</p>
-      </div></details>
-    </section>
     <footer>Local processing · No BootCaT server · HTML · PDF · DOCX text extraction · No page scripts executed · <a href="about.html" target="_blank" rel="noopener noreferrer">About, privacy &amp; licence</a></footer>
   </main>
   <dialog id="text-review-dialog" aria-labelledby="preview-title" aria-describedby="preview-meta">
@@ -176,12 +175,24 @@
       <p id="project-dialog-description">Choose a name for your new corpus project.</p>
       <label for="project-dialog-name">Project name</label>
       <input id="project-dialog-name" maxlength="120" required autocomplete="off" placeholder="e.g. Renewable energy corpus">
-      <label for="project-dialog-language">Project language</label>
+      <div id="project-dialog-language-fields"><label for="project-dialog-language">Project language</label>
       <select id="project-dialog-language" required></select>
       <p class="hint">Choose the language you want to collect, or explicitly choose No language detection. Detection is a suggestion; you can include flagged documents manually.</p>
-      <p id="project-dialog-error" class="error" role="alert"></p>
-      <div class="actions"><button id="project-dialog-submit" type="submit">Save project name</button><button id="project-dialog-cancel" type="button" class="secondary">Cancel</button><button id="project-dialog-close" type="button" class="secondary" hidden>Close BootCaT</button></div>
+      </div><p id="project-dialog-error" class="error" role="alert"></p>
+      <div class="actions"><button id="project-dialog-submit" type="submit">Save project name</button><button id="project-dialog-cancel" type="button" class="secondary">Cancel</button></div>
     </form>
+  </dialog>
+  <dialog id="project-choice-dialog" aria-labelledby="project-choice-title">
+    <h2 id="project-choice-title">Welcome to BootCaT</h2>
+    <p>Open a saved project or create a new one to begin.</p>
+    <div class="actions"><button id="project-choice-open" type="button">Open Project</button><button id="project-choice-new" type="button" class="secondary">New Project</button><button id="project-choice-close" type="button" class="secondary">Close BootCaT</button></div>
+    <p id="project-choice-error" class="error" role="alert"></p>
+  </dialog>
+  <dialog id="project-replace-dialog" aria-labelledby="project-replace-title">
+    <form method="dialog"><h2 id="project-replace-title">Replace current project?</h2>
+    <p id="project-replace-message"></p>
+    <p id="project-replace-status" class="hint" role="status" aria-live="polite"></p>
+    <div class="actions"><button value="cancel" class="secondary" autofocus>Cancel</button><button id="project-replace-save" type="button" class="secondary">Save Project first</button><button id="project-replace-continue" value="confirm" class="danger">Continue</button></div></form>
   </dialog>
   <dialog id="confirmation-dialog" aria-labelledby="confirmation-title" aria-describedby="confirmation-message">
     <form method="dialog">

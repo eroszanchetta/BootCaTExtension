@@ -1,3 +1,4 @@
+import { initPortableUI } from './portable-ui.js';
 import { DEFAULT_SETTINGS, SETTINGS_KEY, readSettings, fileLimit } from './settings.js';
 import { createProjectWork, createExtractionQueue } from './project-work.js';
 import { initTextReview } from './text-review.js';
@@ -33,6 +34,7 @@ function updateLimitHints() {
   const hint = document.getElementById('download-limit-hint');
   hint.textContent = `Keep this tab open. Public pages only; login cookies are not sent. Up to ${currentSettings.fileMiB} MiB per file. Completed pages are saved in this browser; interrupted downloads can be resumed.`;
 }
+let portableBusy = false;
 let ready = false, running = false, downloading = false, importing = false, stopping = false, resetting = false, controller = null;
 let projectId, state, entries = [], searchUI, seedsUI, projectTabsUI, archiveURL = null, previewURL = null, previewFilename = null, textReview;
 let exportSaved = false, exportRevision = 0;
@@ -43,7 +45,7 @@ const coordinator = createProjectWork({ locks: navigator.locks, getProjectId: ()
 const extractionQueue = createExtractionQueue(navigator.locks);
 let metadataRevision = 0, captureSignal = 0;
 let remoteActivity = { batch: false, exclusive: false, documents: new Set() }, activityTimer, activityRefreshing = false, metadataRefreshing = false;
-const isDocumentBusy = url => running || remoteActivity.exclusive || documentJobs.has(url) || remoteActivity.documents.has(url);
+const isDocumentBusy = url => portableBusy || running || remoteActivity.exclusive || documentJobs.has(url) || remoteActivity.documents.has(url);
 const isBatchActive = () => downloading || remoteActivity.batch;
 const hasDocumentWork = () => documentJobs.size > 0 || remoteActivity.documents.size > 0;
 
@@ -52,6 +54,9 @@ ui.extractor.querySelector('option[value="defuddle"]').disabled = !DEFUDDLE_AVAI
 if (!DEFUDDLE_AVAILABLE) ui.extractor.querySelector('option[value="defuddle"]').textContent = 'Defuddle — library unavailable';
 const projectUI = initProjectUI({
   onRename: invalidateArchive,
+  onSaveProject: () => portableUI.save(), onOpenProject: () => portableUI.choose(),
+  getBusy: () => portableBusy || running || isBatchActive() || importing || hasDocumentWork() || remoteActivity.exclusive,
+  confirmReplacement: options => portableUI.confirmReplacement(options),
   onReset: () => {
     resetting = true; ready = false; stopping = true; clearTimeout(activityTimer); controller?.abort(); for (const active of operationControllers) active.abort(); seedsUI?.destroy(); searchUI?.destroy(); projectTabsUI?.destroy(); running = downloading = importing = false; updateControls();
     invalidateArchive(); ui.urls.value = ''; clearPreview();
@@ -71,16 +76,16 @@ textReview = initTextReview({ root: document, confirm: confirmAction, run: (task
   }
 });
 window.addEventListener('beforeunload', event => {
-  if (!resetting && (running || downloading || importing || documentJobs.size || seedsUI?.isBusy() || pendingWrites || textReview?.isDirty() || projectUI.isSaving?.())) { event.preventDefault(); event.returnValue = ''; }
+  if (!resetting && (portableBusy || running || downloading || importing || documentJobs.size || seedsUI?.isBusy() || pendingWrites || textReview?.isDirty() || projectUI.isSaving?.())) { event.preventDefault(); event.returnValue = ''; }
 });
 function revokeArchive() {
   if (archiveURL) { URL.revokeObjectURL(archiveURL); archiveURL = null; }
 }
 function invalidateArchive() {
   exportRevision++; revokeArchive();
-  if (exportSaved) ui['export-status'].textContent = 'Project changed. Save your corpus again to download an updated ZIP.';
+  if (exportSaved) ui['export-status'].textContent = 'Project changed. Export your corpus again to download an updated ZIP.';
   exportSaved = false; ui['export-status'].classList.toggle('saved', false);
-  ui.export.textContent = 'Save corpus';
+  document.getElementById('export-label').textContent = 'Export Corpus';
   ui.export.disabled = !ready || running || isBatchActive() || importing || hasDocumentWork() || remoteActivity.exclusive || exportSaved || !entries.length;
 }
 async function refreshExportState(saved) {
@@ -88,13 +93,13 @@ async function refreshExportState(saved) {
   const fingerprint = await corpusFingerprint(saved, projectUI.snapshot(), await readCollections());
   if (resetting || id !== projectId || revision !== exportRevision) return;
   exportSaved = saved.corpusExport?.fingerprint === fingerprint && saved.corpusExport.filename === `Corpus ${projectFilename(projectUI.snapshot().name)}.zip`;
-  ui['export-status'].textContent = exportSaved ? corpusSavedMessage(saved.corpusExport.filename) : 'Save your corpus as a ZIP file to your computer.';
+  ui['export-status'].textContent = exportSaved ? corpusSavedMessage(saved.corpusExport.filename) : 'Export your corpus as a ZIP file to your computer.';
   ui['export-status'].classList.toggle('saved', exportSaved);
-  ui.export.textContent = exportSaved ? 'Corpus saved' : 'Save corpus';
+  document.getElementById('export-label').textContent = exportSaved ? 'Corpus exported' : 'Export Corpus';
 }
 function storageMessage() {
   const bytes = entries.reduce((sum, entry) => sum + (entry.originalBytes || 0), 0);
-  ui['storage-status'].textContent = pendingWrites ? 'Saving changes…' : `Saved in this browser · ${(bytes / 1024 / 1024).toFixed(1)} MiB of originals. Export a ZIP backup before clearing browser data or uninstalling BootCaT.`;
+  ui['storage-status'].textContent = pendingWrites ? 'Saving changes…' : `Saved in this browser · ${(bytes / 1024 / 1024).toFixed(1)} MiB of originals. Save a .bootcat project before clearing browser data or uninstalling BootCaT.`;
 }
 function report(error) {
   if (resetting) return;
@@ -114,7 +119,8 @@ function pendingURLs() {
   return parseURLs(ui.urls.value).urls.filter(url => !complete.has(url));
 }
 function updateControls() {
-  const batch = isBatchActive(), exclusive = running || remoteActivity.exclusive;
+  projectUI.refreshControls?.();
+  const batch = isBatchActive(), exclusive = running || remoteActivity.exclusive || portableBusy;
   ui.start.disabled = !ready || exclusive || batch || importing || hasDocumentWork();
   ui.export.disabled = !ready || exclusive || batch || importing || hasDocumentWork() || exportSaved || !entries.length;
   ui.urls.disabled = ui.extractor.disabled = !ready || exclusive || batch;
@@ -465,7 +471,7 @@ async function storeCapture({ url, finalURL, bytes, contentType, source, capture
 async function importSavedPages() {
   if (!ready || resetting) return;
   const signal = ++captureSignal;
-  if (running || importing) { capturesPending = true; return; }
+  if (portableBusy || running || importing) { capturesPending = true; return; }
   importing = true; capturesPending = false; updateControls();
   try {
     const pending = await listSavedPages(); if (!pending.length) return;
@@ -535,7 +541,7 @@ ui.export.addEventListener('click', () => {
     ui.status.textContent = 'Preparing ZIP from saved pages… Your project remains saved if export fails.';
     try {
       invalidateArchive();
-      ui.export.textContent = 'Saving corpus…';
+      document.getElementById('export-label').textContent = 'Saving corpus…';
       ui['export-status'].textContent = 'Preparing your corpus ZIP…';
       {
         async function* files() {
@@ -587,7 +593,7 @@ ui.export.addEventListener('click', () => {
       await refreshExportState({ ...(await storage.loadWorkspace(projectId)), corpusExport: receipt });
       ui.status.textContent = 'Corpus ZIP sent to your browser. Your project is still saved in this browser.';
     } catch (error) {
-      if (!resetting) { ui.export.textContent = 'Save corpus'; ui['export-status'].textContent = `Could not save corpus: ${error.message}. Please try again.`; }
+      if (!resetting) { document.getElementById('export-label').textContent = 'Export Corpus'; ui['export-status'].textContent = `Could not export corpus: ${error.message}. Please try again.`; }
       throw error;
     } finally { controller = null; }
   });
@@ -611,12 +617,20 @@ window.addEventListener('focus', async () => {
   } catch (error) { report(error); } finally { refreshing = false; }
 });
 
+const portableUI = initPortableUI({
+  getProject: () => projectUI.snapshot(),
+  isBusy: () => !ready && !!projectUI.snapshot() || running || isBatchActive() || importing || hasDocumentWork() || remoteActivity.exclusive || seedsUI?.isBusy(),
+  isDirty: () => textReview?.isDirty(), flush: flushWrites,
+  exclusive: task => coordinator.exclusive(task),
+  onBusy: value => { portableBusy = value; updateControls(); if (!value && capturesPending) queueMicrotask(importSavedPages); }, version: VERSION
+});
+
 (async () => {
   try {
     await projectUI.ready; projectId = projectUI.snapshot()?.id;
     if (!projectId) {
-      setProjectSectionState(false);
-      for (const id of ['seeds-section', 'search-section', 'urls-section', 'review-section', 'save-section']) {
+      setProjectSectionState(false); ui.export.disabled = true;
+      for (const id of ['seeds-section', 'search-section', 'urls-section', 'review-section']) {
         for (const control of document.getElementById(id).querySelectorAll('button, input, select, textarea')) control.disabled = true;
       }
       ui.status.textContent = 'No active project. Create a project to download and extract documents.';
