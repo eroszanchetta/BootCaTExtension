@@ -21,7 +21,8 @@ export function initTextReview({ root = document, confirm, run, getProjectId, ge
   let current = null, baseText = '', editing = false, loading = false, saving = false, opened = false, generation = 0, confirming = false;
   const dirty = () => editing && text.value !== baseText;
   function controls() {
-    edit.disabled = !current || loading || saving || isRunning(current?.entry.url) || current.entry.doc.extraction.status !== 'ok' || editing;
+    edit.textContent = editing ? 'Undo' : 'Edit';
+    edit.disabled = !current || loading || saving || (!editing && (isRunning(current?.entry.url) || current.entry.doc.extraction.status !== 'ok'));
     save.disabled = loading || saving || isRunning(current?.entry.url) || !dirty(); close.disabled = saving || confirming;
     text.readOnly = !editing || saving;
     dialog.setAttribute('aria-busy', String(loading || saving));
@@ -72,7 +73,14 @@ export function initTextReview({ root = document, confirm, run, getProjectId, ge
   }
   edit.addEventListener('click', () => {
     if (edit.disabled) return;
-    editing = true; status.textContent = 'Editing. Save to use the modified text in your corpus.'; controls(); text.focus();
+    if (editing) {
+      text.value = baseText;
+      status.textContent = 'Changes undone. You can continue editing.';
+    } else {
+      editing = true;
+      status.textContent = 'Editing. Save to use the modified text in your corpus, or Undo to restore the text before this edit.';
+    }
+    controls(); text.focus();
   });
   text.addEventListener('input', () => {
     if (!editing || saving) return;
