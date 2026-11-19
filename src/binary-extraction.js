@@ -1,7 +1,7 @@
-import { extractDOCX, DOCX_MIME, zipDirectory, DOCX_TEXT_LIMIT } from './docx.js';
+import { DEFAULT_SETTINGS, fileLimit } from './settings.js';
+import { extractDOCX, DOCX_MIME, zipDirectory } from './docx.js';
 import { extractDocument, normaliseText } from './extraction.js';
 import { PDFJS_VERSION } from './pdfjs-version.js';
-import { FILE_LIMIT } from './core.js';
 import { formatPDFPage, formatPDFText, PDF_TEXT_LIMIT } from './pdf-layout.js';
 export { pdfPageText } from './pdf-layout.js';
 export { PDFJS_VERSION } from './pdfjs-version.js';
@@ -31,7 +31,7 @@ function abortable(promise, signal) {
     Promise.resolve(promise).then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
   });
 }
-async function extractPDF(bytes, { signal, loadPDF = () => import('./vendor/pdfjs/pdf.mjs') }) {
+async function extractPDF(bytes, { signal, settings = DEFAULT_SETTINGS, loadPDF = () => import('./vendor/pdfjs/pdf.mjs') }) {
   const pdfjs = await abortable(loadPDF(), signal);
   if (pdfjs.version !== PDFJS_VERSION) throw new Error(`PDF.js version mismatch: expected ${PDFJS_VERSION}, loaded ${pdfjs.version || 'unknown'}. Rebuild and reload the extension.`);
   let port, worker, task;
@@ -50,15 +50,15 @@ async function extractPDF(bytes, { signal, loadPDF = () => import('./vendor/pdfj
       standardFontDataUrl: new URL('./vendor/pdfjs/standard_fonts/', import.meta.url).href
     });
     const doc = await abortable(task.promise, signal);
-    if (doc.numPages > 300) throw new Error('PDF exceeds the 300-page extraction limit');
+    if (doc.numPages > settings.pdfPages) throw new Error(`PDF exceeds the ${settings.pdfPages}-page extraction limit`);
     const rawPages = [], pageMetadata = []; let characters = 0;
     for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber++) {
       const page = await abortable(doc.getPage(pageNumber), signal);
       try {
         const content = await abortable(page.getTextContent(), signal);
-        const formatted = formatPDFPage(content.items), { text, rawText } = formatted;
+        const formatted = formatPDFPage(content.items, settings.pdfCharacters), { text, rawText } = formatted;
         characters += Math.max(text.length, rawText.length);
-        if (characters > TEXT_LIMIT) throw new Error('PDF text exceeds the 2 million character limit');
+        if (characters > settings.pdfCharacters) throw new Error(`PDF text exceeds the ${settings.pdfCharacters.toLocaleString()} character limit`);
         rawPages.push(rawText); pageMetadata.push({ page: pageNumber, characters: Array.from(text).length, rawCharacters: Array.from(rawText).length, joinedLines: formatted.joinedLines });
       } finally { page.cleanup(); }
     }
@@ -88,22 +88,23 @@ export async function extractDownloadedDocument(bytes, contentType, options = {}
     extractorVersion: format === 'pdf' ? PDFJS_VERSION : '2', format,
     encoding: 'unicode', title: '', language: '', characters: 0, included: false, warnings: [], text: ''
   };
-  const inputLimit = FILE_LIMIT;
+  const settings = options.settings || DEFAULT_SETTINGS;
+  const inputLimit = fileLimit(settings);
   if (bytes.length > inputLimit) return { ...meta, warnings: [`Document exceeds the ${inputLimit / 1024 / 1024} MiB extraction limit. Original file retained.`] };
-  const signal = options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(30000)]) : AbortSignal.timeout(30000);
+  const signal = options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(settings.extractionSeconds * 1000)]) : AbortSignal.timeout(settings.extractionSeconds * 1000);
   try {
     signal.throwIfAborted();
     const result = await abortable(format === 'pdf' ? extractPDF(bytes, { ...options, signal }) : extractDOCX(bytes, { ...options, signal }), signal);
     meta.warnings.push(...result.warnings);
     const text = normaliseText(result.text);
     if (!text) throw new Error(format === 'pdf' ? 'No extractable text found. Scanned PDFs may require OCR.' : 'No usable body text was found in this DOCX document.');
-    const textLimit = format === 'docx' ? DOCX_TEXT_LIMIT : TEXT_LIMIT;
-    if (text.length > textLimit) throw new Error(`Document text exceeds the ${textLimit / 1_000_000} million character limit`);
+    const textLimit = format === 'docx' ? settings.docxCharacters : settings.pdfCharacters;
+    if (text.length > textLimit) throw new Error(`Document text exceeds the ${textLimit.toLocaleString()} character limit`);
     let characters = 0; for (const char of text) characters++;
     return { ...meta, ...result, text, status: 'ok', included: true, characters };
   } catch (error) {
     const message = error.name === 'PasswordException' ? 'Password-protected PDF. Unlock it before importing; password entry is not supported yet.'
-      : signal.aborted ? (signal.reason?.name === 'TimeoutError' ? 'Document extraction timed out after 30 seconds.' : 'Document extraction cancelled.')
+      : signal.aborted ? (signal.reason?.name === 'TimeoutError' ? `Document extraction timed out after ${settings.extractionSeconds} seconds.` : 'Document extraction cancelled.')
       : `Document extraction failed: ${error.message}`;
     return { ...meta, warnings: [...meta.warnings, message, 'Original file retained.'] };
   }

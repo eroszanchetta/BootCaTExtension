@@ -1,3 +1,4 @@
+import { readSettings, readSettingsState, saveSettings } from './settings.js';
 import { resetProjectLocalState } from './project-local-state.js';
 import { readUserDefaults, saveUserDefaults } from './user-defaults.js';
 import { validateLanguage } from './language-detection.js';
@@ -66,6 +67,7 @@ async function ensureWorkspace() {
   if (!(await workspaceTabs()).length) await ext.tabs.create({ url: ext.runtime.getURL('downloader.html'), active: false });
 }
 async function collectPage(tabId, projectId, expected) {
+  const settings = await readSettings(ext.storage.local);
   const tab = await ext.tabs.get(tabId);
   const adapter = adapterForURL(tab.url);
   if (!adapter) throw new Error('Open a Google, DuckDuckGo or Ecosia web results page first.');
@@ -79,7 +81,7 @@ async function collectPage(tabId, projectId, expected) {
     await assertProject(projectId);
     const { collections = [] } = await ext.storage.local.get('collections');
     const collection = { ...result, id: crypto.randomUUID(), collectedAt: new Date().toISOString() };
-    await ext.storage.local.set({ collections: addCollection(collections, collection) });
+    await ext.storage.local.set({ collections: addCollection(collections, collection, settings) });
     if (marker) await searchTabs.markCollectedInQueue(marker, result);
     await ensureWorkspace();
     return { count: result.results.length, unresolved: result.unresolved, engine: adapter.name };
@@ -87,6 +89,8 @@ async function collectPage(tabId, projectId, expected) {
 }
 searchTabs = createProjectSearchTabs({ ext, serialize, assertProject, collectPage });
 async function handle(message) {
+  if (message.type === 'get-settings') return { settings: await readSettingsState(ext.storage.local) };
+  if (message.type === 'save-settings') return serialize(async () => ({ settings: await saveSettings(ext.storage.local, message.values, message.revision) }));
   if (message.type === 'open-project-search') return searchTabs.open(message);
   if (message.type === 'get-project-search-tabs') return searchTabs.getState(message.projectId);
   if (message.type === 'collect-project-search-tabs') return searchTabs.start(message.projectId, { loadedOnly: message.loadedOnly === true });
@@ -165,7 +169,7 @@ async function handle(message) {
     const controller = new AbortController(), token = crypto.randomUUID();
     const deletionVersion = await serialize(async () => { await assertProject(project.id); const version = await getDeletionVersion(project.id, tab.url); captures.set(token, controller); return version; });
     try {
-      const page = await captureTabDocument(tab, ext.scripting, { signal: controller.signal });
+      const page = await captureTabDocument(tab, ext.scripting, { signal: controller.signal, settings: await readSettings(ext.storage.local) });
       return await serialize(async () => {
         await assertProject(project.id);
         if (await hasStoredPage(project.id, page.url)) return { alreadySaved: true };

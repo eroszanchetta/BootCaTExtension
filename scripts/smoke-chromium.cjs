@@ -218,6 +218,23 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
       }
       await page.waitForFunction(name => document.querySelector('#project-name').value === name && !document.querySelector('#start').disabled, nextName);
     }
+    await page.click('#open-settings');
+    await page.waitForFunction(() => document.querySelector('#settings-dialog').open && !document.querySelector('#settings-save').disabled);
+    assert.equal(await page.inputValue('#setting-fileMiB'), '50');
+    await page.fill('#setting-fileMiB', '55'); await page.fill('#setting-urlWarning', '2');
+    await page.click('#settings-save'); await page.locator('#settings-dialog[open]').waitFor({ state: 'hidden' });
+    await page.fill('#urls', 'https://one.test\nhttps://two.test\nhttps://three.test');
+    await page.waitForFunction(() => document.querySelector('#urls-warning').textContent.includes('3 URLs'));
+    assert.match(await page.locator('#download-limit-hint').innerText(), /55 MiB/);
+    const settingsWindow = await context.newPage(); await settingsWindow.goto(origin + '/downloader.html');
+    await settingsWindow.waitForFunction(() => document.querySelector('#download-limit-hint').textContent.includes('55 MiB'));
+    await settingsWindow.click('#open-settings');
+    await settingsWindow.waitForFunction(() => document.querySelector('#settings-dialog').open && !document.querySelector('#settings-save').disabled);
+    assert.equal(await settingsWindow.inputValue('#setting-urlWarning'), '2');
+    await settingsWindow.click('#settings-reset'); await settingsWindow.click('#settings-save');
+    await settingsWindow.locator('#settings-dialog[open]').waitFor({ state: 'hidden' });
+    await page.waitForFunction(() => document.querySelector('#download-limit-hint').textContent.includes('50 MiB') && document.querySelector('#urls-warning').textContent === '');
+    await settingsWindow.close(); await page.fill('#urls', '');
     const navNames = await page.locator('nav a').allTextContents();
     assert.equal(navNames.at(-2), 'Save'); assert.equal(navNames.at(-1), 'Help');
     await page.locator('nav a[href="#save-section"]').click();

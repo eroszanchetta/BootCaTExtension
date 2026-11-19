@@ -1,9 +1,10 @@
+import { DEFAULT_SETTINGS } from './settings.js';
 import { normaliseText } from './extraction.js';
-export const PDF_TEXT_LIMIT = 2_000_000;
+export const PDF_TEXT_LIMIT = DEFAULT_SETTINGS.pdfCharacters;
 
 // Baseline extraction, retained separately from the optional layout heuristics.
 // Preserve item order and every hyphen, including soft hyphens.
-export function pdfPageText(items) {
+export function pdfPageText(items, limit = PDF_TEXT_LIMIT) {
   const parts = []; let previous = null, length = 0;
   for (const item of items) {
     if (typeof item.str !== 'string') continue;
@@ -18,7 +19,7 @@ export function pdfPageText(items) {
       }
     }
     parts.push(item.str); length += item.str.length;
-    if (length > PDF_TEXT_LIMIT) throw new Error('PDF text exceeds the 2 million character limit');
+    if (length > limit) throw new Error(`PDF text exceeds the ${limit.toLocaleString()} character limit`);
     previous = item;
     if (item.hasEOL) { parts.push('\n'); previous = null; }
   }
@@ -34,4 +35,4 @@ export function formatPDFText(value) {
   });
   return { text: normaliseText(joined), rawText, joinedLines };
 }
-export const formatPDFPage = items => formatPDFText(pdfPageText(items));
+export const formatPDFPage = (items, limit = PDF_TEXT_LIMIT) => formatPDFText(pdfPageText(items, limit));

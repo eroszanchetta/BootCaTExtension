@@ -130,3 +130,25 @@ button.danger:hover { background: #87352e; }
 @media (max-width: 600px) { #text-review-dialog { padding: 16px; } .text-review-footer { flex-direction: column; align-items: stretch; gap: 8px; } .text-review-footer .actions { justify-content: flex-end; } }
 
 .document-activity:empty { display: none; }
+
+/* Icon labels stay visible for touch, keyboard and pointer users. */
+.topbar-inner { max-width: 1160px; gap: 24px; }
+.topbar nav { display: flex; align-items: stretch; justify-content: flex-end; flex-wrap: wrap; gap: 4px; }
+.topbar .menu-item { box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; min-width: 68px; padding: 9px 8px; border: 0; border-radius: 9px; background: #ffffffd9; color: #12394e; font: 650 12px/1.2 system-ui, sans-serif; text-decoration: none; white-space: nowrap; cursor: pointer; }
+.topbar .menu-item svg { width: 30px; height: 30px; flex-shrink: 0; }
+.topbar .menu-item:hover { background: white; }
+.topbar .menu-item:focus-visible { outline: 3px solid #12394e; outline-offset: 1px; background: #ffffff75; }
+#settings-dialog { box-sizing: border-box; width: min(780px, calc(100vw - 24px)); max-width: none; max-height: calc(100dvh - 24px); overflow: auto; padding: 28px; border: 1px solid #abc8e0; border-radius: 18px; color: #24323b; background: white; box-shadow: 0 24px 80px #004f7040; }
+#settings-dialog::backdrop { background: #17394c80; }
+.settings-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 28px; margin: 24px 0; }
+.setting-field { min-width: 0; }
+.setting-field label { font-weight: 650; }
+.setting-field .hint { margin: 8px 0 0; }
+.setting-warning { color: #73520c; background: #fff1ce; padding: 10px; border-radius: 8px; font-size: .85rem; }
+.setting-warning:empty { display: none; }
+.settings-actions { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin-top: 20px; }
+@media (max-width: 800px) { .topbar-inner { align-items: flex-start; gap: 12px; } .topbar nav { justify-content: flex-start; } .topbar .menu-item { min-width: 62px; padding: 8px 6px; } }
+@media (max-width: 600px) { .topbar-inner { flex-direction: column; padding: 8px 12px; gap: 6px; } .brand img { width: 40px; height: 40px; } .topbar nav { width: 100%; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); } .topbar .menu-item { min-width: 0; white-space: normal; text-align: center; } .topbar .menu-item svg { width: 28px; height: 28px; } html { scroll-padding-top: 240px; } section { scroll-margin-top: 240px; } #settings-dialog { padding: 20px; } .settings-fields { grid-template-columns: 1fr; } .settings-actions, .settings-actions .actions { width: 100%; } .settings-actions .actions { justify-content: flex-end; } }
+
+html { scroll-padding-top: var(--workspace-nav-offset, 112px); }
+section { scroll-margin-top: 0; }

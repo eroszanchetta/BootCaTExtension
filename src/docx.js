@@ -1,10 +1,11 @@
+import { DEFAULT_SETTINGS } from './settings.js';
 import { crc32 } from './zip.js';
 // Bounded ZIP/XML reader for DOCX body text. Never renders document HTML.
 const W = new Set(['http://schemas.openxmlformats.org/wordprocessingml/2006/main', 'http://purl.oclc.org/ooxml/wordprocessingml/main']);
 export const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 export const XML_LIMIT = 50 * 1024 * 1024;
 export const XML_NODE_LIMIT = 500_000;
-export const DOCX_TEXT_LIMIT = 10_000_000;
+export const DOCX_TEXT_LIMIT = DEFAULT_SETTINGS.docxCharacters;
 export const ZIP_LIMIT = 250 * 1024 * 1024;
 const abort = signal => { if (signal?.aborted) throw new DOMException('Extraction cancelled', 'AbortError'); };
 
