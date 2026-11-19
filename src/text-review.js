@@ -21,7 +21,9 @@ export function initTextReview({ root = document, confirm, run, getProjectId, ge
   let current = null, baseText = '', editing = false, loading = false, saving = false, opened = false, generation = 0, confirming = false;
   const dirty = () => editing && text.value !== baseText;
   function controls() {
-    edit.textContent = editing ? 'Undo' : 'Edit';
+    edit.textContent = editing ? 'Cancel' : 'Edit';
+    edit.classList.toggle('danger', editing);
+    edit.classList.toggle('secondary', !editing);
     edit.disabled = !current || loading || saving || (!editing && (isRunning(current?.entry.url) || current.entry.doc.extraction.status !== 'ok'));
     save.disabled = loading || saving || isRunning(current?.entry.url) || !dirty(); close.disabled = saving || confirming;
     text.readOnly = !editing || saving;
@@ -75,12 +77,13 @@ export function initTextReview({ root = document, confirm, run, getProjectId, ge
     if (edit.disabled) return;
     if (editing) {
       text.value = baseText;
-      status.textContent = 'Changes undone. You can continue editing.';
+      editing = false;
+      status.textContent = 'Edit cancelled. Read only. Choose Edit to change the corpus text.';
     } else {
       editing = true;
-      status.textContent = 'Editing. Save to use the modified text in your corpus, or Undo to restore the text before this edit.';
+      status.textContent = 'Editing. Save to use the modified text in your corpus, or Cancel to discard this edit.';
     }
-    controls(); text.focus();
+    controls(); if (editing) text.focus(); else edit.focus();
   });
   text.addEventListener('input', () => {
     if (!editing || saving) return;
