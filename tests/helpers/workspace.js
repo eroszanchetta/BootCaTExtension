@@ -65,7 +65,9 @@ export async function workspace(projectId, options = {}) {
     }
   });
   const source = (await readFile(new URL('../../src/app.js', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
-  vm.runInContext(source, context);
+  // The final expression is the workspace startup promise. Await the complete
+  // metadata/activity check and capture drain before simulating user actions.
+  await vm.runInContext(source, context);
   await waitFor(() => vm.runInContext(projectId ? 'ready' : "document.getElementById('status').textContent.startsWith('No active project')", context));
   await waitFor(() => !vm.runInContext('running || importing || documentJobs.size', context));
   return {
