@@ -674,8 +674,8 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     await page.click('#start');
     await waitForFinished();
     const wordRow = page.locator('#review-lists tbody tr').filter({ has: page.locator(`a[href="${pdfOrigin}/always-blocked.docx"]`) });
-    assert.equal(await wordRow.locator('.import-document-button').innerText(), 'Import downloaded file');
     await openIssues();
+    assert.equal(await wordRow.locator('.import-document-button').innerText(), 'Import downloaded file');
     const wordChooser = page.waitForEvent('filechooser'); await wordRow.locator('.import-document-button').click();
     assert.equal(await page.locator('#import-document-picker').getAttribute('accept'), '');
     await (await wordChooser).setFiles({ name: 'downloaded.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', buffer: largeDOCX });
@@ -731,8 +731,8 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     await waitForFinished();
     assert.equal(await page.locator('#problem-results tr').count(), 1);
     assert.equal(await page.locator('#problem-results input[type="checkbox"]').isChecked(), false);
-    assert.match(await page.locator('#problem-results').innerText(), /Detected English/);
     await openIssues();
+    assert.match(await page.locator('#problem-results').innerText(), /Detected English/);
     await page.click('#problem-results .preview-button');
     await page.waitForFunction(() => document.querySelector('#preview-text').value.includes('Renewable energy'));
     await closeTextReview();
