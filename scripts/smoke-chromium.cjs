@@ -288,7 +288,15 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
       return ext.runtime.sendMessage({ type: 'collect', tabId: data.projectSearchTabs.tabs[0].tabId });
     });
     assert.equal(manualCollection.ok, true); assert.equal(individual.isClosed(), false);
-    await page.waitForFunction(() => document.querySelector('#prepared-queries .query-tab-status').dataset.status === 'collected');
+    try {
+      await page.waitForFunction(() => document.querySelector('#prepared-queries .query-tab-status').dataset.status === 'collected');
+    } catch (error) {
+      console.error('Query collection state:', JSON.stringify(await page.evaluate(async () => {
+        const ext = globalThis.browser ?? chrome, projectId = (await ext.runtime.sendMessage({ type: 'get-project' })).project.id;
+        return { queryStatus: document.querySelector('#query-status').textContent, tabStatus: document.querySelector('#project-tab-status').textContent, badges: [...document.querySelectorAll('.query-tab-status')].map(badge => badge.textContent), state: await ext.runtime.sendMessage({ type: 'get-project-search-tabs', projectId }) };
+      })));
+      throw error;
+    }
     assert.equal(await page.locator('#prepared-queries li').first().evaluate(row =>
       row.children[0].classList.contains('query-tab-status') && row.children[1].classList.contains('query-tab-action') && row.children[2].tagName === 'A'), true);
     assert.equal(await page.locator('#prepared-queries .query-tab-action').first().getAttribute('aria-label'), 'Open search tab');
