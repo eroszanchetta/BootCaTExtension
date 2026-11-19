@@ -242,7 +242,7 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     await page.waitForFunction(() => document.querySelector('#download-limit-hint').textContent.includes('50 MiB') && document.querySelector('#urls-warning').textContent === '');
     await settingsWindow.close(); await page.fill('#urls', '');
     const navNames = await page.locator('nav a').allTextContents();
-    assert.equal(navNames.at(-2), 'Save'); assert.equal(navNames.at(-1), 'Help');
+    assert.equal(navNames.at(-2), 'Download'); assert.equal(await page.locator('#save-section').count(), 0); assert.equal(navNames.at(-1), 'Help');
     await page.locator('nav a[href="#project-section"]').click();
     assert.equal(await page.locator('#project-section .workspace-panel').getAttribute('open'), '');
     assert.equal(await page.evaluate(() => document.querySelector('[aria-labelledby="project-heading"]').nextElementSibling.id), 'seeds-section');
