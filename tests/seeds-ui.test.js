@@ -1,3 +1,4 @@
+import { queryKey, queryPlan } from '../src/query-lifecycle.js';
 import { SEARCH_FILE_TYPES, DEFAULT_EXCLUDED_SITES, normalizeSearchFilters } from '../src/search-filters.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -19,26 +20,32 @@ class Element {
 }
 function fixture(options = {}) {
   const elements = new Map(), draft = { excludedSites: '', ...options.draft }, opened = [], confirmations = [];
-  let confirmed = true;
+  let confirmed = true, tabState = options.tabState || { tabs: [], history: [] };
+  const stateReply = () => ({ ok: true, ...structuredClone(tabState) });
   const get = id => elements.get(id) || (elements.set(id, new Element()), elements.get(id));
   get('engine').value = 'google';
   const context = vm.createContext({
-    setTimeout, clearTimeout, openWorkspaceSection() {}, combinationCount, SEARCH_FILE_TYPES, DEFAULT_EXCLUDED_SITES, normalizeSearchFilters,
+    setTimeout, clearTimeout, queryKey, queryPlan, openWorkspaceSection() {}, combinationCount, SEARCH_FILE_TYPES, DEFAULT_EXCLUDED_SITES, normalizeSearchFilters,
     document: { getElementById: get, createElement: () => new Element(), createElementNS: () => new Element() },
-    confirmAction: async ({ message }) => { confirmations.push(message); return confirmed; },
-    getExtensionAPI: () => ({ runtime: { sendMessage: async message => options.saveDefaults ? options.saveDefaults(message) : { ok: true } }, tabs: { create: async value => { if (options.open) await options.open(value, opened.length); opened.push(value); } } }),
+    confirmAction: async ({ message }) => { confirmations.push(message); return options.confirm ? options.confirm(message) : confirmed; },
+    getExtensionAPI: () => ({ runtime: { sendMessage: async message => message.type === 'get-project-search-tabs' ? (options.stateReply ? options.stateReply(stateReply()) : stateReply()) : options.saveDefaults ? options.saveDefaults(message) : { ok: true } }, tabs: { create: async value => { if (options.open) await options.open(value, opened.length); opened.push(value); } } }),
     getProjectId: () => 'project',
-    openProjectSearch: async ({ projectId, engine, query, active }) => {
-      assert.equal(projectId, 'project'); const value = { url: searchURL(engine, query), active };
+    openProjectSearch: async ({ projectId, engine, query, active, onlyMissing }) => {
+      assert.equal(projectId, 'project');
+      if (onlyMissing && !queryPlan([query], engine, tabState).missing.length) return { opened: false, ...stateReply() };
+      const value = { url: searchURL(engine, query), active };
       if (options.open) await options.open(value, opened.length); opened.push(value);
-      return { tabId: opened.length };
+      tabState.tabs.push({ tabId: opened.length, engine, query, status: 'loading' });
+      return { tabId: opened.length, opened: true, ...stateReply() };
     },
     ENGINES, searchURL, buildSearchQuery, parseSeeds, parseQueries, AbortController, BigInt,
     generateTuples: (text, length, count, config) => generateTuples(text, length, count, { ...config, random: () => 0n }),
     onOpeningChange: options.onOpeningChange || (() => {}), draft, onChange: patch => Object.assign(draft, patch)
   });
   vm.runInContext(source + '\nglobalThis.seeds = initSeedsUI({draft, onChange, getProjectId, onOpeningChange});', context);
-  return { get, draft, opened, confirmations, setConfirmed: value => { confirmed = value; }, ui: vm.runInContext('seeds', context),
+  const ui = vm.runInContext('seeds', context);
+  if (!options.unready) ui.updateTabState(tabState);
+  return { setState(value) { tabState = value; ui.updateTabState(value); }, get, draft, opened, confirmations, setConfirmed: value => { confirmed = value; }, ui: vm.runInContext('seeds', context),
     input(id, value) { get(id).value = value; get(id).handlers.input(); }, click: id => get(id).handlers.click() };
 }
 test('generate, edit and prepare tuples without opening tabs; engine changes update all query links', async () => {
@@ -91,6 +98,8 @@ test('batch opening can stop or report partial failures while individual query l
   const opening = app.click('open-all-queries'); assert.equal(app.ui.isBusy(), true); await new Promise(resolve => setImmediate(resolve));
   app.click('stop-query-tabs'); release(); await opening;
   assert.equal(app.opened.length, 1); assert.match(app.get('query-status').textContent, /Stopped.*1 of 3/);
+  assert.equal(app.get('open-all-queries').textContent, 'Run missing queries (2)');
+  await app.click('open-all-queries'); assert.equal(app.opened.length, 3); assert.equal(app.get('open-all-queries').disabled, true);
   const failing = fixture({ draft: { preparedQueries: ['first', 'second', 'third'] }, open: async (_, index) => { if (index === 1) throw new Error('Tab refused'); } });
   await failing.click('open-all-queries'); assert.equal(failing.opened.length, 1);
   assert.match(failing.get('query-status').textContent, /1 of 3.*Tab refused/); assert.equal(failing.get('prepared-queries').children.length, 3);
@@ -250,4 +259,59 @@ test('site edits update queries, validate the correct field, restore saved input
   assert.equal(restored.get('open-all-queries').disabled, false);
   assert.equal(restored.get('prepared-queries').children[0].children[2].textContent, query.replace(' site:unibo.it', ''));
   app.ui.destroy(); restored.ui.destroy();
+});
+
+
+test('batch controls disable immediately, skip open/collected queries, and enable only missing uncollected tabs', async () => {
+  let release; const pending = new Promise(resolve => { release = resolve; });
+  const app = fixture({ draft: { preparedQueries: ['first', 'second', 'third'] }, open: async () => pending });
+  assert.equal(app.get('open-all-queries').textContent, 'Run all queries');
+  const opening = app.click('open-all-queries');
+  assert.equal(app.get('open-all-queries').disabled, true);
+  await app.click('open-all-queries');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(app.get('open-all-queries').textContent, 'Opening queries…');
+  release(); await opening; assert.equal(app.opened.length, 3);
+  assert.equal(app.get('open-all-queries').textContent, 'No queries to open');
+  assert.equal(app.get('open-all-queries').disabled, true);
+  await app.click('open-all-queries'); assert.equal(app.opened.length, 3);
+  app.setState({ tabs: [{ engine: 'google', query: 'first', tabId: 1, status: 'attention' }], history: [{ engine: 'google', query: 'second', status: 'collected' }, { engine: 'google', query: 'third', status: 'closed' }] });
+  assert.equal(app.get('open-all-queries').textContent, 'Run missing queries (1)');
+  assert.equal(app.get('open-all-queries').disabled, false);
+  await app.click('open-all-queries');
+  assert.equal(new URL(app.opened.at(-1).url).searchParams.get('q'), 'third');
+  assert.equal(app.opened.length, 4); assert.equal(app.get('open-all-queries').disabled, true);
+});
+
+test('restored workspaces wait for authoritative state and ignore an older opening reply after a closure', () => {
+  const app = fixture({ unready: true, draft: { preparedQueries: ['first'] } });
+  assert.equal(app.get('open-all-queries').disabled, true);
+  assert.equal(app.get('open-all-queries').textContent, 'Checking query tabs…');
+  app.setState({ revision: 3, tabs: [], history: [{ engine: 'google', query: 'first', status: 'closed' }] });
+  assert.equal(app.get('open-all-queries').textContent, 'Run missing queries (1)');
+  app.setState({ revision: 2, tabs: [{ engine: 'google', query: 'first', tabId: 1, status: 'loaded' }], history: [] });
+  assert.equal(app.get('open-all-queries').disabled, false);
+  app.setState({ revision: 4, tabs: [], history: [{ engine: 'google', query: 'first', status: 'collected' }] });
+  assert.equal(app.get('open-all-queries').disabled, true);
+  assert.match(app.get('query-run-hint').textContent, /already been collected/);
+});
+
+test('a tab opened in another window during confirmation is skipped by the background request', async () => {
+  let app;
+  app = fixture({ draft: { preparedQueries: ['first'] }, confirm: () => {
+    app.setState({ tabs: [{ engine: 'google', query: 'first', tabId: 1, status: 'loading' }], history: [] }); return true;
+  } });
+  await app.click('open-all-queries'); assert.equal(app.opened.length, 0); assert.equal(app.confirmations.length, 1);
+  assert.equal(app.get('open-all-queries').disabled, true); assert.match(app.get('query-status').textContent, /1 already open or collected/);
+});
+
+
+test('failed tab-state checks never open a batch and a later authoritative refresh permits retry', async () => {
+  let fail = true;
+  const app = fixture({ draft: { preparedQueries: ['first'] }, stateReply: async state => fail ? { ok: false, error: 'Tab state unavailable' } : state });
+  await app.click('open-all-queries');
+  assert.equal(app.opened.length, 0); assert.equal(app.get('open-all-queries').disabled, true);
+  assert.match(app.get('query-status').textContent, /Tab state unavailable/);
+  fail = false; app.setState({ tabs: [], history: [] });
+  await app.click('open-all-queries'); assert.equal(app.opened.length, 1);
 });

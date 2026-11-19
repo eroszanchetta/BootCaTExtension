@@ -145,6 +145,47 @@ const assert = require('node:assert/strict');
         await workspace.setViewportSize({ width: 1050, height: 850 });
         await workspace.click('#settings-reset'); await workspace.click('#settings-save'); await workspace.locator('#settings-dialog[open]').waitFor({ state: 'hidden' });
 
+        await workspace.evaluate(async () => {
+          const { initSeedsUI } = await import('./seeds-ui.js');
+          const { queryPlan } = await import('./query-lifecycle.js');
+          const select = document.querySelector('#engine'), option = document.createElement('option');
+          option.value = 'google'; option.textContent = 'Google'; select.append(option); select.value = 'google';
+          const state = globalThis.fixtureQueryState = { tabs: [], history: [] }; globalThis.fixtureQueryOpens = 0;
+          chrome.runtime.sendMessage = async message => {
+            if (message.type === 'get-project-search-tabs') return { ok: true, ...structuredClone(state) };
+            if (message.type === 'open-project-search') {
+              if (!queryPlan([message.query], message.engine, state).missing.length) return { ok: true, opened: false, ...structuredClone(state) };
+              const tabId = ++globalThis.fixtureQueryOpens;
+              state.tabs.push({ tabId, engine: message.engine, query: message.query, status: 'loading' });
+              return { ok: true, opened: true, tabId, ...structuredClone(state) };
+            }
+            return { ok: true };
+          };
+          globalThis.testQueryUI = initSeedsUI({ draft: { preparedQueries: ['first', 'second'], excludedSites: '' }, getProjectId: () => 'query-fixture' });
+          testQueryUI.updateTabState(state);
+        });
+        await workspace.locator('nav a[href="#search-section"]').click();
+        await workspace.getByRole('button', { name: 'Run all queries', exact: true }).click();
+        await workspace.locator('#confirmation-dialog[open]').waitFor();
+        assert.equal(await workspace.locator('#open-all-queries').isDisabled(), true);
+        await workspace.locator('#confirmation-accept').click();
+        await workspace.waitForFunction(() => document.querySelector('#open-all-queries').disabled && document.querySelector('#open-all-queries').textContent === 'No queries to open');
+        await workspace.locator('#open-all-queries').evaluate(button => button.click());
+        assert.equal(await workspace.evaluate(() => fixtureQueryOpens), 2);
+        await workspace.evaluate(() => {
+          const removed = fixtureQueryState.tabs.shift(); fixtureQueryState.history.push({ ...removed, status: 'closed' });
+          testQueryUI.updateTabState(fixtureQueryState);
+        });
+        await workspace.getByRole('button', { name: 'Run missing queries (1)', exact: true }).click();
+        await workspace.locator('#confirmation-dialog[open]').waitFor(); await workspace.locator('#confirmation-accept').click();
+        await workspace.waitForFunction(() => document.querySelector('#open-all-queries').disabled && document.querySelector('#open-all-queries').textContent === 'No queries to open');
+        assert.equal(await workspace.evaluate(() => fixtureQueryOpens), 3);
+        await workspace.evaluate(() => {
+          fixtureQueryState.history = fixtureQueryState.tabs.map(tab => ({ ...tab, status: 'collected' })); fixtureQueryState.tabs = [];
+          testQueryUI.updateTabState(fixtureQueryState); testQueryUI.destroy();
+        });
+        assert.match(await workspace.locator('#query-run-hint').innerText(), /already been collected/);
+        await workspace.reload();
         assert.equal(await workspace.locator('#project-section .workspace-panel').evaluate(panel => panel.open), true);
         await workspace.locator('#project-section .workspace-panel > summary').focus(); await workspace.keyboard.press('Enter');
         assert.equal(await workspace.locator('#project-section .workspace-panel').evaluate(panel => panel.open), false);

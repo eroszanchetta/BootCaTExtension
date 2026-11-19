@@ -1,9 +1,12 @@
+import { normalizeQuery, queryKey, queryPlan } from './query-lifecycle.js';
 import { adapterForURL, searchURL } from './engines.js';
 export const SEARCH_TABS_KEY = 'projectSearchTabs';
 export const SLOW_TAB_MS = 30_000;
 const empty = () => ({ tabs: [], history: [], batch: null });
 function remember(data, record, status, reason = '') {
-  data.history = (data.history || []).filter(item => !(item.projectId === record.projectId && item.engine === record.engine && item.query === record.query));
+  const previous = (data.history || []).find(item => item.projectId === record.projectId && queryKey(item.engine, item.query) === queryKey(record.engine, record.query));
+  if (previous?.status === 'collected' && status !== 'collected') return;
+  data.history = (data.history || []).filter(item => !(item.projectId === record.projectId && queryKey(item.engine, item.query) === queryKey(record.engine, record.query)));
   data.history.push({ projectId: record.projectId, engine: record.engine, query: record.query, status, reason });
 }
 function rememberClosed(data, record) {
@@ -21,7 +24,7 @@ function updateLoading(record, tab) {
   }
 }
 const canonical = value => { const url = new URL(value); url.hash = ''; return url.href; };
-const queryText = value => value.normalize('NFC').replace(/\s+/gu, ' ').trim();
+const queryText = normalizeQuery;
 export function matchesProjectSearch(record, value) {
   try {
     const adapter = adapterForURL(value), url = new URL(value);
@@ -47,6 +50,7 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
     known = new Set(data.tabs.map(record => record.tabId)); return data;
   }
   async function write(data) {
+    data.revision = (data.revision || 0) + 1;
     await ext.storage.session.set({ [SEARCH_TABS_KEY]: data });
     known = new Set(data.tabs.map(record => record.tabId));
     for (const id of navigation.keys()) if (!known.has(id)) navigation.delete(id);
@@ -57,19 +61,38 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
     activeBatch = null;
     await write(empty());
   }
-  async function open({ projectId, engine, query, active }) {
+  async function restoreCollected(data, projectId) {
+    // Saved search provenance outlives workspace and browser restarts. Partial
+    // snapshots are deliberately excluded: those queries still need collection.
+    const before = JSON.stringify(data.history || []);
+    const { collections = [] } = await ext.storage.local?.get('collections') || {};
+    const history = new Map((data.history || []).map(item => [JSON.stringify([item.projectId, queryKey(item.engine, item.query)]), item]));
+    for (const collection of collections) {
+      if (typeof collection.query !== 'string' || !collection.engine || collection.unresolved || !collection.results?.length) continue;
+      const item = { projectId, engine: collection.engine, query: collection.query, status: 'collected', reason: 'Results saved in this project.' };
+      history.set(JSON.stringify([projectId, queryKey(item.engine, item.query)]), item);
+    }
+    data.history = [...history.values()];
+    if (JSON.stringify(data.history) !== before) await write(data);
+  }
+  async function open({ projectId, engine, query, active, onlyMissing = false }) {
     if (typeof query !== 'string' || !query.trim()) throw new Error('Enter a search query first.');
     const url = searchURL(engine, query);
     return serialize(async () => {
       await assertProject(projectId);
       const data = await read();
+      if (onlyMissing) {
+        await reconcile(data, projectId); await restoreCollected(data, projectId);
+        const state = status(data, projectId);
+        if (!queryPlan([query], engine, state).missing.length) return { opened: false, ...state };
+      }
       const tab = await ext.tabs.create({ url, active: active !== false });
       if (!Number.isInteger(tab?.id)) throw new Error('The browser did not return a search tab ID.');
       const record = { tabId: tab.id, token: crypto.randomUUID(), projectId, engine, query, createdURL: url, revision: 0 };
       updateLoading(record, tab); data.tabs.push(record);
       try { await write(data); }
       catch (error) { throw new Error(`The search tab opened but could not be tracked. Collect it manually. (${error.message})`); }
-      return { tabId: tab.id };
+      return { tabId: tab.id, opened: true, ...(onlyMissing ? status(data, projectId) : {}) };
     });
   }
   function status(data, projectId) {
@@ -78,7 +101,7 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
       tabId: record.tabId, engine: record.engine, query: record.query, status: record.status || 'loading', reason: record.reason || '', unloaded: !!record.unloaded,
       slow: record.status === 'loading' && Date.now() - record.loadingSince >= SLOW_TAB_MS
     }));
-    return { count: tabs.length, loaded: tabs.filter(tab => tab.status !== 'loading' && !tab.unloaded).length,
+    return { revision: data.revision || 0, count: tabs.length, loaded: tabs.filter(tab => tab.status !== 'loading' && !tab.unloaded).length,
       loading: tabs.filter(tab => tab.status === 'loading').length, tabs,
       history: (data.history || []).filter(item => item.projectId === projectId), batch };
   }
@@ -104,7 +127,7 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
   async function getState(projectId) {
     return serialize(async () => {
       await assertProject(projectId); const data = await read();
-      await reconcile(data, projectId);
+      await reconcile(data, projectId); await restoreCollected(data, projectId);
       if (data.batch?.running && (data.batch.workerToken !== workerToken || activeBatch?.id !== data.batch.id)) {
         data.batch.running = false; data.batch.interrupted = true; await write(data);
       }
@@ -193,12 +216,12 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
     try {
       for (const record of records) {
         if (run.stopped) break;
-        let outcome = 'failed', saved = false, reason;
+        let outcome = 'failed', saved = false, complete = false, reason;
         try {
           const snap = await snapshot(run.projectId, record);
           if (!snap.record) { outcome = snap.outcome; reason = snap.reason; }
           else {
-            const result = await collectPage(record.tabId, run.projectId, snap); saved = true;
+            const result = await collectPage(record.tabId, run.projectId, snap); saved = true; complete = !result?.unresolved;
             if (run.stopped) { outcome = 'saved'; reason = 'Results saved; stopped before closing the tab.'; }
             else {
               if (result?.unresolved) { outcome = 'partial'; reason = 'Partial results saved. Some links could not be resolved; tab left open for inspection.'; }
@@ -207,6 +230,7 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
           }
         } catch (error) { reason = `${saved ? 'Results saved, but tab could not be closed: ' : ''}${error.message}`; }
         const exists = await updateBatch(run, (batch, data) => {
+          if (saved && complete) remember(data, record, 'collected', 'Results saved in this project.');
           const current = data.tabs.find(item => item.token === record.token);
           if (current && outcome !== 'closed') { current.status = current.status === 'loading' ? 'loading' : 'attention'; current.reason = reason || 'Inspect this tab, then retry collection.'; }
           batch.processed++; if (saved) batch.saved++;

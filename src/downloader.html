@@ -83,7 +83,8 @@
       <ol id="prepared-queries" class="query-list"></ol>
       <div id="query-pagination" class="actions" hidden><button id="previous-queries" type="button" class="secondary">Previous</button><span id="query-page"></span><button id="next-queries" type="button" class="secondary">Next</button></div>
       <div class="actions"><button id="open-all-queries" type="button" disabled>Run all queries</button><button id="stop-query-tabs" type="button" class="secondary" hidden>Stop opening tabs</button></div>
-      <p class="hint">Search engines may refuse automated batch queries, block requests or show CAPTCHAs. Opening many tabs can slow your browser. You will be asked to confirm before opening all queries.</p>
+      <p id="query-run-hint" class="hint" role="status" aria-live="polite"></p>
+      <p class="hint">Search engines may refuse automated batch queries, block requests or show CAPTCHAs. Opening many tabs can slow your browser. You will be asked to confirm before opening the missing queries.</p>
       <p id="query-status" role="status" aria-live="polite"></p>
       <h3>Collect project search tabs</h3>
       <p id="project-tab-count" role="status" aria-live="polite">Checking project search tabs…</p>
