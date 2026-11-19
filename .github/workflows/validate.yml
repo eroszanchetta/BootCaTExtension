@@ -11,6 +11,10 @@ permissions:
 jobs:
   test-and-build:
     runs-on: ubuntu-latest
+    # Keep this image version aligned with the exact Playwright dependency.
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.1-noble
+      options: --ipc=host
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -63,10 +67,9 @@ jobs:
       - name: "Firefox validation: ${{ steps.amo_lint.outputs.summary }}"
         if: always() && steps.amo_lint.outputs.summary != ''
         run: echo "Firefox validation details are recorded in the preceding step."
-      - run: npx playwright install --with-deps chromium firefox
       - run: |
-          npm run test:popup > browser-test.log 2>&1
-          npm run test:browser >> browser-test.log 2>&1
+          runuser -u pwuser -- npm run test:popup > browser-test.log 2>&1
+          runuser -u pwuser -- npm run test:browser >> browser-test.log 2>&1
       - name: Report browser failure
         id: browser_report
         if: failure()
