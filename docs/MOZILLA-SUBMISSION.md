@@ -98,7 +98,7 @@ A minimal test:
 
 Broad HTTP/HTTPS host access is needed because users can supply arbitrary document URLs
 and collect/capture pages from arbitrary sites. activeTab and scripting read relevant page
-DOMs following explicit user actions; storage holds local project data/preferences. There
+DOMs following explicit user actions. Optional floating controls add a packaged, isolated interface to supported pages only when enabled for an active project; no page collection occurs until the user clicks. Personal visibility, corner position and close-after-success choices persist across projects. The popup remains available on protected pages where browser rules block the overlay. Storage holds local project data/preferences. There
 is no cookies or history API permission and no unrelated browsing-history collection.
 No remote executable code is loaded. PDF.js, its worker, character maps and fonts are local;
 PDF JavaScript and WebAssembly execution are disabled. Page scripts are not executed during

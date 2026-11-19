@@ -94,6 +94,49 @@ const assert = require('node:assert/strict');
           assert.equal((await measure()).x, false, `${name}: ${scenario} narrow-panel overflow`);
           assert.deepEqual(errors, []); await page.close();
         }
+        // Run the real, self-contained floating control in both native DOMs.
+        const floating = await browser.newPage({ viewport: { width: 640, height: 600 } });
+        const floatingErrors = []; floating.on('pageerror', error => floatingErrors.push(error.message));
+        await floating.addInitScript(name => {
+          const fixture = globalThis.floatingFixture = { state: { enabled: true, projectId: 'p', action: 'save-page', saved: false, position: 'top-right', closeAfterSuccess: false }, actions: 0, workspace: 0, listeners: [], partial: false, fail: false };
+          globalThis[name === 'firefox' ? 'browser' : 'chrome'] = { runtime: { id: 'floating-fixture', onMessage: { addListener(fn) { fixture.listeners.push(fn); } }, sendMessage: async message => {
+            if (message.type === 'get-floating-state') return { ok: true, state: structuredClone(fixture.state) };
+            if (message.type === 'floating-hide') { fixture.state.enabled = false; return { ok: true }; }
+            if (message.type === 'floating-open-workspace') { fixture.workspace++; return { ok: true }; }
+            fixture.actions++;
+            if (fixture.fail) return { ok: false, error: 'Save failed. ' + 'LongError'.repeat(70) };
+            if (fixture.partial) return { ok: true, unresolved: 1 };
+            fixture.state.saved = true; return { ok: true };
+          } } };
+        }, name);
+        await floating.goto(`http://127.0.0.1:${server.address().port}/about.html`);
+        await floating.addStyleTag({ content: 'button { width: 200px !important; background: red !important } div { font-size: 80px !important }' });
+        await floating.addScriptTag({ url: `http://127.0.0.1:${server.address().port}/floating-control.js` });
+        const host = floating.locator('[data-bootcat-floating-control]'); await host.waitFor();
+        assert.equal(await host.evaluate(node => node.shadowRoot), null, `${name}: keep the controls isolated from the page`);
+        const initial = await host.boundingBox(); assert.equal(Math.round(initial.y), 16); assert.equal(Math.round(initial.x + initial.width), 624); assert.ok(initial.width < 130);
+        assert.equal(await floating.evaluate(async () => { const { captureCurrentPage } = await import('./page-capture.js'); return captureCurrentPage().html.includes('data-bootcat-floating-control'); }), false);
+        await floating.addScriptTag({ url: `http://127.0.0.1:${server.address().port}/floating-control.js` });
+        assert.equal(await host.count(), 1); assert.equal(await floating.evaluate(() => floatingFixture.listeners.length), 1);
+        for (const position of ['top-right', 'top-left', 'bottom-right', 'bottom-left']) {
+          await floating.evaluate(position => { floatingFixture.state.position = position; for (const listener of floatingFixture.listeners) listener({ type: 'bootcat-floating-refresh' }, { id: 'floating-fixture' }, () => {}); }, position);
+          await floating.waitForFunction(position => { const node = document.querySelector('[data-bootcat-floating-control]'); return node.style[position.startsWith('top') ? 'top' : 'bottom'] === '16px' && node.style[position.endsWith('left') ? 'left' : 'right'] === '16px'; }, position);
+        }
+        await floating.setViewportSize({ width: 320, height: 600 });
+        let box = await host.boundingBox(); await floating.mouse.move(box.x + 20, box.y + 20);
+        assert.equal(await floating.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+        await floating.mouse.click(box.x + 55, box.y + 20); await floating.waitForFunction(() => floatingFixture.workspace === 1);
+        await floating.mouse.click(box.x + box.width - 20, box.y + 20); await host.waitFor({ state: 'hidden' });
+        assert.equal(await floating.evaluate(() => floatingFixture.state.enabled), false);
+        await floating.evaluate(() => { floatingFixture.state.enabled = true; floatingFixture.state.action = 'collect'; floatingFixture.partial = true; for (const listener of floatingFixture.listeners) listener({ type: 'bootcat-floating-refresh' }, { id: 'floating-fixture' }, () => {}); });
+        await host.waitFor(); box = await host.boundingBox(); await floating.mouse.click(box.x + 20, box.y + 20);
+        await floating.waitForFunction(() => floatingFixture.actions === 1); assert.equal(await host.isVisible(), true, 'partial collection leaves controls available');
+        await floating.evaluate(() => { floatingFixture.partial = false; });
+        await floating.mouse.click(box.x + 20, box.y + 20); await floating.waitForFunction(() => floatingFixture.actions === 2);
+        await host.waitFor({ state: 'hidden' });
+        await floating.evaluate(() => { floatingFixture.state.saved = false; floatingFixture.state.enabled = false; for (const listener of floatingFixture.listeners) listener({ type: 'bootcat-floating-refresh' }, { id: 'floating-fixture' }, () => {}); });
+        assert.equal(await host.count(), 0);
+        assert.deepEqual(floatingErrors, []); await floating.close();
         // Native nested disclosures and their real styles must also work in Firefox.
         // Only workspace startup is isolated here; the full Chromium extension suite
         // separately checks query updates, persistence and project resets.

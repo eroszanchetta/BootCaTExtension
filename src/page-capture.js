@@ -6,10 +6,12 @@ export function captureCurrentPage({ captureMiB = 2, htmlElements = 60000 } = {}
   if (!/^https?:$/.test(location.protocol) || !['text/html', 'application/xhtml+xml'].includes(document.contentType)) {
     return { error: 'Open an HTTP or HTTPS HTML page first. Browser pages cannot be captured.' };
   }
-  if (document.querySelectorAll('*').length > htmlElements) return { error: 'This page is too complex to save.' };
+  const floating = globalThis.__bootcatFloatingControl?.host;
+  if (document.querySelectorAll('*').length - (floating?.isConnected ? 1 : 0) > htmlElements) return { error: 'This page is too complex to save.' };
   const url = new URL(location.href);
   if (url.username || url.password) return { error: 'URLs containing credentials cannot be saved.' };
   const clone = document.documentElement.cloneNode(true);
+  if (floating?.id) [...clone.querySelectorAll('[data-bootcat-floating-control]')].find(node => node.id === floating.id)?.remove();
   // Save a passive snapshot. Do not copy editable fields or embedded documents.
   for (const node of clone.querySelectorAll('script:not([type="application/ld+json"]), iframe, frame, object, embed, input, textarea, select, button, base, meta[charset], meta[http-equiv]')) node.remove();
   for (const node of [clone, ...clone.querySelectorAll('*')]) {

@@ -20,3 +20,10 @@ p { margin: 10px 0; font-size: 14px; }
   padding: 10px 12px;
   font-weight: 700;
 }
+
+.popup-switch { display: flex; align-items: center; gap: 9px; margin: 12px 0; cursor: pointer; }
+.popup-switch input { width: 18px; height: 18px; flex: 0 0 18px; margin: 0; padding: 0; accent-color: #007aa6; }
+.floating-preferences { margin-top: 18px; padding-top: 10px; border-top: 1px solid #c4d8e7; }
+.floating-preferences label[for] { font-size: 12px; margin: 10px 0 5px; }
+#floating-position { padding: 7px; font-size: 13px; }
+#controls-feedback:empty { display: none; }

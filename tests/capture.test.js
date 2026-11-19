@@ -1,3 +1,4 @@
+import { COLLECTION_CONTROLS_KEY, DEFAULT_COLLECTION_CONTROLS, collectionControlsFromRecord } from '../src/collection-preferences.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -48,13 +49,14 @@ for (const success of [true, false]) test(`popup ${success ? 'keeps save disable
     return elements.get(id);
   };
   const context = vm.createContext({
+    COLLECTION_CONTROLS_KEY, DEFAULT_COLLECTION_CONTROLS, collectionControlsFromRecord,
     initVersionBadge: () => '2.0.0',
     document: { getElementById: get }, window: { close() {} },
     adapterForURL: () => null,
     getExtensionAPI: () => ({
       storage: { onChanged: { addListener() {} } },
       tabs: { query: async () => [{ id: 9, url: 'https://example.org/article' }] },
-      runtime: { sendMessage: async message => { if (message.type === 'get-project') return { ok: true, project: { id: 'p', name: 'Test corpus', nameConfirmed: true } }; if (message.type === 'get-page-corpus-state') return { ok: true, saved: false, projectId: 'p' }; assert.equal(message.type, 'save-page'); assert.equal(message.tabId, 9); return success ? { ok: true } : { ok: false, error: 'Could not read page' }; } }
+      runtime: { sendMessage: async message => { if (message.type === 'get-collection-controls') return { ok: true, preferences: DEFAULT_COLLECTION_CONTROLS }; if (message.type === 'get-project') return { ok: true, project: { id: 'p', name: 'Test corpus', nameConfirmed: true } }; if (message.type === 'get-page-corpus-state') return { ok: true, saved: false, projectId: 'p' }; assert.equal(message.type, 'save-page'); assert.equal(message.tabId, 9); return success ? { ok: true } : { ok: false, error: 'Could not read page' }; } }
     })
   });
   const source = (await readFile(new URL('../src/popup.js', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');

@@ -1,3 +1,4 @@
+import { COLLECTION_CONTROLS_KEY, DEFAULT_COLLECTION_CONTROLS, collectionControlsFromRecord } from '../src/collection-preferences.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
@@ -21,6 +22,7 @@ async function popup(state, url, fail = false) {
   let requests = 0, reloads = 0;
   const notify = changes => listeners.forEach(fn => fn(changes, 'local'));
   const context = vm.createContext({
+    COLLECTION_CONTROLS_KEY, DEFAULT_COLLECTION_CONTROLS, collectionControlsFromRecord,
     initVersionBadge: () => '2.0.0',
     document: { getElementById: get }, adapterForURL,
     window: { close() {}, location: { reload() { reloads++; } } },
@@ -28,6 +30,8 @@ async function popup(state, url, fail = false) {
       tabs: { query: async () => [{ id: 10, url }] },
       storage: { local: { get: async () => ({ collections: state.collections }) }, onChanged: { addListener(fn) { listeners.push(fn); } } },
       runtime: { sendMessage: async message => {
+        if (message.type === 'get-collection-controls') return { ok: true, preferences: state.preferences || DEFAULT_COLLECTION_CONTROLS };
+        if (message.type === 'save-collection-controls') { state.preferences = { ...DEFAULT_COLLECTION_CONTROLS, ...state.preferences, ...message.patch }; notify({ [COLLECTION_CONTROLS_KEY]: { newValue: { version: 1, values: state.preferences } } }); return { ok: true, preferences: state.preferences }; }
         if (message.type === 'get-project') return { ok: true, project: state.project === undefined ? { id: 'current', name: 'Test corpus', nameConfirmed: true } : state.project };
         if (message.type === 'get-page-corpus-state') { if (state.pageGate) await state.pageGate; return { ok: true, projectId: 'current', saved: !!state.saved }; }
         if (message.type === 'save-page') { assert.equal(message.projectId, 'current'); if (state.saveGate) await state.saveGate; state.saved = true; return { ok: true }; }
@@ -144,4 +148,16 @@ test('completing project setup reloads before exposing potentially stale collect
   const ui = await popup({ collections: [], project: { id: 'current', name: 'Untitled project', nameConfirmed: false } }, 'https://www.google.com/search?q=energy');
   ui.notify({ project: { newValue: { id: 'current', name: 'Corpus', nameConfirmed: true } } });
   assert.equal(ui.reloads(), 1); assert.equal(ui.get('collect-action').hidden, true);
+});
+
+test('collection switches and floating position persist across pages and popup reopening', async () => {
+  const state = { collections: [] }, first = await popup(state, 'https://www.google.com/search?q=one');
+  first.get('close-collected-tab').checked = true; await first.get('close-collected-tab').handlers.change();
+  first.get('show-floating-controls').checked = true; await first.get('show-floating-controls').handlers.change();
+  first.get('floating-position').value = 'bottom-left'; await first.get('floating-position').handlers.change();
+  const next = await popup(state, 'https://example.org/article');
+  assert.equal(next.get('close-collected-tab').checked, true); assert.equal(next.get('show-floating-controls').checked, true); assert.equal(next.get('floating-position').value, 'bottom-left');
+  assert.equal(next.get('close-captured-tab').checked, false);
+  next.get('close-captured-tab').checked = true; await next.get('close-captured-tab').handlers.change();
+  assert.equal((await popup(state, 'https://other.test')).get('close-captured-tab').checked, true);
 });

@@ -94,7 +94,7 @@ corpus. This also supports manual recovery after the user visits an access-check
 ### scripting justification
 
 Execute only the extension's packaged DOM-reading functions in explicitly selected pages
-or tracked project search tabs to collect result links or capture page content. No scripts
+or tracked project search tabs to collect result links or capture page content. When the user enables floating controls for an active project, a packaged isolated content script also displays icon controls on supported existing/new web tabs; it reads page content only after an explicit collection/capture click. It is dynamically unregistered when disabled or the project closes. No scripts
 are downloaded from a server, and downloaded page scripts are not executed during extraction.
 
 ### storage justification
