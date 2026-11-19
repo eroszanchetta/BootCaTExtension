@@ -443,12 +443,14 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.equal(await page.locator('#pdf-notice').count(), 1);
     assert.ok(!(await page.locator('#review-lists').innerText()).includes('PDF reading order'));
     await page.locator('#review-lists .preview-button').nth(0).click();
+    await page.waitForFunction(() => document.querySelector('#results tr')?.classList.contains('preview-selected'));
     assert.equal(await page.locator('#results tr.preview-selected').count(), 1);
     assert.equal(await page.locator('#results tr').nth(0).getAttribute('aria-current'), 'true');
     await page.waitForFunction(() => document.querySelector('#preview-text').value.includes('Renewable energy corpus'));
     assert.match(await page.inputValue('#preview-text'), /Renewable energy corpus/);
     await closeTextReview();
     await page.locator('#review-lists .preview-button').nth(1).click();
+    await page.waitForFunction(() => document.querySelectorAll('#results tr')[1]?.classList.contains('preview-selected'));
     assert.equal(await page.locator('#results tr.preview-selected').count(), 1);
     assert.equal(await page.locator('#results tr').nth(0).getAttribute('aria-current'), 'false');
     assert.equal(await page.locator('#results tr').nth(1).getAttribute('aria-current'), 'true');
