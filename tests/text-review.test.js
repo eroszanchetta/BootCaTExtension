@@ -11,6 +11,41 @@ import { checkLanguage } from '../src/language-detection.js';
 const preview = async app => app.get('results').children[0].children[2].children[1].handlers.click();
 const edit = async (app, value) => { await app.click('text-review-edit'); await app.input('preview-text', value); };
 
+test('Undo stays available in editing mode and restores the current edit baseline without saving', async () => {
+  globalThis.indexedDB = new IDBFactory();
+  try {
+    const url = 'https://example.org/undo', original = 'Downloaded corpus text';
+    const app = await workspace('undo'); await app.input('urls', url); await app.click('start'); await app.click('export');
+    await preview(app);
+    assert.equal(app.get('text-review-edit').textContent, 'Edit');
+    await app.click('text-review-edit');
+    assert.equal(app.get('text-review-edit').textContent, 'Undo');
+    assert.equal(app.get('text-review-edit').disabled, false);
+    await app.click('text-review-edit');
+    assert.equal(app.get('text-review-edit').disabled, false, 'Undo is available without changes');
+    await app.input('preview-text', 'Unsaved first edit');
+    assert.equal(app.beforeUnload(), true);
+    await app.click('text-review-edit');
+    assert.equal(app.get('preview-text').value, original);
+    assert.equal(app.get('preview-text').readOnly, false);
+    assert.equal(app.get('text-review-edit').textContent, 'Undo');
+    assert.equal(app.get('text-review-save').disabled, true);
+    assert.equal(app.beforeUnload(), false);
+    assert.equal(app.get('export').disabled, true, 'Undo alone does not invalidate the saved corpus');
+    assert.equal((await storage.loadWorkspace('undo')).entries[0].doc.editRevision || 0, 0);
+    await app.input('preview-text', 'Saved first edit'); await app.click('text-review-save');
+    assert.equal(app.get('text-review-edit').textContent, 'Edit');
+    await app.click('text-review-close'); await preview(app);
+    await edit(app, 'Unsaved second edit'); await app.click('text-review-edit');
+    assert.equal(app.get('preview-text').value, 'Saved first edit');
+    assert.equal(await (await storage.readText('undo', url)).text(), 'Saved first edit');
+    assert.equal(await (await storage.readOriginalText('undo', url)).text(), original);
+    assert.equal((await storage.loadWorkspace('undo')).entries[0].doc.editRevision, 1);
+    await app.input('preview-text', 'Saved second edit'); await app.click('text-review-save');
+    assert.equal(await (await storage.readText('undo', url)).text(), 'Saved second edit');
+  } finally { delete globalThis.indexedDB; }
+});
+
 test('edited text persists, updates counts/report, invalidates export and preserves source, baseline and raw PDF in the ZIP', async () => {
   globalThis.indexedDB = new IDBFactory();
   try {
