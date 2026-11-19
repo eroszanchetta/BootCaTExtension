@@ -8,6 +8,11 @@ export function openWorkspaceSection(id, { scroll = false } = {}) {
   }
 }
 export function initWorkspaceSections() {
+  // The icon menu can wrap; keep anchored sections below its actual height.
+  if (typeof ResizeObserver === 'function') {
+    const bar = document.querySelector('.topbar');
+    if (bar) new ResizeObserver(() => document.documentElement.style.setProperty('--workspace-nav-offset', `${Math.ceil(bar.getBoundingClientRect().height) + 16}px`)).observe(bar);
+  }
   for (const id of sectionIds) {
     const panel = document.getElementById(id)?.querySelector('details.workspace-panel');
     if (panel) panel.open = id === 'project-section';

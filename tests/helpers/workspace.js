@@ -1,3 +1,4 @@
+import { DEFAULT_SETTINGS, SETTINGS_KEY, readSettings, fileLimit } from '../../src/settings.js';
 import { createProjectWork, createExtractionQueue } from '../../src/project-work.js';
 import { initTextReview } from '../../src/text-review.js';
 import { corpusFingerprint, corpusSavedMessage } from '../../src/export-state.js';
@@ -39,14 +40,16 @@ export async function workspace(projectId, options = {}) {
   const elements = new Map(), listeners = [], windowListeners = {};
   const get = id => elements.get(id) || (elements.set(id, new Element()), elements.get(id));
   let archive, lastFilename, downloads = 0, confirm = true, reset, fetched = [], language = options.language || 'none';
+  const local = options.local || { [SETTINGS_KEY]: { version: 1, revision: 0, values: options.settings || {} } };
   const context = vm.createContext({
+    DEFAULT_SETTINGS, SETTINGS_KEY, readSettings, fileLimit,
     console, navigator: options.navigator || {}, Blob, URL: { createObjectURL: value => { archive = value; downloads++; return 'blob:test'; }, revokeObjectURL() {} },
     AbortController, TextEncoder, Date, queueMicrotask, corpusFingerprint, corpusSavedMessage, initTextReview, createProjectWork, createExtractionQueue,
     setTimeout: (fn, delay) => { if (delay < 1000) { queueMicrotask(fn); return 0; } return setTimeout(fn, delay); }, clearTimeout,
     document: { getElementById: get, createElement: tag => { const node = new Element(); if (tag === 'a') node.click = () => { lastFilename = node.download; }; return node; }, createElementNS: () => new Element(), createTextNode: text => ({ textContent: text }), body: new Element() },
     confirmAction: async () => confirm,
     window: { location: { reload() {} }, addEventListener(type, fn) { windowListeners[type] = fn; } },
-    getExtensionAPI: () => ({ storage: { onChanged: { addListener(fn) { listeners.push(fn); } } } }),
+    getExtensionAPI: () => ({ storage: { local: { get: async key => ({ [key]: local[key] }) }, onChanged: { addListener(fn) { listeners.push(fn); } } } }),
     initProjectUI: callbacks => { reset = callbacks.onReset; return { ready: Promise.resolve(), snapshot: () => projectId ? { id: projectId, name: 'Test corpus', language } : null, setLanguage: async value => { language = value; } }; },
     checkLanguage, hasLanguageWarning, languageMessage,
     initSearchUI: () => ({ flush() {}, destroy() {} }), readCollections: async () => [], projectFilename: name => name,
@@ -71,7 +74,7 @@ export async function workspace(projectId, options = {}) {
   await waitFor(() => vm.runInContext(projectId ? 'ready' : "document.getElementById('status').textContent.startsWith('No active project')", context));
   await waitFor(() => !vm.runInContext('running || importing || documentJobs.size', context));
   return {
-    get, fetched, reset: () => reset(), setConfirm: value => { confirm = value; }, archive: () => archive, downloads: () => downloads, filename: () => lastFilename,
+    local, get, fetched, reset: () => reset(), setConfirm: value => { confirm = value; }, archive: () => archive, downloads: () => downloads, filename: () => lastFilename,
     state: () => vm.runInContext('({ entries, ready, running, downloading, importing, jobs: documentJobs.size, pendingWrites, state })', context),
     async input(id, value) { get(id).value = value; await get(id).handlers.input?.(); await waitFor(() => !vm.runInContext('pendingWrites', context)); },
     click: id => get(id).handlers.click(),

@@ -1,11 +1,12 @@
+import { DEFAULT_SETTINGS } from './settings.js';
 import * as storage from './project-store.js';
 import { checkLanguage, languageMessage } from './language-detection.js';
 import { fileWarnings } from './pdf-recovery.js';
 
-export const EDIT_TEXT_LIMIT = 10_000_000;
-export async function checkEditedText(extraction, text, language) {
+export const EDIT_TEXT_LIMIT = DEFAULT_SETTINGS.editCharacters;
+export async function checkEditedText(extraction, text, language, settings = DEFAULT_SETTINGS) {
   if (!text.trim()) throw new Error('Enter some text before saving. To omit a document, uncheck Include in the download list.');
-  if (text.length > EDIT_TEXT_LIMIT) throw new Error('Edited text exceeds the 10 million character limit. Your changes have not been saved.');
+  if (text.length > settings.editCharacters) throw new Error(`Edited text exceeds the ${settings.editCharacters.toLocaleString()} character limit. Your changes have not been saved.`);
   let characters = 0; for (const char of text) characters++;
   // An acceptance applied to an earlier text must not silently approve newly
   // edited text in another language. Preserve deliberate inclusion/exclusion.
@@ -15,7 +16,7 @@ export async function checkEditedText(extraction, text, language) {
   return checkLanguage({ ...extraction, text, characters, languageCheck }, language);
 }
 
-export function initTextReview({ root = document, confirm, run, getProjectId, getLanguage, isRunning, onSaved, onSelect = () => {}, onClosed = () => {} }) {
+export function initTextReview({ root = document, confirm, run, getProjectId, getLanguage, isRunning, onSaved, onSelect = () => {}, onClosed = () => {}, getSettings = async () => DEFAULT_SETTINGS }) {
   const el = id => root.getElementById(id), dialog = el('text-review-dialog'), text = el('preview-text');
   const edit = el('text-review-edit'), save = el('text-review-save'), close = el('text-review-close'), status = el('text-review-status');
   let current = null, baseText = '', editing = false, loading = false, saving = false, opened = false, generation = 0, confirming = false;
@@ -95,11 +96,12 @@ export function initTextReview({ root = document, confirm, run, getProjectId, ge
     saving = true; status.textContent = 'Saving text and checking language…'; controls();
     let committed = false, failed = false;
     try {
+      const settings = await getSettings();
       const ran = await run(async () => {
         try {
           const latest = await storage.readTextSnapshot(selected.id, selected.entry.url), doc = latest.entry?.doc;
           if (!doc || doc.filename !== selected.entry.doc.filename || (doc.editRevision || 0) !== (selected.entry.doc.editRevision || 0)) throw new Error('This document changed in another window. Copy your edits before closing, then reopen the document.');
-          const language = getLanguage(), extraction = await checkEditedText(doc.extraction, value, language);
+          const language = getLanguage(), extraction = await checkEditedText(doc.extraction, value, language, settings);
           if (request !== generation || selected.id !== getProjectId()) return;
           if (getLanguage() !== language) throw new Error('The project language changed. Please try Save again.');
           const { text: ignored, ...metadata } = extraction;

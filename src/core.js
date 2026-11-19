@@ -1,5 +1,6 @@
+import { DEFAULT_SETTINGS, fileLimit } from './settings.js';
 // Browser-independent functions: also exercised by the Node tests.
-export const FILE_LIMIT = 50 * 1024 * 1024;
+export const FILE_LIMIT = fileLimit(DEFAULT_SETTINGS);
 export const PDF_IMPORT_LIMIT = FILE_LIMIT;
 export class DownloadSizeError extends Error {
   constructor(limit) {
@@ -7,9 +8,9 @@ export class DownloadSizeError extends Error {
     this.name = 'DownloadSizeError'; this.code = 'DOWNLOAD_TOO_LARGE'; this.limitBytes = limit;
   }
 }
-export const URL_WARNING_THRESHOLD = 500;
-export function urlListWarning(count) {
-  return count > URL_WARNING_THRESHOLD ? `This project has ${count.toLocaleString()} URLs. Large lists may take longer to download, review and export, and use substantial browser storage. You can continue.` : '';
+export const URL_WARNING_THRESHOLD = DEFAULT_SETTINGS.urlWarning;
+export function urlListWarning(count, threshold = URL_WARNING_THRESHOLD) {
+  return count > threshold ? `This project has ${count.toLocaleString()} URLs. Large lists may take longer to download, review and export, and use substantial browser storage. You can continue.` : '';
 }
 
 export function parseURLs(text) {

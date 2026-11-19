@@ -1,8 +1,9 @@
+import { DEFAULT_SETTINGS } from './settings.js';
 import { defuddleConstructor, DEFUDDLE_VERSION } from './defuddle-loader.js';
 // Extraction adapters are independent of URL collection and downloads.
 export const EXTRACTOR_ID = 'mozilla-readability';
 export const EXTRACTOR_VERSION = '0.6.0';
-export const EXTRACTION_LIMIT = 3 * 1024 * 1024;
+export const EXTRACTION_LIMIT = DEFAULT_SETTINGS.htmlMiB * 1024 * 1024;
 
 export function decodeResponse(bytes, contentType) {
   const warnings = [];
@@ -68,6 +69,7 @@ export function extractDocument(bytes, contentType, {
   ReadabilityClass = globalThis.Readability,
   DefuddleClass = defuddleConstructor(),
   extractor = 'readability',
+  settings = DEFAULT_SETTINGS,
   sourceURL = ''
 } = {}) {
   const mime = contentType.split(';')[0].trim().toLowerCase();
@@ -76,7 +78,7 @@ export function extractDocument(bytes, contentType, {
   const useDefuddle = extractor === 'defuddle';
   const meta = { status: 'unsupported', extractor: html ? (useDefuddle ? 'defuddle' : EXTRACTOR_ID) : plain ? 'plain-text' : null, extractorVersion: html ? (useDefuddle ? DEFUDDLE_VERSION : EXTRACTOR_VERSION) : plain ? '1' : null, encoding: null, title: '', language: '', characters: 0, included: false, warnings: [] };
   if (!plain && !html) return { text: '', ...meta, warnings: ['No text extraction for this content type yet. Original file retained.'] };
-  if (bytes.length > EXTRACTION_LIMIT) return { text: '', ...meta, status: 'failed', warnings: ['Response exceeds the 3 MiB extraction limit. Original file retained.'] };
+  if (bytes.length > settings.htmlMiB * 1024 * 1024) return { text: '', ...meta, status: 'failed', warnings: [`Response exceeds the ${settings.htmlMiB} MiB extraction limit. Original file retained.`] };
   try {
     if (!['readability', 'defuddle'].includes(extractor)) throw new Error('Unknown text extractor');
     const decoded = decodeResponse(bytes, contentType);
@@ -91,10 +93,10 @@ export function extractDocument(bytes, contentType, {
       for (const node of doc.querySelectorAll('script:not([type="application/ld+json"]), style, iframe, object, embed, template, noscript, link, base, [hidden], [aria-hidden="true"]')) node.remove();
       // Defuddle receives the source URL explicitly: detached documents have no
       // useful website base URI. Do not use parseAsync or request remote data.
-      if (useDefuddle && doc.getElementsByTagName('*').length > 60000) throw new Error('Page exceeds the 60,000-element extraction limit');
+      if (useDefuddle && doc.getElementsByTagName('*').length > settings.htmlElements) throw new Error(`Page exceeds the ${settings.htmlElements.toLocaleString()}-element extraction limit`);
       const article = useDefuddle
         ? new DefuddleClass(doc, { url: sourceURL || undefined, markdown: false, fetch: () => { throw new Error('Additional network requests are disabled during text extraction'); } }).parse()
-        : new ReadabilityClass(doc, { maxElemsToParse: 60000, charThreshold: 500, serializer: element => element }).parse();
+        : new ReadabilityClass(doc, { maxElemsToParse: settings.htmlElements, charThreshold: 500, serializer: element => element }).parse();
       if (!article?.content) throw new Error(`${useDefuddle ? 'Defuddle' : 'Readability'} did not find main content`);
       // Readability returns a DOM node through our serializer; Defuddle returns
       // cleaned HTML, which stays detached and is never rendered in the UI.

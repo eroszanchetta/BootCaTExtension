@@ -1,4 +1,5 @@
-import { fetchFile, FILE_LIMIT, PDF_IMPORT_LIMIT } from './core.js';
+import { DEFAULT_SETTINGS, fileLimit } from './settings.js';
+import { fetchFile, PDF_IMPORT_LIMIT } from './core.js';
 import { captureCurrentPage } from './page-capture.js';
 import { hasPDFSignature, readDocumentFile } from './document-formats.js';
 export { hasPDFSignature } from './document-formats.js';
@@ -12,13 +13,13 @@ function webURL(value) {
   url.hash = ''; return url.href;
 }
 export const readPDFFile = (file, limit = PDF_IMPORT_LIMIT) => readDocumentFile(file, 'pdf', limit);
-export async function captureTabDocument(tab, scripting, { signal } = {}) {
+export async function captureTabDocument(tab, scripting, { signal, settings = DEFAULT_SETTINGS } = {}) {
   signal?.throwIfAborted();
   const url = webURL(tab.url);
   let pdfURL = url;
   if (!/\.pdf$/i.test(new URL(url).pathname)) {
     let page;
-    try { page = (await scripting.executeScript({ target: { tabId: tab.id }, func: captureCurrentPage }))[0]?.result; }
+    try { page = (await scripting.executeScript({ target: { tabId: tab.id }, func: captureCurrentPage, args: [{ captureMiB: settings.captureMiB, htmlElements: settings.htmlElements }] }))[0]?.result; }
     catch { /* Built-in PDF viewers reject script injection. Retry as a PDF below. */ }
     signal?.throwIfAborted();
     if (page?.error) throw new Error(page.error);
@@ -28,8 +29,8 @@ export async function captureTabDocument(tab, scripting, { signal } = {}) {
   try {
     // This is an explicit user action. Ordinary batch downloads still omit cookies.
     // Re-fetching may reuse login/CAPTCHA cookies, but cannot read viewer memory.
-    const timeout = AbortSignal.timeout(30000);
-    const response = await fetchFile(pdfURL, signal ? AbortSignal.any([signal, timeout]) : timeout, FILE_LIMIT, { credentials: 'include' });
+    const timeout = AbortSignal.timeout(settings.downloadSeconds * 1000);
+    const response = await fetchFile(pdfURL, signal ? AbortSignal.any([signal, timeout]) : timeout, fileLimit(settings), { credentials: 'include' });
     if (!hasPDFSignature(response.bytes)) throw new Error('The server returned a page instead of a PDF');
     return {
       kind: 'pdf', url: pdfURL, finalURL: response.finalURL || pdfURL,

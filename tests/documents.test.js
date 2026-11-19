@@ -1,3 +1,4 @@
+import { DEFAULT_SETTINGS } from '../src/settings.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -157,4 +158,13 @@ test('PDF document JavaScript is not executed during text extraction', async () 
     assert.equal(result.status, 'ok', result.warnings.join(' '));
     assert.equal(globalThis.bootcatPDFScriptRan, false);
   } finally { delete globalThis.bootcatPDFScriptRan; }
+});
+
+
+test('DOCX extraction applies the configured output-text limit independently of its archive safeguards', async () => {
+  const bytes = await docx();
+  const rejected = await extractDownloadedDocument(bytes, DOCX_MIME, { ...options, settings: { ...DEFAULT_SETTINGS, docxCharacters: 5 } });
+  assert.equal(rejected.status, 'failed'); assert.match(rejected.warnings.join(' '), /character limit/);
+  const accepted = await extractDownloadedDocument(bytes, DOCX_MIME, { ...options, settings: { ...DEFAULT_SETTINGS, docxCharacters: 10000001 } });
+  assert.equal(accepted.status, 'ok');
 });

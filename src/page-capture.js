@@ -1,12 +1,12 @@
 // Passed to scripting.executeScript: keep this function self-contained.
-export function captureCurrentPage() {
+export function captureCurrentPage({ captureMiB = 2, htmlElements = 60000 } = {}) {
   if (/^https?:$/.test(location.protocol) && document.contentType === 'application/pdf') {
     return { pdf: true, url: location.href };
   }
   if (!/^https?:$/.test(location.protocol) || !['text/html', 'application/xhtml+xml'].includes(document.contentType)) {
     return { error: 'Open an HTTP or HTTPS HTML page first. Browser pages cannot be captured.' };
   }
-  if (document.querySelectorAll('*').length > 60000) return { error: 'This page is too complex to save.' };
+  if (document.querySelectorAll('*').length > htmlElements) return { error: 'This page is too complex to save.' };
   const url = new URL(location.href);
   if (url.username || url.password) return { error: 'URLs containing credentials cannot be saved.' };
   const clone = document.documentElement.cloneNode(true);
@@ -20,6 +20,6 @@ export function captureCurrentPage() {
   const charset = document.createElement('meta'); charset.setAttribute('charset', 'utf-8');
   clone.querySelector('head')?.prepend(charset);
   const html = '<!doctype html>\n' + clone.outerHTML;
-  if (new TextEncoder().encode(html).length > 2 * 1024 * 1024) return { error: 'This page exceeds the 2 MiB snapshot limit.' };
+  if (new TextEncoder().encode(html).length > captureMiB * 1024 * 1024) return { error: `This page exceeds the ${captureMiB} MiB snapshot limit.` };
   return { url: url.href, title: document.title, html, capturedAt: new Date().toISOString() };
 }

@@ -100,7 +100,51 @@ const assert = require('node:assert/strict');
         const workspace = await browser.newPage({ viewport: { width: 1050, height: 850 } });
         await workspace.route('**/app.js', route => route.fulfill({ contentType: 'text/javascript',
           body: "import { initWorkspaceSections } from './workspace-sections.js'; initWorkspaceSections();" }));
+        await workspace.addInitScript(() => {
+          globalThis.chrome = { runtime: { sendMessage: async message => {
+            const settings = await import('/settings.js');
+            const area = { get: async key => ({ [key]: JSON.parse(localStorage.getItem(key) || 'null') }), set: async patch => { for (const [key, value] of Object.entries(patch)) localStorage.setItem(key, JSON.stringify(value)); } };
+            try {
+              if (message.type === 'get-settings') return { ok: true, settings: await settings.readSettingsState(area) };
+              if (message.type === 'save-settings') return { ok: true, settings: await settings.saveSettings(area, message.values, message.revision) };
+              return { ok: true };
+            } catch (error) { return { ok: false, error: error.message }; }
+          } } };
+        });
         await workspace.goto(`http://127.0.0.1:${server.address().port}/downloader.html`);
+        const openSettings = async () => {
+          await workspace.getByRole('button', { name: 'Settings', exact: true }).click();
+          await workspace.waitForFunction(() => document.querySelector('#settings-dialog').open && !document.querySelector('#settings-save').disabled);
+        };
+        assert.deepEqual(await workspace.locator('nav .menu-item span').allTextContents(), ['Project', 'Seeds & Tuples', 'Search', 'URLs', 'Download', 'Save', 'Help', 'Settings']);
+        assert.equal(await workspace.locator('nav .menu-item svg[aria-hidden="true"]').count(), 8);
+        await openSettings();
+        assert.equal(await workspace.inputValue('#setting-fileMiB'), '50');
+        assert.equal(await workspace.locator('#settings-advanced').evaluate(panel => panel.open), false);
+        await workspace.fill('#setting-fileMiB', '75');
+        assert.match(await workspace.locator('#setting-fileMiB-warning').innerText(), /memory/);
+        await workspace.getByRole('button', { name: 'Cancel', exact: true }).click();
+        assert.equal(await workspace.locator('#open-settings').evaluate(button => button === document.activeElement), true);
+        await openSettings(); assert.equal(await workspace.inputValue('#setting-fileMiB'), '50');
+        await workspace.fill('#setting-fileMiB', '0'); await workspace.click('#settings-save');
+        assert.equal(await workspace.locator('#settings-dialog').evaluate(dialog => dialog.open), true);
+        await workspace.fill('#setting-fileMiB', '75'); await workspace.fill('#setting-urlWarning', '2');
+        await workspace.click('#settings-save'); await workspace.locator('#settings-dialog[open]').waitFor({ state: 'hidden' });
+        await workspace.reload(); await openSettings();
+        assert.equal(await workspace.inputValue('#setting-fileMiB'), '75'); assert.equal(await workspace.inputValue('#setting-urlWarning'), '2');
+        await workspace.click('#settings-reset'); assert.equal(await workspace.inputValue('#setting-fileMiB'), '50');
+        await workspace.keyboard.press('Escape'); await openSettings();
+        assert.equal(await workspace.inputValue('#setting-fileMiB'), '75', 'Escape must discard reset-to-defaults draft');
+        await workspace.locator('#settings-advanced > summary').focus(); await workspace.keyboard.press('Enter');
+        assert.equal(await workspace.locator('#setting-captureMiB').isVisible(), true);
+        for (const width of [1050, 500, 320]) {
+          await workspace.setViewportSize({ width, height: 850 });
+          assert.equal(await workspace.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `${name}: icon menu overflow at ${width}px`);
+          assert.equal(await workspace.locator('#settings-dialog').evaluate(dialog => dialog.scrollWidth > dialog.clientWidth), false, `${name}: settings overflow at ${width}px`);
+        }
+        await workspace.setViewportSize({ width: 1050, height: 850 });
+        await workspace.click('#settings-reset'); await workspace.click('#settings-save'); await workspace.locator('#settings-dialog[open]').waitFor({ state: 'hidden' });
+
         assert.equal(await workspace.locator('#project-section .workspace-panel').evaluate(panel => panel.open), true);
         await workspace.locator('#project-section .workspace-panel > summary').focus(); await workspace.keyboard.press('Enter');
         assert.equal(await workspace.locator('#project-section .workspace-panel').evaluate(panel => panel.open), false);

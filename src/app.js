@@ -1,3 +1,4 @@
+import { DEFAULT_SETTINGS, SETTINGS_KEY, readSettings, fileLimit } from './settings.js';
 import { createProjectWork, createExtractionQueue } from './project-work.js';
 import { initTextReview } from './text-review.js';
 import { corpusFingerprint, corpusSavedMessage } from './export-state.js';
@@ -11,7 +12,7 @@ import { initProjectUI, projectFilename } from './project-ui.js';
 import { listSavedPages, readSavedPage, removeSavedPage } from './page-store.js';
 import * as storage from './project-store.js';
 import { getExtensionAPI } from './extension-api.js';
-import { parseURLs, filenameFor, fetchFile, FILE_LIMIT, urlListWarning } from './core.js';
+import { parseURLs, filenameFor, fetchFile, urlListWarning } from './core.js';
 import { makeStoredZIP } from './zip-blob.js';
 import { createExportLayout, originalTextFilename } from './export-layout.js';
 import { makeMetadataWorkbook } from './metadata-xlsx.js';
@@ -26,6 +27,12 @@ import { DEFUDDLE_AVAILABLE } from './defuddle-loader.js';
 initWorkspaceSections();
 const ext = getExtensionAPI(), VERSION = initVersionBadge();
 const ui = Object.fromEntries(['urls', 'start', 'stop', 'export', 'status', 'progress', 'results', 'problem-results', 'attention-section', 'attention-count', 'project-language', 'recheck-language', 'language-status', 'corpus-status', 'extractor', 'urls-warning', 'storage-status', 'saved-status', 'engine', 'import-document-picker', 'document-import-status', 'export-status'].map(id => [id, document.getElementById(id)]));
+let currentSettings = DEFAULT_SETTINGS;
+async function loadSettings() { currentSettings = await readSettings(ext.storage.local); warnURLs(); updateLimitHints(); return currentSettings; }
+function updateLimitHints() {
+  const hint = document.getElementById('download-limit-hint');
+  hint.textContent = `Keep this tab open. Public pages only; login cookies are not sent. Up to ${currentSettings.fileMiB} MiB per file. Completed pages are saved in this browser; interrupted downloads can be resumed.`;
+}
 let ready = false, running = false, downloading = false, importing = false, stopping = false, resetting = false, controller = null;
 let projectId, state, entries = [], searchUI, seedsUI, projectTabsUI, archiveURL = null, previewURL = null, previewFilename = null, textReview;
 let exportSaved = false, exportRevision = 0;
@@ -55,7 +62,7 @@ const projectUI = initProjectUI({
   }
 });
 textReview = initTextReview({ root: document, confirm: confirmAction, run: (task, { url }) => documentWork(url, task),
-  getProjectId: () => projectId, getLanguage: () => projectUI.snapshot()?.language || 'none', isRunning: url => isDocumentBusy(url),
+  getSettings: () => readSettings(ext.storage.local), getProjectId: () => projectId, getLanguage: () => projectUI.snapshot()?.language || 'none', isRunning: url => isDocumentBusy(url),
   onSaved: entry => remember(entry, { keepPreview: true }),
   onSelect: doc => { previewURL = doc?.url || null; previewFilename = doc?.filename || null; updatePreviewSelection(); },
   onClosed: url => {
@@ -94,7 +101,7 @@ function report(error) {
   const full = error?.name === 'QuotaExceededError' || /quota/i.test(error?.message || '');
   ui.status.textContent = full ? 'Browser storage is full. Completed pages remain saved. Export your corpus and free space before continuing.' : `Could not complete the operation: ${error.message}`;
 }
-function warnURLs() { const count = parseURLs(ui.urls.value).urls.length; document.getElementById('urls-counter').textContent = `${count.toLocaleString()} URL${count === 1 ? '' : 's'}`; ui['urls-warning'].textContent = urlListWarning(count); }
+function warnURLs() { const count = parseURLs(ui.urls.value).urls.length; document.getElementById('urls-counter').textContent = `${count.toLocaleString()} URL${count === 1 ? '' : 's'}`; ui['urls-warning'].textContent = urlListWarning(count, currentSettings.urlWarning); }
 function queueDraft(patch) {
   if (!ready || resetting) return writes;
   invalidateArchive(); Object.assign(state.draft, patch); pendingWrites++; storageMessage();
@@ -205,7 +212,7 @@ function renderRow(entry) {
       if (isDocumentBusy(url) || resetting || pickingDocument) return;
       documentImportTarget = { url, finalURL: record.finalURL || url, projectId };
       pickingDocument = true;
-      documentImportMessage(url, 'Choose the file downloaded for this URL (up to 50 MiB).');
+      documentImportMessage(url, `Choose the file downloaded for this URL (up to ${currentSettings.fileMiB} MiB).`);
       // Keep the input outside the table: focus/storage updates may rebuild rows
       // while the native file chooser is open, before its change event arrives.
       ui['import-document-picker'].accept = '';
@@ -258,10 +265,11 @@ ui['import-document-picker'].addEventListener('change', async () => {
   await documentWork(target.url, async () => {
     started = true;
     try {
-      documentImportMessage(target.url, 'Importing file… Reading and extracting text may take up to 30 seconds.');
+      const settings = await readSettings(ext.storage.local);
+      documentImportMessage(target.url, `Importing file… Reading and extracting text may take up to ${settings.extractionSeconds} seconds.`);
       await flushWrites();
-      const { bytes, format } = await readImportedDocument(file);
-      await storeCapture({ ...target, bytes, contentType: format.mime, source: 'local-file', capturedAt: new Date().toISOString() });
+      const { bytes, format } = await readImportedDocument(file, fileLimit(settings));
+      await storeCapture({ ...target, settings, bytes, contentType: format.mime, source: 'local-file', capturedAt: new Date().toISOString() });
       if (resetting) return;
       documentImportMessage(target.url, `${format.label} imported. Original file saved; review its extraction result below.`);
       ui['saved-status'].textContent = `Downloaded ${format.label} added to the review list. Review its text before saving your corpus.`;
@@ -373,6 +381,7 @@ ui.start.addEventListener('click', async () => {
   downloading = true; updateControls(); let acquired = false;
   try {
     await coordinator.batch(async () => {
+      const settings = await readSettings(ext.storage.local);
       acquired = true; await notifyWorkspace(); refreshActivity();
       openWorkspaceSection('review-section', { scroll: true }); await flushWrites();
       const parsed = parseURLs(ui.urls.value);
@@ -396,15 +405,15 @@ ui.start.addEventListener('click', async () => {
           }
           ui.status.textContent = `Downloading and extracting ${processed + 1} of ${urls.length} queued pages…`;
           const active = controller = new AbortController(); let timedOut = false, downloaded = false;
-          const timer = setTimeout(() => { timedOut = true; active.abort(); }, 30000);
+          const timer = setTimeout(() => { timedOut = true; active.abort(); }, settings.downloadSeconds * 1000);
           try {
-            const response = await fetchFile(url, active.signal, FILE_LIMIT); downloaded = true; clearTimeout(timer);
+            const response = await fetchFile(url, active.signal, fileLimit(settings)); downloaded = true; clearTimeout(timer);
             if (resetting) return;
             const index = await storage.allocateFileIndex(projectId);
             const filename = filenameFor(url, extractionContentType(response.bytes, response.contentType), index);
             const extraction = await extractionQueue.run(() => {
               if (resetting) return;
-              return extractDownloadedDocument(response.bytes, response.contentType, { extractor, sourceURL: response.finalURL || url, signal: active.signal });
+              return extractDownloadedDocument(response.bytes, response.contentType, { settings, extractor, sourceURL: response.finalURL || url, signal: active.signal });
             });
             if (resetting) return;
             const record = { url, finalURL: response.finalURL, outcome: 'downloaded', httpStatus: response.status, contentType: response.contentType, bytes: response.bytes.length, filename, processingIncomplete: active.signal.aborted, downloadedAt: new Date().toISOString() };
@@ -414,7 +423,7 @@ ui.start.addEventListener('click', async () => {
           } catch (error) {
             if (resetting) return;
             if (downloaded || error.name === 'QuotaExceededError') throw error;
-            const message = stopping ? 'Stopped by user' : timedOut ? 'Timed out after 30 seconds' : error.message;
+            const message = stopping ? 'Stopped by user' : timedOut ? `Timed out after ${settings.downloadSeconds} seconds` : error.message;
             remember(await storage.saveFailure(projectId, { url, outcome: stopping ? 'cancelled' : 'error', error: message, ...(error.contentType ? { contentType: error.contentType } : {}), ...(error.finalURL ? { finalURL: error.finalURL } : {}), ...(error.code === 'DOWNLOAD_TOO_LARGE' ? { errorCode: error.code, limitBytes: error.limitBytes } : {}) }, { advance: false }));
           } finally { clearTimeout(timer); if (controller === active) controller = null; }
         }, { wait: true, propagate: true });
@@ -435,15 +444,15 @@ ui.start.addEventListener('click', async () => {
   } catch (error) { report(error); }
   finally { downloading = false; ui.stop.disabled = true; if (!resetting) { await notifyWorkspace(); await refreshActivity(); updateControls(); searchUI?.flush(); } }
 });
-async function storeCapture({ url, finalURL, bytes, contentType, source, capturedAt, captureId }) {
+async function storeCapture({ url, finalURL, bytes, contentType, source, capturedAt, captureId, settings }) {
   const index = await storage.allocateFileIndex(projectId), filename = filenameFor(url, contentType, index);
   const active = new AbortController(); operationControllers.add(active);
   try {
     const extraction = await extractionQueue.run(() => {
       active.signal.throwIfAborted();
       return formatByMIME(contentType)
-        ? extractDownloadedDocument(bytes, contentType, { sourceURL: finalURL, signal: active.signal })
-        : extractDocument(bytes, contentType, { extractor: ui.extractor.value, sourceURL: finalURL });
+        ? extractDownloadedDocument(bytes, contentType, { settings, sourceURL: finalURL, signal: active.signal })
+        : extractDocument(bytes, contentType, { settings, extractor: ui.extractor.value, sourceURL: finalURL });
     }, { priority: true });
     if (resetting) return;
     const checkedExtraction = await checkLanguage(extraction, projectUI.snapshot().language || 'none');
@@ -475,8 +484,9 @@ async function importSavedPages() {
         const current = (await storage.readDownloadTarget(projectId, url)).entry;
         if (current?.doc?.captureId === page.id || current?.doc?.editRevision > 0) { await removeSavedPage(page); return; }
         ui['saved-status'].textContent = 'Processing captured page…';
-        const bytes = page.kind === 'pdf' ? await readPDFFile(page.blob, FILE_LIMIT) : new TextEncoder().encode(page.html);
-        await storeCapture({ url, finalURL: page.finalURL || page.url, bytes, contentType: page.kind === 'pdf' ? 'application/pdf' : 'text/html; charset=utf-8', source: page.source || 'browser-tab', capturedAt: page.capturedAt, captureId: page.id });
+        const settings = await readSettings(ext.storage.local);
+        const bytes = page.kind === 'pdf' ? await readPDFFile(page.blob, fileLimit(settings)) : new TextEncoder().encode(page.html);
+        await storeCapture({ settings, url, finalURL: page.finalURL || page.url, bytes, contentType: page.kind === 'pdf' ? 'application/pdf' : 'text/html; charset=utf-8', source: page.source || 'browser-tab', capturedAt: page.capturedAt, captureId: page.id });
         if (resetting) return;
         await removeSavedPage(page); count++;
       }, { wait: true });
@@ -587,6 +597,7 @@ for (const [id, key, type] of [['urls', 'urls', 'input'], ['engine', 'engine', '
 }
 ext.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local' || resetting) return;
+  if (changes[SETTINGS_KEY]) loadSettings().catch(report);
   if (changes.captureRevision) importSavedPages();
   if (changes.workspaceRevision?.newValue?.projectId === projectId) refreshActivity();
 });
@@ -620,6 +631,6 @@ window.addEventListener('focus', async () => {
     if (state.draft.engine) ui.engine.value = state.draft.engine;
     ready = true; seedsUI = initSeedsUI({ draft: state.draft, onChange: queueDraft, getProjectId: () => projectId, onOpeningChange: value => projectTabsUI?.setOpening(value) });
     projectTabsUI = initProjectTabsUI({ getProjectId: () => projectId, onState: value => seedsUI?.updateTabState(value) });
-    updateControls(); await refreshActivity(); await importSavedPages();
+    await loadSettings(); updateControls(); await refreshActivity(); await importSavedPages();
   } catch (error) { report(error); }
 })();
