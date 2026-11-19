@@ -1,3 +1,4 @@
+import { queryKey, queryPlan } from './query-lifecycle.js';
 import { getExtensionAPI } from './extension-api.js';
 import { confirmAction } from './dialogs.js';
 import { SEARCH_FILE_TYPES, DEFAULT_EXCLUDED_SITES, normalizeSearchFilters } from './search-filters.js';
@@ -22,6 +23,7 @@ export function initSeedsUI({ draft = {}, onChange = () => {}, getProjectId = ()
   let prepared = [], bases = null, preparedFilters = null, savingDefaults = false, page = 0, generating = false, opening = false, stopped = false, destroyed = false, controller;
   let pendingOpens = 0, confirming = false;
   const notifyOpening = () => { if (!destroyed) onOpeningChange(opening || pendingOpens > 0); };
+  let tabStateReady = false;
   let tabState = { tabs: [], history: [] }, queryRows = [], filterTimer, filterPending = false, filtersValid = true;
   const engineID = () => el('engine').value || ENGINES[0].id;
   const engineName = () => ENGINES.find(engine => engine.id === engineID())?.name || engineID();
@@ -43,7 +45,10 @@ export function initSeedsUI({ draft = {}, onChange = () => {}, getProjectId = ()
     el('save-site-defaults').disabled = busy() || savingDefaults;
     el('generate-tuples').disabled = busy() || parseSeeds(el('seeds').value).length < 5;
     el('prepare-queries').disabled = busy() || !el('tuples').value.trim();
-    el('open-all-queries').disabled = busy() || filterPending || !filtersValid || !prepared.length;
+    const plan = queryPlan(prepared, engineID(), tabState), button = el('open-all-queries');
+    button.disabled = busy() || pendingOpens > 0 || !tabStateReady || filterPending || !filtersValid || !plan.missing.length;
+    button.textContent = opening ? 'Opening queries…' : prepared.length && !tabStateReady ? 'Checking query tabs…' : prepared.length && !plan.missing.length ? 'No queries to open' : plan.started ? `Run missing queries (${plan.missing.length.toLocaleString()})` : 'Run all queries';
+    el('query-run-hint').textContent = !prepared.length ? '' : !tabStateReady ? 'Checking which queries have open tabs or saved results…' : !plan.missing.length ? (plan.open ? 'Queries are open in other browser tabs or already collected. Close an uncollected tab to make its query available again.' : 'All queries have already been collected.') : plan.started ? `${plan.missing.length.toLocaleString()} uncollected ${plan.missing.length === 1 ? 'query has' : 'queries have'} no open tab. Existing tabs and collected queries will be skipped.` : 'Each query will open once. Queries with an open tab or saved results will be skipped.';
     el('stop-tuples').hidden = !generating; el('stop-query-tabs').hidden = !opening;
     el('engine').disabled = opening;
     el('tuple-length').disabled = busy() || !parseSeeds(el('seeds').value).length;
@@ -65,11 +70,13 @@ export function initSeedsUI({ draft = {}, onChange = () => {}, getProjectId = ()
     el('tuple-warning').textContent = Number(requested.value) > 500 ? 'Large tuple lists may take longer to generate and review, and consume substantial browser storage. Generation can be stopped.' : '';
     controls();
   }
-  function updateTabState(value) {
+  function updateTabState(value, { authoritative = true } = {}) {
+    if (authoritative && typeof value.revision === 'number' && typeof tabState.revision === 'number' && value.revision < tabState.revision) return;
     tabState = value;
+    if (authoritative) tabStateReady = value.ready !== false;
     for (const row of queryRows) {
-      const tabs = (value.tabs || []).filter(tab => tab.engine === row.engine && tab.query === row.query);
-      const previous = (value.history || []).find(item => item.engine === row.engine && item.query === row.query);
+      const tabs = (value.tabs || []).filter(tab => queryKey(tab.engine, tab.query) === queryKey(row.engine, row.query));
+      const previous = (value.history || []).find(item => queryKey(item.engine, item.query) === queryKey(row.engine, row.query));
       const loading = tabs.filter(tab => tab.status === 'loading').length;
       const attention = tabs.filter(tab => tab.status === 'attention');
       const status = loading ? 'loading' : attention.length ? 'attention' : tabs.length ? (tabs.every(tab => tab.status === 'collected') ? 'collected' : 'loaded') : previous?.status || 'unopened';
@@ -80,6 +87,14 @@ export function initSeedsUI({ draft = {}, onChange = () => {}, getProjectId = ()
       row.tabId = (attention[0] || tabs[0])?.tabId;
       row.inspect.hidden = !tabs.length;
     }
+    controls();
+  }
+  async function refreshQueryState() {
+    const projectId = getProjectId();
+    const reply = await getExtensionAPI().runtime.sendMessage({ type: 'get-project-search-tabs', projectId });
+    if (destroyed || getProjectId() !== projectId) return;
+    if (!reply?.ok || !Array.isArray(reply.tabs) || !Array.isArray(reply.history)) throw new Error(reply?.error || 'Could not check query tabs. Reopen the workspace to try again.');
+    updateTabState(reply);
   }
   function updateLinks() {
     for (const row of queryRows) {
@@ -118,12 +133,12 @@ export function initSeedsUI({ draft = {}, onChange = () => {}, getProjectId = ()
         if (event.type === 'click' && event.button > 0) return;
         event.preventDefault();
         if (destroyed || busy() || filterPending || !filtersValid) return;
-        pendingOpens++; notifyOpening();
+        pendingOpens++; notifyOpening(); controls();
         try {
           await openProjectSearch({ projectId: getProjectId(), engine: engineID(), query, active: !(event.button === 1 || event.ctrlKey || event.metaKey) });
-          if (!destroyed) el('query-status').textContent = 'Search tab opened and tracked for this project.';
+          if (!destroyed) { await refreshQueryState(); el('query-status').textContent = 'Search tab opened and tracked for this project.'; }
         } catch (error) { if (!destroyed) el('query-status').textContent = error.message; }
-        finally { pendingOpens--; notifyOpening(); }
+        finally { pendingOpens--; notifyOpening(); if (!destroyed) controls(); }
       };
       link.addEventListener('click', open); link.addEventListener('auxclick', open);
       const badge = document.createElement('span'), inspect = document.createElement('button');
@@ -143,7 +158,7 @@ export function initSeedsUI({ draft = {}, onChange = () => {}, getProjectId = ()
       });
       item.append(badge, inspect, link); body.append(item);
     }
-    body.scrollTop = scroll; updateTabState(tabState); updateLinks();
+    body.scrollTop = scroll; updateTabState(tabState, { authoritative: false }); updateLinks();
     el('query-summary').textContent = prepared.length ? `${prepared.length.toLocaleString()} queries for ${engineName()}. Click a query to open its search in a new tab.` : 'No search queries prepared yet.';
     el('query-pagination').hidden = pages <= 1;
     el('query-page').textContent = `Queries ${page * PAGE_SIZE + 1}–${Math.min((page + 1) * PAGE_SIZE, prepared.length)} of ${prepared.length.toLocaleString()}`;
@@ -204,7 +219,7 @@ export function initSeedsUI({ draft = {}, onChange = () => {}, getProjectId = ()
       onChange({ preparedQueries: prepared, preparedQueryBases: bases, preparedFilters, ...patch });
       filtersValid = true; markFilterError(); el('search-filter-status').textContent = '';
     } catch (error) { applyFilters(); el('query-status').textContent = error.message; return; }
-    el('query-status').textContent = prepared.length ? 'Queries are ready. No searches have been opened.' : 'Enter at least one tuple or query, one per line.';
+    el('query-status').textContent = prepared.length ? 'Queries are ready. Use the run button to open missing searches.' : 'Enter at least one tuple or query, one per line.';
     render();
     if (prepared.length) { openWorkspaceSection('search-section'); el('query-list-heading').scrollIntoView?.({ block: 'nearest' }); }
   });
@@ -236,26 +251,42 @@ export function initSeedsUI({ draft = {}, onChange = () => {}, getProjectId = ()
   el('next-queries').addEventListener('click', () => { if ((page + 1) * PAGE_SIZE < prepared.length) { page++; render(); } });
   el('stop-query-tabs').addEventListener('click', () => { stopped = true; });
   el('open-all-queries').addEventListener('click', async () => {
-    if (busy() || destroyed || filterPending || !filtersValid || !prepared.length) return;
-    const queries = prepared.slice(), engine = engineID();
-    const projectAtConfirmation = getProjectId();
+    if (busy() || pendingOpens || destroyed || !tabStateReady || filterPending || !filtersValid || !queryPlan(prepared, engineID(), tabState).missing.length) return;
+    const projectAtConfirmation = getProjectId(), engine = engineID();
     confirming = true; controls();
-    let approved;
+    let opened = 0, skipped = 0, queries = [], startedOpening = false;
     try {
-      approved = await confirmAction({ title: 'Run all queries?', message: `Open all ${queries.length.toLocaleString()} queries in new ${engineName()} tabs? Search engines may refuse automated batch queries, block requests or show CAPTCHAs. Many tabs may slow your browser.`, confirmLabel: 'Run all queries' });
-    } finally { confirming = false; if (!destroyed) controls(); }
-    if (!approved || destroyed || getProjectId() !== projectAtConfirmation) return;
-    opening = true; stopped = false; notifyOpening(); controls(); let opened = 0;
-    try {
+      // Fresh state avoids stale confirmations; the serialized background check
+      // still guards every individual opening against other workspace windows.
+      await refreshQueryState();
+      if (destroyed || getProjectId() !== projectAtConfirmation) return;
+      const plan = queryPlan(prepared, engine, tabState); queries = plan.missing;
+      if (!queries.length) return;
+      const label = plan.started ? 'Run missing queries' : 'Run all queries';
+      const approved = await confirmAction({ title: `${label}?`, message: `Open ${queries.length.toLocaleString()} ${plan.started ? 'missing, uncollected ' : ''}${queries.length === 1 ? 'query' : 'queries'} in new ${engineName()} tabs? Existing tabs and collected queries will be skipped. Search engines may refuse automated batch queries, block requests or show CAPTCHAs. Many tabs may slow your browser.`, confirmLabel: label });
+      if (!approved || destroyed || getProjectId() !== projectAtConfirmation) return;
+      opening = startedOpening = true; confirming = false; stopped = false; notifyOpening(); controls();
       for (const query of queries) {
-        if (stopped || destroyed) break;
-        await openProjectSearch({ projectId: getProjectId(), engine, query, active: false }); opened++;
-        if (!destroyed) el('query-status').textContent = `Opened ${opened.toLocaleString()} of ${queries.length.toLocaleString()} search tabs…`;
+        if (stopped || destroyed || getProjectId() !== projectAtConfirmation) break;
+        const result = await openProjectSearch({ projectId: projectAtConfirmation, engine, query, active: false, onlyMissing: true });
+        if (result.opened === false) skipped++; else opened++;
+        if (!destroyed) {
+          if (Array.isArray(result.tabs)) updateTabState(result);
+          el('query-status').textContent = `Opened ${opened.toLocaleString()} of ${queries.length.toLocaleString()} search tabs…`;
+        }
       }
-      if (!destroyed) el('query-status').textContent = `${stopped ? 'Stopped. ' : ''}${opened.toLocaleString()} of ${queries.length.toLocaleString()} search tabs opened and tracked. Use Collect results and close project search tabs below.`;
+      if (!destroyed) el('query-status').textContent = `${stopped ? 'Stopped. ' : ''}${opened.toLocaleString()} of ${queries.length.toLocaleString()} search tabs opened and tracked.${skipped ? ` ${skipped.toLocaleString()} already open or collected queries skipped.` : ''} Use Collect results and close project search tabs below.`;
     } catch (error) {
-      if (!destroyed) el('query-status').textContent = `Opened ${opened.toLocaleString()} of ${queries.length.toLocaleString()} tabs before an error: ${error.message}. Use the individual query links to continue.`;
-    } finally { opening = false; notifyOpening(); if (!destroyed) controls(); }
+      if (!destroyed) el('query-status').textContent = `Opened ${opened.toLocaleString()} of ${queries.length.toLocaleString()} tabs before an error: ${error.message}. Missing queries can be retried once their tab state is checked.`;
+    } finally {
+      if (!destroyed && getProjectId() === projectAtConfirmation) {
+        try { await refreshQueryState(); }
+        catch (error) { tabStateReady = false; el('query-status').textContent = error.message; }
+      }
+      opening = confirming = false;
+      if (startedOpening) notifyOpening();
+      if (!destroyed) controls();
+    }
   });
   restore(draft);
   return { restore, updateTabState, isBusy: () => busy() || pendingOpens > 0 || savingDefaults || filterPending, destroy() { destroyed = true; clearTimeout(filterTimer); stopped = true; controller?.abort(); } };

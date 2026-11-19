@@ -37,7 +37,7 @@ export function initProjectTabsUI({ getProjectId, onState = () => {} }) {
       state = reply; render(); onState(state);
       clearTimeout(timer);
       if (state.loading) timer = setTimeout(refresh, 1000);
-    } catch (error) { if (!destroyed && request === revision) el('project-tab-status').textContent = error.message; }
+    } catch (error) { if (!destroyed && request === revision) { el('project-tab-status').textContent = error.message; onState({ ...state, ready: false }); } }
   }
   async function action(type, loadedOnly = false) {
     el('collect-project-tabs').disabled = true;
@@ -56,7 +56,7 @@ export function initProjectTabsUI({ getProjectId, onState = () => {} }) {
   el('collect-project-tabs').addEventListener('click', () => action('collect-project-search-tabs'));
   el('collect-loaded-tabs').addEventListener('click', () => action('collect-project-search-tabs', true));
   el('stop-project-tabs').addEventListener('click', () => action('stop-project-search-tabs'));
-  ext.storage.onChanged.addListener((changes, area) => { if (area === 'session' && changes[SEARCH_TABS_KEY] && !destroyed) refresh(); });
+  ext.storage.onChanged.addListener((changes, area) => { if (!destroyed && ((area === 'session' && changes[SEARCH_TABS_KEY]) || (area === 'local' && changes.collections))) refresh(); });
   refresh();
   return { refresh, setOpening(value) { opening = value; if (!destroyed) render(); }, destroy() { destroyed = true; clearTimeout(timer); collectingBatchId = null; revision++; } };
 }

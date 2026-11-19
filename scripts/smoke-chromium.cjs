@@ -288,7 +288,15 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
       return ext.runtime.sendMessage({ type: 'collect', tabId: data.projectSearchTabs.tabs[0].tabId });
     });
     assert.equal(manualCollection.ok, true); assert.equal(individual.isClosed(), false);
-    await page.waitForFunction(() => document.querySelector('#prepared-queries .query-tab-status').dataset.status === 'collected');
+    try {
+      await page.waitForFunction(() => document.querySelector('#prepared-queries .query-tab-status').dataset.status === 'collected');
+    } catch (error) {
+      console.error('Query collection state:', JSON.stringify(await page.evaluate(async () => {
+        const ext = globalThis.browser ?? chrome, projectId = (await ext.runtime.sendMessage({ type: 'get-project' })).project.id;
+        return { queryStatus: document.querySelector('#query-status').textContent, tabStatus: document.querySelector('#project-tab-status').textContent, badges: [...document.querySelectorAll('.query-tab-status')].map(badge => badge.textContent), state: await ext.runtime.sendMessage({ type: 'get-project-search-tabs', projectId }) };
+      })));
+      throw error;
+    }
     assert.equal(await page.locator('#prepared-queries li').first().evaluate(row =>
       row.children[0].classList.contains('query-tab-status') && row.children[1].classList.contains('query-tab-action') && row.children[2].tagName === 'A'), true);
     assert.equal(await page.locator('#prepared-queries .query-tab-action').first().getAttribute('aria-label'), 'Open search tab');
@@ -298,17 +306,32 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     await page.waitForFunction(() => document.querySelector('#project-tab-count').textContent.startsWith('0 of 0'));
     assert.match(await page.locator('#prepared-queries .query-tab-status').first().innerText(), /Collected/);
     console.log('Leading badge/open icon, popup collection status and manual-close retention passed.');
+    await page.waitForFunction(() => document.querySelector('#open-all-queries').textContent === 'Run missing queries (1)' && !document.querySelector('#open-all-queries').disabled);
     await clickConfirmed('#open-all-queries', false);
     assert.equal(context.pages().length, tabCount); assert.ok(dialogMessages.at(-1).includes('refuse automated batch queries'));
     const batchPages = [], recordQueryPage = tab => batchPages.push(tab); context.on('page', recordQueryPage);
-    const allBatchCreated = context.waitForEvent('page', { predicate: () => batchPages.length >= 2 });
+    const allBatchCreated = context.waitForEvent('page', { predicate: () => batchPages.length >= 1 });
     await clickConfirmed('#open-all-queries');
     await allBatchCreated;
-    await page.waitForFunction(() => document.querySelector('#query-status').textContent.startsWith('2 of 2 search tabs opened'));
+    await page.waitForFunction(() => document.querySelector('#query-status').textContent.startsWith('1 of 1 search tabs opened'));
     await Promise.all(batchPages.map(tab => tab.waitForLoadState('domcontentloaded'))); context.off('page', recordQueryPage);
-    assert.equal(batchPages.length, 2);
-    // Playwright can attach to newly created tabs in either order.
-    assert.deepEqual(batchPages.map(tab => new URL(tab.url()).searchParams.get('q')).sort(), ['"custom phrase" energy', 'storage generation'].sort());
+    assert.equal(batchPages.length, 1);
+    assert.deepEqual(batchPages.map(tab => new URL(tab.url()).searchParams.get('q')).sort(), ['storage generation']);
+    await page.waitForFunction(() => document.querySelector('#open-all-queries').disabled && document.querySelector('#open-all-queries').textContent === 'No queries to open');
+    const pagesBeforeRepeat = context.pages().length;
+    await page.locator('#open-all-queries').evaluate(button => button.click());
+    assert.equal(context.pages().length, pagesBeforeRepeat);
+    const queryWindow = await context.newPage(); await queryWindow.goto(origin + '/downloader.html');
+    await queryWindow.waitForFunction(() => document.querySelector('#open-all-queries').textContent === 'No queries to open' && document.querySelector('#open-all-queries').disabled);
+    await batchPages[0].close();
+    await page.waitForFunction(() => document.querySelector('#open-all-queries').textContent === 'Run missing queries (1)' && !document.querySelector('#open-all-queries').disabled);
+    await queryWindow.waitForFunction(() => document.querySelector('#open-all-queries').textContent === 'Run missing queries (1)' && !document.querySelector('#open-all-queries').disabled);
+    await page.bringToFront();
+    const replacementTab = context.waitForEvent('page'); await clickConfirmed('#open-all-queries');
+    batchPages[0] = await replacementTab; await batchPages[0].waitForLoadState('domcontentloaded');
+    assert.equal(new URL(batchPages[0].url()).searchParams.get('q'), 'storage generation');
+    await queryWindow.waitForFunction(() => document.querySelector('#open-all-queries').disabled && document.querySelector('#open-all-queries').textContent === 'No queries to open');
+    await queryWindow.close();
     async function waitProjectTabsReady(count) {
       await page.waitForFunction(async count => {
         const ext = globalThis.browser ?? chrome, data = await ext.storage.session.get('projectSearchTabs');
@@ -320,21 +343,27 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     }
     const unrelatedSearch = await context.newPage(); await unrelatedSearch.goto(pdfOrigin + '/search-fixture?q=unrelated');
     await page.bringToFront();
-    await page.waitForFunction(() => document.querySelector('#project-tab-count').textContent.startsWith('2 of 2 project search tabs loaded.'));
-    await waitProjectTabsReady(2);
+    await page.waitForFunction(() => document.querySelector('#project-tab-count').textContent.startsWith('1 of 1 project search tabs loaded.'));
+    await waitProjectTabsReady(1);
     await page.locator('#urls-section .workspace-panel').evaluate(panel => { panel.open = false; });
     const closedBatchPages = batchPages.map(tab => tab.waitForEvent('close'));
     await page.click('#collect-project-tabs'); await Promise.all(closedBatchPages);
     await page.waitForFunction(() => document.querySelector('#project-tab-status').textContent.startsWith('Finished.') && !document.querySelector('#project-tab-status').textContent.includes('0 tabs closed'));
-    assert.match(await page.locator('#project-tab-status').innerText(), /2 result pages saved; 2 tabs closed/);
+    assert.match(await page.locator('#project-tab-status').innerText(), /1 result page saved; 1 tab closed/);
     assert.equal(await page.locator('#collect-project-tabs').isDisabled(), true);
     await page.waitForFunction(() => document.querySelector('#urls-section .workspace-panel').open);
     assert.equal(unrelatedSearch.isClosed(), false);
     await page.waitForFunction(() => document.querySelector('#urls').value.split('\n').filter(Boolean).length === 2);
     assert.ok(!(await page.inputValue('#urls')).includes('unrelated'));
     const pagesAfterCollection = context.pages().length;
+    assert.equal(await page.locator('#open-all-queries').innerText(), 'No queries to open');
+    assert.equal(await page.locator('#open-all-queries').isDisabled(), true);
+    const completedTuples = await page.inputValue('#tuples');
+    await page.fill('#tuples', 'escape confirmation'); await page.click('#prepare-queries');
     await clickConfirmed('#open-all-queries', 'escape');
     assert.equal(context.pages().length, pagesAfterCollection);
+    await page.fill('#tuples', completedTuples); await page.click('#prepare-queries');
+    assert.equal(await page.locator('#open-all-queries').isDisabled(), true);
     await clickConfirmed('#clear-searches', false);
     assert.match(await page.locator('#collection-status').innerText(), /2 unique URLs/);
     console.log('Styled confirmations, Save navigation and URL collection without Log passed.');

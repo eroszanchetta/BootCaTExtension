@@ -11,7 +11,7 @@ function fixture(options = {}) {
   const assertProject = async id => { if (id !== currentProject) throw new Error('The project changed.'); };
   const ext = {
     runtime: { onStartup: event(), onInstalled: event() },
-    storage: { session: {
+    storage: { local: { get: async () => ({ collections: options.collections || [] }) }, session: {
       get: async key => ({ [key]: structuredClone(session[key]) }),
       set: async data => { if (options.write) await options.write(data); Object.assign(session, structuredClone(data)); }
     } },
@@ -240,4 +240,64 @@ test('manual partial collection needs attention; navigation during collection pr
   const newMarker = await app.manager.collectionMarker('project', tabId, url);
   await app.reset();
   await assert.rejects(app.serialize(() => app.manager.markCollectedInQueue(newMarker, { pageURL: url, unresolved: 0 })), /project changed/);
+});
+
+
+test('serialized missing-only openings from two windows create one tab and closing it permits a retry', async () => {
+  const app = fixture();
+  const request = () => app.manager.open({ projectId: 'project', engine: 'google', query: 'energy', active: false, onlyMissing: true });
+  const results = await Promise.all([request(), request()]);
+  assert.deepEqual(results.map(item => item.opened), [true, false]); assert.equal(app.tabs.size, 1);
+  const id = results[0].tabId; app.tabs.get(id).status = 'loading';
+  app.ext.tabs.onUpdated.emit(id, { status: 'loading' }, app.tabs.get(id));
+  assert.equal((await request()).opened, false, 'loading tabs still count as open');
+  app.tabs.get(id).url = 'https://www.google.com/sorry/index';
+  app.ext.tabs.onUpdated.emit(id, { url: app.tabs.get(id).url }, app.tabs.get(id));
+  assert.equal((await request()).opened, false, 'challenge tabs still count as open');
+  app.tabs.delete(id); app.ext.tabs.onRemoved.emit(id);
+  assert.equal((await request()).opened, true); assert.equal(app.tabs.size, 1);
+});
+
+test('successful collection remains complete after tabs close, but partial closed queries can run again', async () => {
+  const app = fixture({ collect: async (id, snapshot) => ({ unresolved: snapshot.record.query === 'partial' ? 1 : 0 }) });
+  const complete = await app.open('complete'), partial = await app.open('partial');
+  await app.manager.start('project'); await app.finish();
+  const request = query => app.manager.open({ projectId: 'project', engine: 'google', query, active: false, onlyMissing: true });
+  assert.equal((await request('complete')).opened, false); assert.equal(app.tabs.has(complete.tabId), false);
+  assert.equal((await request('partial')).opened, false);
+  app.tabs.delete(partial.tabId); app.ext.tabs.onRemoved.emit(partial.tabId);
+  assert.equal((await request('partial')).opened, true);
+});
+
+test('saved collection provenance restores completion after session history is cleared, matching engine and full query', async () => {
+  const app = fixture({ collections: [
+    { engine: 'google', query: 'energy filetype:pdf', results: [{ url: 'https://example.org' }], unresolved: 0 },
+    { engine: 'google', query: 'partial', results: [{ url: 'https://example.org' }], unresolved: 1 }
+  ] });
+  const state = await app.state(); assert.equal(state.history.find(item => item.query === 'energy filetype:pdf').status, 'collected');
+  assert.equal(state.history.some(item => item.query === 'partial'), false);
+  await app.serialize(app.manager.resetInQueue);
+  const open = (query, engine = 'google') => app.manager.open({ projectId: 'project', engine, query, onlyMissing: true });
+  assert.equal((await open('energy filetype:pdf')).opened, false);
+  assert.equal((await open('energy filetype:docx')).opened, true);
+  assert.equal((await open('energy filetype:pdf', 'duckduckgo')).opened, true);
+});
+
+test('closing a second uncollected copy cannot erase successful collection history', async () => {
+  const app = fixture(); const first = await app.open('energy'), second = await app.open('energy');
+  const marker = await app.manager.collectionMarker('project', first.tabId, app.tabs.get(first.tabId).url);
+  await app.serialize(() => app.manager.markCollectedInQueue(marker, { pageURL: marker.url, unresolved: 0 }));
+  for (const id of [first.tabId, second.tabId]) { app.tabs.delete(id); app.ext.tabs.onRemoved.emit(id); }
+  assert.equal((await app.state()).history.find(item => item.query === 'energy').status, 'collected');
+  assert.equal((await app.manager.open({ projectId: 'project', engine: 'google', query: 'energy', onlyMissing: true })).opened, false);
+});
+
+test('restoring already-collected provenance does not write again when browser storage reorders object fields', async () => {
+  const app = fixture({ collections: [{ engine: 'google', query: 'done', results: [{ url: 'https://example.org' }], unresolved: 0 }] });
+  const first = await app.state();
+  const data = app.session[SEARCH_TABS_KEY];
+  data.history = data.history.map(item => Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])));
+  const second = await app.state();
+  assert.equal(second.revision, first.revision, 'unchanged completion must not trigger another storage event and refresh');
+  assert.equal((await app.state()).revision, first.revision);
 });

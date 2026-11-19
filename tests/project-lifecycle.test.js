@@ -64,7 +64,7 @@ for (const namespace of ['chrome', 'browser']) test(`${namespace}: inactive proj
     assert.equal(local.project, null); assert.deepEqual(local.userDefaults, preferences);
     assert.equal((await request({ type: 'get-project' })).promptForProject, true, 'closing a project must offer creation again');
     assert.equal(local.legacyProjectKey, undefined); assert.deepEqual(local.collections, []);
-    assert.deepEqual(session.projectSearchTabs, { tabs: [], history: [], batch: null });
+    assert.deepEqual(session.projectSearchTabs, { tabs: [], history: [], batch: null, revision: 1 });
     assert.equal(await storage.storedProjectId(), null); assert.deepEqual(await readSavedPages(), []);
     await transaction(STORES, 'readonly', (tx, done) => {
       for (const name of STORES) {
