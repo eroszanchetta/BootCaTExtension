@@ -133,6 +133,43 @@ const assert = require('node:assert/strict');
         await workspace.route('**/app.js', route => route.fulfill({ contentType: 'text/javascript', body: "import { initWorkspaceSections } from './workspace-sections.js'; initWorkspaceSections();" }));
         await workspace.reload();
         assert.equal(await workspace.locator('#more-search-options').evaluate(panel => panel.open), false);
+        await workspace.setViewportSize({ width: 1050, height: 850 });
+        // Exercise the real text-review controller and native modal in both engines.
+        await workspace.evaluate(async () => {
+          const storage = await import('./project-store.js');
+          const { initTextReview } = await import('./text-review.js');
+          const { confirmAction } = await import('./dialogs.js');
+          await storage.resetStoredProject('text-dialog');
+          const url = 'https://example.org/article', filename = 'pages/article.html';
+          await storage.saveDocument('text-dialog', { url, filename, outcome: 'downloaded' }, {
+            url, filename, textFilename: 'corpus/article.txt', extraction: { status: 'ok', included: true, text: 'Corpus text for reading.', characters: 24, warnings: [], title: 'Readable document', extractor: 'fixture' }
+          }, new Blob(['Original HTML']));
+          globalThis.testTextReview = initTextReview({ confirm: confirmAction, run: async task => { await task(); return true; },
+            getProjectId: () => 'text-dialog', getLanguage: () => 'none', isRunning: () => false, onSaved() {} });
+          await testTextReview.open(url);
+        });
+        await workspace.locator('#text-review-dialog[open]').waitFor();
+        assert.equal(await workspace.locator('#preview-section, nav a[href="#preview-section"]').count(), 0);
+        assert.equal(await workspace.locator('#preview-text').evaluate(text => text.readOnly), true);
+        assert.equal(await workspace.locator('#text-review-save').isDisabled(), true);
+        const bounds = await workspace.locator('#text-review-dialog').boundingBox();
+        assert.ok(bounds.height >= 600 && bounds.width >= 800, `${name}: comfortable desktop text dialog`);
+        await workspace.click('#text-review-edit'); await workspace.fill('#preview-text', 'Edited café 中文 🐱 corpus.');
+        await workspace.keyboard.press('Escape'); await workspace.locator('#confirmation-dialog[open]').waitFor();
+        await workspace.click('#confirmation-cancel');
+        assert.equal(await workspace.locator('#text-review-dialog[open]').count(), 1);
+        assert.equal(await workspace.inputValue('#preview-text'), 'Edited café 中文 🐱 corpus.');
+        await workspace.click('#text-review-save');
+        await workspace.waitForFunction(() => document.querySelector('#text-review-status').textContent.startsWith('Text saved'));
+        assert.equal(await workspace.locator('#preview-text').evaluate(text => text.readOnly), true);
+        assert.deepEqual(await workspace.evaluate(async () => {
+          const storage = await import('./project-store.js');
+          return [await (await storage.readText('text-dialog', 'https://example.org/article')).text(), await (await storage.readOriginalText('text-dialog', 'https://example.org/article')).text()];
+        }), ['Edited café 中文 🐱 corpus.', 'Corpus text for reading.']);
+        await workspace.setViewportSize({ width: 390, height: 700 });
+        assert.equal(await workspace.evaluate(() => document.querySelector('#text-review-dialog').scrollWidth > document.querySelector('#text-review-dialog').clientWidth), false, `${name}: mobile dialog overflow`);
+        await workspace.click('#text-review-close');
+        assert.equal(await workspace.locator('#text-review-dialog[open]').count(), 0);
         await workspace.close();
         console.log(`${name}: conditional popup actions, confirmations, advanced disclosure keyboard handling and responsive overflow passed.`);
       } finally { await browser.close(); }

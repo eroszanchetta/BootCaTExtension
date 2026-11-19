@@ -1,3 +1,4 @@
+import { initTextReview } from '../../src/text-review.js';
 import { corpusFingerprint, corpusSavedMessage } from '../../src/export-state.js';
 import { checkLanguage, hasLanguageWarning, languageMessage } from '../../src/language-detection.js';
 import vm from 'node:vm';
@@ -7,12 +8,16 @@ import * as pages from '../../src/page-store.js';
 import { parseURLs, filenameFor, FILE_LIMIT, urlListWarning } from '../../src/core.js';
 import { makeStoredZIP } from '../../src/zip-blob.js';
 import { makeMetadataWorkbook } from '../../src/metadata-xlsx.js';
-import { createExportLayout } from '../../src/export-layout.js';
+import { createExportLayout, originalTextFilename } from '../../src/export-layout.js';
 import { extractionMetadata } from '../../src/corpus.js';
 import { fileWarnings, readPDFFile } from '../../src/pdf-recovery.js';
 import { formatByMIME, readImportedDocument } from '../../src/document-formats.js';
 class Element {
   constructor() { this.value = ''; this.textContent = ''; this.children = []; this.handlers = {}; this.disabled = false; this.attributes = {}; this.classList = { toggle: (name, enabled) => { const classes = new Set((this.className || '').split(/\s+/).filter(Boolean)); if (enabled) classes.add(name); else classes.delete(name); this.className = [...classes].join(' '); }, contains: name => (this.className || '').split(/\s+/).includes(name) }; }
+  showModal() { this.open = true; }
+  close() { this.open = false; this.handlers.close?.(); }
+  focus() {}
+  removeAttribute(name) { delete this.attributes[name]; }
   querySelector() { return new Element(); }
   querySelectorAll() { return []; }
   addEventListener(type, fn) { this.handlers[type] = fn; }
@@ -35,7 +40,7 @@ export async function workspace(projectId, options = {}) {
   let archive, lastFilename, downloads = 0, confirm = true, reset, fetched = [], language = options.language || 'none';
   const context = vm.createContext({
     console, navigator: options.navigator || {}, Blob, URL: { createObjectURL: value => { archive = value; downloads++; return 'blob:test'; }, revokeObjectURL() {} },
-    AbortController, TextEncoder, Date, queueMicrotask, corpusFingerprint, corpusSavedMessage,
+    AbortController, TextEncoder, Date, queueMicrotask, corpusFingerprint, corpusSavedMessage, initTextReview,
     setTimeout: (fn, delay) => { if (delay < 1000) { queueMicrotask(fn); return 0; } return setTimeout(fn, delay); }, clearTimeout,
     document: { getElementById: get, createElement: tag => { const node = new Element(); if (tag === 'a') node.click = () => { lastFilename = node.download; }; return node; }, createElementNS: () => new Element(), createTextNode: text => ({ textContent: text }), body: new Element() },
     confirmAction: async () => confirm,
@@ -48,7 +53,7 @@ export async function workspace(projectId, options = {}) {
     initWorkspaceSections() {}, openWorkspaceSection() {}, setProjectSectionState() {},
     initSeedsUI: () => ({ restore() {}, isBusy: () => false, destroy() {} }),
     initProjectTabsUI: () => ({ refresh() {}, destroy() {} }),
-    DEFUDDLE_AVAILABLE: true, storage: options.storage || storage, ...pages, parseURLs, filenameFor, FILE_LIMIT, urlListWarning, makeStoredZIP, makeMetadataWorkbook: options.makeMetadataWorkbook || makeMetadataWorkbook, createExportLayout, extractionMetadata, fileWarnings, readPDFFile, formatByMIME, readImportedDocument,
+    DEFUDDLE_AVAILABLE: true, storage: options.storage || storage, ...pages, parseURLs, filenameFor, FILE_LIMIT, urlListWarning, makeStoredZIP, makeMetadataWorkbook: options.makeMetadataWorkbook || makeMetadataWorkbook, createExportLayout, originalTextFilename, extractionMetadata, fileWarnings, readPDFFile, formatByMIME, readImportedDocument,
     extractionContentType: (bytes, type) => type,
     extractDownloadedDocument: options.extractor || (async () => extracted('Downloaded corpus text')),
     extractDocument: () => extracted('Captured corpus text'),

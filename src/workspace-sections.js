@@ -1,4 +1,4 @@
-const sectionIds = ['project-section', 'seeds-section', 'search-section', 'urls-section', 'review-section', 'preview-section', 'save-section'];
+const sectionIds = ['project-section', 'seeds-section', 'search-section', 'urls-section', 'review-section', 'save-section'];
 export function openWorkspaceSection(id, { scroll = false } = {}) {
   const section = document.getElementById(id);
   const panel = section?.querySelector('details.workspace-panel');

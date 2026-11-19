@@ -112,7 +112,7 @@ export function allocateFileIndex(projectId) {
 // document is shown as saved until this transaction has completed successfully.
 export function saveDocument(projectId, record, document, original, { advance = false } = {}) {
   const { text, rawText, ...extraction } = document.extraction;
-  const doc = { ...document, extraction, ...(typeof rawText === 'string' ? { rawTextFilename: document.filename.replace(/^pages\//, 'raw-pdf/').replace(/\.[^.]+$/, '.txt') } : {}) };
+  const doc = { ...document, extraction, editRevision: 0, ...(extraction.status === 'ok' ? { originalTextFilename: document.filename.replace(/^pages\//, 'raw-text/').replace(/\.[^.]+$/, '.txt') } : {}), ...(typeof rawText === 'string' ? { rawTextFilename: document.filename.replace(/^pages\//, 'raw-pdf/').replace(/\.[^.]+$/, '.txt') } : {}) };
   const blob = original instanceof Blob ? original : new Blob([original]);
   return projectTransaction(projectId, ['documents', 'files', 'texts'], 'readwrite', (tx, done) => {
     const documents = tx.objectStore('documents'), request = documents.get(record.url);
@@ -122,7 +122,8 @@ export function saveDocument(projectId, record, document, original, { advance = 
       if (previous?.record) entry.record.previousAttempt = previous.record;
       documents.put(entry);
       tx.objectStore('files').add({ name: record.filename, blob });
-      tx.objectStore('texts').put({ url: record.url, blob: new Blob([text || ''], { type: 'text/plain;charset=utf-8' }), ...(typeof rawText === 'string' ? { rawBlob: new Blob([rawText], { type: 'text/plain;charset=utf-8' }) } : {}) });
+      const textBlob = new Blob([text || ''], { type: 'text/plain;charset=utf-8' });
+      tx.objectStore('texts').put({ url: record.url, blob: textBlob, ...(extraction.status === 'ok' ? { originalBlob: textBlob } : {}), ...(typeof rawText === 'string' ? { rawBlob: new Blob([rawText], { type: 'text/plain;charset=utf-8' }) } : {}) });
       const meta = tx.objectStore('meta'), batchRequest = meta.get('batch');
       batchRequest.onsuccess = () => {
         const batch = batchRequest.result;
@@ -198,6 +199,46 @@ function readBlob(projectId, storeName, key, field = 'blob') {
 export const readOriginal = (id, name) => readBlob(id, 'files', name);
 export const readText = (id, url) => readBlob(id, 'texts', url);
 export const readRawText = (id, url) => readBlob(id, 'texts', url, 'rawBlob');
+
+// Read text and its identity together, so a preview can later detect replacement
+// or an edit committed in another workspace while its dialog was open.
+export function readTextSnapshot(projectId, url) {
+  return projectTransaction(projectId, ['documents', 'texts'], 'readonly', (tx, done) => {
+    const snapshot = {};
+    const doc = tx.objectStore('documents').get(url), text = tx.objectStore('texts').get(url);
+    doc.onsuccess = () => { snapshot.entry = doc.result; };
+    text.onsuccess = () => { snapshot.blob = text.result?.blob; };
+    done(snapshot);
+  });
+}
+export function readOriginalText(projectId, url) {
+  return projectTransaction(projectId, ['texts'], 'readonly', (tx, done) => {
+    const request = tx.objectStore('texts').get(url);
+    request.onsuccess = () => done(request.result?.originalBlob || request.result?.blob || null);
+  });
+}
+export function saveEditedText(projectId, url, expected, text, extraction) {
+  return projectTransaction(projectId, ['documents', 'texts'], 'readwrite', (tx, done, fail) => {
+    const documents = tx.objectStore('documents'), request = documents.get(url);
+    request.onsuccess = () => {
+      const entry = request.result;
+      if (!entry?.doc || entry.doc.filename !== expected.filename || (entry.doc.editRevision || 0) !== expected.revision) {
+        fail(new Error('This document changed in another window. Your edits have not been saved. Copy them before closing, then reopen the document.')); return;
+      }
+      const texts = tx.objectStore('texts'), original = texts.get(url);
+      original.onsuccess = () => {
+        if (!original.result?.blob) { fail(new Error('The saved document text is missing. Your edits have not been saved.')); return; }
+        // Legacy records acquire their baseline atomically on the first edit.
+        texts.put({ ...original.result, originalBlob: original.result.originalBlob || original.result.blob, blob: new Blob([text], { type: 'text/plain;charset=utf-8' }) });
+        entry.doc.extraction = extraction;
+        entry.doc.editRevision = (entry.doc.editRevision || 0) + 1;
+        entry.doc.editedAt = new Date().toISOString();
+        entry.doc.originalTextFilename ||= entry.doc.filename.replace(/^pages\//, 'raw-text/').replace(/\.[^.]+$/, '.txt');
+        documents.put(entry); done(entry);
+      };
+    };
+  });
+}
 
 export function storedProjectId() {
   return transaction(['meta'], 'readonly', (tx, done) => { const request = tx.objectStore('meta').get('active'); request.onsuccess = () => done(request.result?.projectId); });

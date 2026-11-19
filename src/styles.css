@@ -24,8 +24,6 @@ td { overflow-wrap: anywhere; }
 #review-lists input[type="checkbox"] { width: auto; accent-color: #007aa6; }
 .preview-button { display: block; padding: 5px 10px; margin-top: 8px; font-size: .8rem; }
 .import-document-button { display: block; padding: 5px 10px; margin-top: 8px; font-size: .8rem; }
-#preview-text { min-height: 350px; font-family: system-ui, sans-serif; }
-#preview-meta { overflow-wrap: anywhere; }
 .error { color: #a22d25; }
 footer { padding: 4px; }
 select, input { width: 100%; padding: 10px; border: 1px solid #7697ad; border-radius: 8px; font: inherit; background: white; color: inherit; }
@@ -112,3 +110,18 @@ button.danger { background: #a22d25; border-color: #a22d25; color: white; }
 button.danger:hover { background: #87352e; }
 
 #export-status.saved { color: #166534; background: #ecfdf3; border-left: 4px solid #3b9b67; padding: 12px; border-radius: 4px; overflow-wrap: anywhere; }
+
+#text-review-dialog { box-sizing: border-box; width: min(1100px, calc(100vw - 32px)); height: min(900px, calc(100dvh - 32px)); max-width: none; max-height: none; overflow: auto; padding: 24px; border: 1px solid #abc8e0; border-radius: 18px; color: #24323b; background: white; box-shadow: 0 24px 80px #004f7040; }
+#text-review-dialog[open] { display: flex; flex-direction: column; gap: 10px; }
+#text-review-dialog::backdrop { background: #17394c80; }
+.text-review-header, .text-review-footer { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-shrink: 0; }
+.text-review-header h2 { margin: 0; overflow-wrap: anywhere; }
+#text-review-close { padding: 6px 12px; flex-shrink: 0; }
+#preview-source, #preview-meta { margin: 0; overflow-wrap: anywhere; max-height: 90px; overflow-y: auto; flex-shrink: 0; }
+#preview-text { flex: 1; min-height: 120px; resize: none; font: 1rem/1.65 system-ui, sans-serif; }
+#preview-text[readonly] { background: #f4f8fb; }
+#preview-text:not([readonly]) { border-color: #007aa6; }
+.text-review-footer .actions { flex-shrink: 0; }
+#text-review-status { margin: 0; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (max-width: 600px) { #text-review-dialog { padding: 16px; } .text-review-footer { flex-direction: column; align-items: stretch; gap: 8px; } .text-review-footer .actions { justify-content: flex-end; } }
