@@ -1,7 +1,8 @@
-// Only metadata is hashed. Originals and extracted-text Blobs are immutable and
-// replaced together with their document metadata, so they need not be loaded.
+// Only metadata is hashed. Text edits update the document revision atomically
+// with its Blob, so bodies need not be loaded just to compare export snapshots.
 export async function corpusFingerprint(workspace, project, collections) {
-  const data = JSON.stringify({ project, draft: workspace.draft, batch: workspace.batch, entries: workspace.entries, collections }, (_, value) => {
+  // Invalidate receipts from ZIP layouts that did not yet include raw-text/.
+  const data = JSON.stringify({ layoutVersion: 2, project, draft: workspace.draft, batch: workspace.batch, entries: workspace.entries, collections }, (_, value) => {
     // Storage round trips and object construction order must not count as edits.
     if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
     return Object.fromEntries(Object.keys(value).sort().map(key => [key, value[key]]));

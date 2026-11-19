@@ -1,3 +1,4 @@
+import { initTextReview } from './text-review.js';
 import { corpusFingerprint, corpusSavedMessage } from './export-state.js';
 import { checkLanguage, hasLanguageWarning, languageMessage } from './language-detection.js';
 import { confirmAction } from './dialogs.js';
@@ -11,7 +12,7 @@ import * as storage from './project-store.js';
 import { getExtensionAPI } from './extension-api.js';
 import { parseURLs, filenameFor, fetchFile, FILE_LIMIT, urlListWarning } from './core.js';
 import { makeStoredZIP } from './zip-blob.js';
-import { createExportLayout } from './export-layout.js';
+import { createExportLayout, originalTextFilename } from './export-layout.js';
 import { makeMetadataWorkbook } from './metadata-xlsx.js';
 import { initVersionBadge } from './version.js';
 import { initSearchUI, readCollections } from './search-ui.js';
@@ -23,9 +24,9 @@ import { DEFUDDLE_AVAILABLE } from './defuddle-loader.js';
 
 initWorkspaceSections();
 const ext = getExtensionAPI(), VERSION = initVersionBadge();
-const ui = Object.fromEntries(['urls', 'start', 'stop', 'export', 'status', 'progress', 'results', 'problem-results', 'attention-section', 'attention-count', 'project-language', 'recheck-language', 'language-status', 'corpus-status', 'preview-title', 'preview-meta', 'preview-text', 'extractor', 'urls-warning', 'storage-status', 'saved-status', 'engine', 'import-document-picker', 'document-import-status', 'export-status'].map(id => [id, document.getElementById(id)]));
+const ui = Object.fromEntries(['urls', 'start', 'stop', 'export', 'status', 'progress', 'results', 'problem-results', 'attention-section', 'attention-count', 'project-language', 'recheck-language', 'language-status', 'corpus-status', 'extractor', 'urls-warning', 'storage-status', 'saved-status', 'engine', 'import-document-picker', 'document-import-status', 'export-status'].map(id => [id, document.getElementById(id)]));
 let ready = false, running = false, stopping = false, resetting = false, controller = null;
-let projectId, state, entries = [], searchUI, seedsUI, projectTabsUI, archiveURL = null, previewURL = null, previewFilename = null;
+let projectId, state, entries = [], searchUI, seedsUI, projectTabsUI, archiveURL = null, previewURL = null, previewFilename = null, textReview;
 let exportSaved = false, exportRevision = 0;
 let writes = Promise.resolve(), pendingWrites = 0, writeError = null, capturesPending = false, refreshing = false;
 let pickingDocument = false, documentImportTarget = null, documentImportStatus = { url: null, message: '' };
@@ -44,8 +45,17 @@ const projectUI = initProjectUI({
     window.location.reload();
   }
 });
+textReview = initTextReview({ root: document, confirm: confirmAction, run: work,
+  getProjectId: () => projectId, getLanguage: () => projectUI.snapshot()?.language || 'none', isRunning: () => running,
+  onSaved: entry => remember(entry, { keepPreview: true }),
+  onSelect: doc => { previewURL = doc?.url || null; previewFilename = doc?.filename || null; updatePreviewSelection(); },
+  onClosed: url => {
+    rows.get(url)?.querySelector('.preview-button')?.focus();
+    if (capturesPending && !resetting && !running) { capturesPending = false; queueMicrotask(importSavedPages); }
+  }
+});
 window.addEventListener('beforeunload', event => {
-  if (!resetting && (running || seedsUI?.isBusy() || pendingWrites || projectUI.isSaving?.())) { event.preventDefault(); event.returnValue = ''; }
+  if (!resetting && (running || seedsUI?.isBusy() || pendingWrites || textReview?.isDirty() || projectUI.isSaving?.())) { event.preventDefault(); event.returnValue = ''; }
 });
 function revokeArchive() {
   if (archiveURL) { URL.revokeObjectURL(archiveURL); archiveURL = null; }
@@ -92,6 +102,7 @@ function updateControls() {
   ui.urls.disabled = ui.extractor.disabled = !ready || running;
   ui['project-language'].disabled = !ready || running; ui['recheck-language'].disabled = !ready || running || !entries.some(entry => entry.doc?.extraction.status === 'ok');
   ui.start.textContent = !running && ready && ['running', 'stopped'].includes(state.batch.state) && pendingURLs().length ? 'Resume downloads' : 'Download URLs';
+  textReview?.refreshControls();
   for (const items of controls.values()) { items.trash.disabled = running; if (items.importDocument) items.importDocument.disabled = running; if (items.acceptLanguage) items.acceptLanguage.disabled = running; if (items.checkbox) items.checkbox.disabled = running || items.failed; }
 }
 const needsAttention = entry => !entry.doc || entry.doc.extraction.status !== 'ok' || hasLanguageWarning(entry.doc.extraction);
@@ -112,22 +123,8 @@ function updateCounts() {
   ui['corpus-status'].textContent = `${included.length} of ${documents.length} extracted texts included · ${included.reduce((sum, entry) => sum + entry.doc.extraction.characters, 0).toLocaleString()} characters. Unchecked pages retain their originals.`;
   storageMessage();
 }
-function clearPreview() {
-  previewURL = previewFilename = null; updatePreviewSelection();
-  ui['preview-title'].textContent = 'Preview'; ui['preview-meta'].textContent = 'Click a Preview text button in the review list to display its text here.'; ui['preview-text'].value = '';
-}
-async function preview(doc) {
-  openWorkspaceSection('preview-section', { scroll: true });
-  const e = doc.extraction;
-  const warnings = [...fileWarnings(e), languageMessage(e)].filter(Boolean);
-  previewURL = doc.url; previewFilename = doc.filename; const selected = doc.filename; updatePreviewSelection();
-  ui['preview-meta'].textContent = `${e.title ? e.title + ' · ' : ''}${doc.url} · ${e.extractor || 'Unsupported format'} · ${e.characters.toLocaleString()} characters${e.pageCount ? ` · ${e.pageCount} pages` : ''}${warnings.length ? ` · ${warnings.join(' ')}` : ''}`;
-  ui['preview-text'].value = 'Loading text…';
-  try {
-    const blob = await storage.readText(projectId, doc.url), text = blob ? await blob.text() : '';
-    if (previewURL === doc.url && previewFilename === selected) ui['preview-text'].value = text || 'No corpus text available. The original is retained; see the extraction message above.';
-  } catch (error) { if (previewFilename === selected) ui['preview-text'].value = ''; report(error); }
-}
+function clearPreview() { textReview?.clear(); }
+async function preview(doc) { await textReview.open(doc.url); }
 function errorTip(record) {
   if (record.errorCode === 'DOWNLOAD_TOO_LARGE') return record.error;
   if (record.outcome === 'cancelled') return 'Stopped by user. Click Resume downloads to try again.';
@@ -246,10 +243,10 @@ ui['import-document-picker'].addEventListener('change', async () => {
   if (!started && !resetting) documentImportMessage(target.url, 'File not imported: another operation is running. Choose the file again when it finishes.');
   documentImportTarget = null; ui['import-document-picker'].value = '';
 });
-function remember(entry) {
+function remember(entry, { keepPreview = false } = {}) {
   const index = entries.findIndex(item => item.url === entry.url);
   if (index < 0) entries.push(entry); else entries[index] = entry;
-  if (previewURL === entry.url) clearPreview(); renderRow(entry); invalidateArchive(); updateCounts();
+  if (previewURL === entry.url && !keepPreview) clearPreview(); renderRow(entry); invalidateArchive(); updateCounts();
 }
 function renderEntries() {
   ui.results.replaceChildren(); ui['problem-results'].replaceChildren(); rows.clear(); controls.clear();
@@ -357,7 +354,7 @@ async function storeCapture({ url, finalURL, bytes, contentType, source, capture
 }
 async function importSavedPages() {
   if (!ready || resetting) return;
-  if (running) { capturesPending = true; return; }
+  if (running || textReview?.isOpen()) { capturesPending = true; return; }
   await work(async () => {
     const pending = await listSavedPages(); if (!pending.length) return;
     entries = (await storage.loadWorkspace(projectId)).entries; renderEntries();
@@ -434,6 +431,11 @@ ui.export.addEventListener('click', () => {
               if (!blob) throw new Error('An extracted text is missing from browser storage');
               yield { name: layout.nameFor(entry.doc.textFilename), blob: new Blob([blob, '\n']) };
             }
+            if (entry.doc?.extraction.status === 'ok') {
+              const blob = await storage.readOriginalText(projectId, entry.url);
+              if (!blob) throw new Error('An original extracted text is missing from browser storage');
+              yield { name: layout.nameFor(originalTextFilename(entry.doc)), blob };
+            }
             if (entry.doc?.rawTextFilename) {
               const blob = await storage.readRawText(projectId, entry.url);
               if (!blob) throw new Error('A raw PDF extraction is missing from browser storage');
@@ -472,7 +474,7 @@ for (const [id, key, type] of [['urls', 'urls', 'input'], ['engine', 'engine', '
 }
 ext.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes.captureRevision) importSavedPages(); });
 window.addEventListener('focus', async () => {
-  if (!ready || running || seedsUI?.isBusy() || pickingDocument || pendingWrites || refreshing || resetting) return;
+  if (!ready || running || textReview?.isOpen() || seedsUI?.isBusy() || pickingDocument || pendingWrites || refreshing || resetting) return;
   refreshing = true;
   try { await restore(); await importSavedPages(); } catch (error) { report(error); } finally { refreshing = false; }
 });
@@ -481,7 +483,7 @@ window.addEventListener('focus', async () => {
     await projectUI.ready; projectId = projectUI.snapshot()?.id;
     if (!projectId) {
       setProjectSectionState(false);
-      for (const id of ['seeds-section', 'search-section', 'urls-section', 'review-section', 'preview-section', 'save-section']) {
+      for (const id of ['seeds-section', 'search-section', 'urls-section', 'review-section', 'save-section']) {
         for (const control of document.getElementById(id).querySelectorAll('button, input, select, textarea')) control.disabled = true;
       }
       ui.status.textContent = 'No active project. Create a project to download and extract documents.';

@@ -148,7 +148,7 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     await page.locator('#project-dialog[open]').waitFor({ state: 'hidden' });
     await page.waitForFunction(() => document.querySelector('#project-name').value === 'First corpus' && !document.querySelector('#start').disabled);
     await assertCollapsed();
-    assert.equal(await page.locator('.workspace-panel').count(), 7);
+    assert.equal(await page.locator('.workspace-panel').count(), 6);
     assert.equal(await page.locator('#export-metadata, #metadata-export-status').count(), 0);
     assert.equal(await page.locator('#save-section #export').count(), 1);
     assert.equal(await page.locator('#review-section #export, #log-section, #save-searches, #collected-results, #project-tab-details').count(), 0);
@@ -167,7 +167,14 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
       if (dialog.type() === 'beforeunload') return dialog.accept();
       errors.push('Unexpected browser dialog: ' + dialog.message()); return dialog.dismiss();
     });
+    async function closeTextReview() {
+      if (await page.locator('#text-review-dialog').evaluate(dialog => dialog.open)) {
+        await page.click('#text-review-close');
+        await page.locator('#text-review-dialog[open]').waitFor({ state: 'hidden' });
+      }
+    }
     async function clickConfirmed(selector, accept = true) {
+      await closeTextReview();
       await page.click(selector); await page.locator('#confirmation-dialog[open]').waitFor();
       dialogMessages.push(await page.locator('#confirmation-message').innerText());
       assert.equal(await page.locator('#confirmation-cancel').evaluate(button => button === document.activeElement), true);
@@ -364,6 +371,7 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     await page.fill('#project-name', 'Energy corpus');
     assert.equal(await page.inputValue('#urls'), 'https://corpus.test/article');
     async function deleteAllRows() {
+      await closeTextReview();
       let count;
       while ((count = await page.locator('#review-lists .delete-button').count())) {
         await clickConfirmed('#review-lists .delete-button');
@@ -382,15 +390,48 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
       await search.goto('https://corpus.test/article');
       assert.equal((await page.evaluate(tabId => (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'get-page-corpus-state', tabId }), tabId)).saved, true, 'batch downloads count as already saved');
       assert.equal(await page.inputValue('#preview-text'), '');
-      assert.equal(await page.locator('#preview-title').innerText(), 'Preview');
+      assert.equal(await page.locator('#preview-section, nav a[href="#preview-section"]').count(), 0);
+      assert.equal(await page.locator('#text-review-dialog[open]').count(), 0);
       await page.click('#review-lists .preview-button');
       await page.waitForFunction(() => document.querySelector('#preview-text').value.includes('Renewable energy'));
       assert.ok((await page.inputValue('#preview-text')).includes('Renewable energy'));
       assert.ok(!(await page.inputValue('#preview-text')).includes('MENU_SENTINEL'));
-      const downloadEvent = page.waitForEvent('download'); await page.click('#export');
+      if (extractor === 'readability') {
+        const baseline = await page.inputValue('#preview-text');
+        assert.equal(await page.locator('#preview-text').evaluate(text => text.readOnly), true);
+        assert.equal(await page.locator('#text-review-save').isDisabled(), true);
+        await page.click('#text-review-edit');
+        await page.fill('#preview-text', baseline + '\nManual corpus edit: café 中文 🐱.');
+        await page.click('#text-review-close'); await page.locator('#confirmation-dialog[open]').waitFor();
+        await page.click('#confirmation-cancel');
+        assert.equal(await page.locator('#text-review-dialog[open]').count(), 1);
+        assert.ok((await page.inputValue('#preview-text')).endsWith('Manual corpus edit: café 中文 🐱.'));
+        await page.click('#text-review-save');
+        await page.waitForFunction(() => document.querySelector('#text-review-status').textContent.startsWith('Text saved'));
+        assert.equal(await page.locator('#preview-text').evaluate(text => text.readOnly), true);
+        await closeTextReview(); await page.click('#review-lists .preview-button');
+        await page.waitForFunction(() => document.querySelector('#preview-text').value.includes('Manual corpus edit'));
+        assert.equal(await page.evaluate(async () => {
+          const store = await import('./project-store.js'), { project } = await (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'get-project' });
+          const entry = (await store.loadWorkspace(project.id)).entries[0];
+          return (await (await store.readOriginalText(project.id, entry.url)).text()).includes('Manual corpus edit');
+        }), false);
+      }
+
+      const downloadEvent = page.waitForEvent('download'); await closeTextReview(); await page.click('#export');
       const download = await downloadEvent; await download.saveAs(join(root, `${extractor}.zip`));
       assert.equal(await download.failure(), null);
       assert.equal(download.suggestedFilename(), 'Corpus Energy corpus.zip');
+      await checkCorpusReport(join(root, `${extractor}.zip`));
+      if (extractor === 'readability') execFileSync('python3', ['-c', `
+import sys,json,zipfile
+with zipfile.ZipFile(sys.argv[1]) as z:
+ doc=json.loads(z.read('extraction.json'))['documents'][0]
+ assert 'Manual corpus edit' in z.read(doc['textFilename']).decode()
+ assert 'Manual corpus edit' not in z.read(doc['originalTextFilename']).decode()
+ assert doc['originalTextFilename'].startswith('raw-text/')
+`, join(root, 'readability.zip')]);
+
       console.log(`${extractor}: search collection → download → extraction → ZIP passed`);
     }
     await deleteAllRows();
@@ -402,17 +443,20 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     assert.equal(await page.locator('#pdf-notice').count(), 1);
     assert.ok(!(await page.locator('#review-lists').innerText()).includes('PDF reading order'));
     await page.locator('#review-lists .preview-button').nth(0).click();
+    await page.waitForFunction(() => document.querySelector('#results tr')?.classList.contains('preview-selected'));
     assert.equal(await page.locator('#results tr.preview-selected').count(), 1);
     assert.equal(await page.locator('#results tr').nth(0).getAttribute('aria-current'), 'true');
     await page.waitForFunction(() => document.querySelector('#preview-text').value.includes('Renewable energy corpus'));
     assert.match(await page.inputValue('#preview-text'), /Renewable energy corpus/);
+    await closeTextReview();
     await page.locator('#review-lists .preview-button').nth(1).click();
+    await page.waitForFunction(() => document.querySelectorAll('#results tr')[1]?.classList.contains('preview-selected'));
     assert.equal(await page.locator('#results tr.preview-selected').count(), 1);
     assert.equal(await page.locator('#results tr').nth(0).getAttribute('aria-current'), 'false');
     assert.equal(await page.locator('#results tr').nth(1).getAttribute('aria-current'), 'true');
     await page.waitForFunction(() => document.querySelector('#preview-text').value.includes('Caffè 中文 corpus'));
     assert.match(await page.inputValue('#preview-text'), /Caffè 中文 corpus/);
-    const documentsDownload = page.waitForEvent('download'); await page.click('#export');
+    const documentsDownload = page.waitForEvent('download'); await closeTextReview(); await page.click('#export');
     await (await documentsDownload).saveAs(join(root, 'documents.zip'));
     await checkCorpusReport(join(root, 'documents.zip'));
     await page.waitForFunction(() => document.querySelector('#export').textContent === 'Corpus saved');
@@ -448,7 +492,7 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     });
     assert.equal(rawPDF.joinedLines, 2); assert.match(rawPDF.name, /^raw-pdf\//);
     assert.ok(rawPDF.text.includes('text\nOther new'));
-    const rawDownload = page.waitForEvent('download'); await page.click('#export');
+    const rawDownload = page.waitForEvent('download'); await closeTextReview(); await page.click('#export');
     const rawPath = join(root, 'raw-formatted.zip'); await (await rawDownload).saveAs(rawPath);
     const rawZip = await readFile(rawPath); assert.ok(rawZip.includes(wrappedPDF));
     assert.ok(rawZip.includes(Buffer.from(rawPDF.name))); assert.ok(rawZip.includes(Buffer.from(rawPDF.text)));
@@ -495,7 +539,7 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     assert.equal(await page.locator('#review-lists tbody tr').count(), 1);
     assert.equal(await page.locator('#results tr').count(), 1);
     assert.equal(await page.locator('#attention-section').isVisible(), false);
-    const capturedDownload = page.waitForEvent('download'); await page.click('#export');
+    const capturedDownload = page.waitForEvent('download'); await closeTextReview(); await page.click('#export');
     const capturedZIP = join(root, 'captured-flat.zip'); await (await capturedDownload).saveAs(capturedZIP);
     await checkCorpusReport(capturedZIP);
     assert.equal(await page.inputValue('#preview-text'), '');
@@ -533,6 +577,7 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     assert.ok(!(await sessionRow.innerText()).includes('PDF reading order'));
     await sessionRow.locator('.preview-button').click();
     await page.waitForFunction(() => document.querySelector('#preview-text').value.includes('Renewable energy corpus'));
+    await closeTextReview();
     const localRow = page.locator('#review-lists tbody tr').filter({ has: page.locator(`a[href="${pdfOrigin}/always-blocked.pdf"]`) });
     const invalidChooser = page.waitForEvent('filechooser'); await localRow.locator('.import-document-button').click();
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
@@ -562,7 +607,7 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     assert.match(await wordRow.innerText(), /Imported DOCX/);
     await wordRow.locator('.preview-button').click();
     await page.waitForFunction(() => document.querySelector('#preview-text').value.length > 3 * 1024 * 1024);
-    const recoveredDownload = page.waitForEvent('download'); await page.click('#export');
+    const recoveredDownload = page.waitForEvent('download'); await closeTextReview(); await page.click('#export');
     const recoveredPath = join(root, 'recovered-pdfs.zip');
     await (await recoveredDownload).saveAs(recoveredPath);
     assert.ok((await readFile(recoveredPath)).includes(largePDF), 'ZIP must contain the complete imported PDF original');
@@ -612,13 +657,14 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     assert.match(await page.locator('#problem-results').innerText(), /Detected English/);
     await page.click('#problem-results .preview-button');
     await page.waitForFunction(() => document.querySelector('#preview-text').value.includes('Renewable energy'));
+    await closeTextReview();
     await page.click('#problem-results .accept-language');
     await page.waitForFunction(() => document.querySelectorAll('#results tr').length === 1 && !document.querySelector('#recheck-language').disabled);
     assert.equal(await page.locator('#attention-section').isVisible(), false);
     await page.click('#recheck-language');
     await page.waitForFunction(() => document.querySelector('#language-status').textContent.startsWith('1 of 1 saved texts rechecked') && !document.querySelector('#start').disabled);
     assert.equal(await page.locator('#results tr').count(), 1, 'manual override must survive recheck');
-    const acceptedDownload = page.waitForEvent('download'); await page.click('#export');
+    const acceptedDownload = page.waitForEvent('download'); await closeTextReview(); await page.click('#export');
     const acceptedZIP = join(root, 'accepted-language.zip'); await (await acceptedDownload).saveAs(acceptedZIP);
     await checkCorpusReport(acceptedZIP, 'English');
 
@@ -626,7 +672,7 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     await page.selectOption('#project-language', 'none'); await page.click('#recheck-language');
     await page.waitForFunction(() => document.querySelector('#language-status').textContent.startsWith('1 of 1 saved texts rechecked') && !document.querySelector('#start').disabled);
     assert.equal(await page.locator('#results input[type="checkbox"]').isChecked(), false, 'disabling detection must preserve manual exclusion');
-    const languageDownload = page.waitForEvent('download'); await page.click('#export');
+    const languageDownload = page.waitForEvent('download'); await closeTextReview(); await page.click('#export');
     const languageZIP = join(root, 'language.zip'); await (await languageDownload).saveAs(languageZIP);
     assert.ok((await readFile(languageZIP)).includes(Buffer.from('languageCheck')));
     await checkCorpusReport(languageZIP);
