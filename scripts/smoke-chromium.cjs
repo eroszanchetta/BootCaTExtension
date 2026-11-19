@@ -574,6 +574,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.equal(await page.locator('#attention-section').isVisible(), true);
     assert.equal(await page.locator('#attention-section').evaluate(panel => panel.open), false);
     assert.equal(await page.locator('#attention-heading').innerText(), 'Documents with issues');
+    await openIssues();
     assert.match(await page.locator('#review-lists').innerText(), /50 MiB download limit/);
     assert.ok(!(await page.locator('#review-lists').innerText()).includes('CAPTCHA'));
     assert.equal(await page.locator('#review-lists .import-document-button').count(), 0);
@@ -582,6 +583,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     await page.fill('#urls', 'https://corpus.test/empty.pdf');
     await page.click('#start');
     await waitForFinished();
+    await openIssues();
     assert.match(await page.locator('#review-lists').innerText(), /Extraction failed/);
     assert.equal(await page.locator('#review-lists .import-document-button').count(), 0, 'successful downloads with failed extraction must not offer recovery');
     await deleteAllRows();
@@ -589,6 +591,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     await page.click('#start');
     await waitForFinished();
     assert.match(await page.locator('#status').innerText(), /1 download errors/);
+    await openIssues();
     assert.equal(await page.locator('#review-lists .import-document-button').count(), 1, 'failed downloads offer generic import');
     assert.match(await page.locator('#review-lists td').nth(2).innerText(), /Add page to corpus.*\(HTTP 403[^)]*\)$/);
     assert.equal(await page.locator('#review-lists a').getAttribute('href'), 'https://corpus.test/blocked');
