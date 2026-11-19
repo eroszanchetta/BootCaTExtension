@@ -849,6 +849,58 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.equal(await page.inputValue('#search-site'), '');
     assert.equal(await page.inputValue('#search-filetype'), ''); assert.equal(await page.locator('#prepared-queries a').count(), 0);
     console.log('Collapsed advanced options, site/file restrictions, canonical exclusions, regenerated links and cross-project defaults passed.');
+    // Collection controls use the real worker, content world and popup document.
+    const floatingSource = await context.newPage(); await floatingSource.goto('https://corpus.test/floating-original');
+    assert.equal(await floatingSource.locator('[data-bootcat-floating-control]').count(), 0);
+    async function setCollectionControls(patch) {
+      const reply = await page.evaluate(patch => (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'save-collection-controls', patch }), patch);
+      assert.equal(reply.ok, true, JSON.stringify(reply)); assert.equal(reply.floatingWarning, undefined); return reply.preferences;
+    }
+    await setCollectionControls({ floatingEnabled: true });
+    const floatingHost = floatingSource.locator('[data-bootcat-floating-control]'); await floatingHost.waitFor();
+    assert.equal(await floatingHost.evaluate(node => node.style.top), '16px'); assert.equal(await floatingHost.evaluate(node => node.style.right), '16px');
+    await setCollectionControls({ floatingPosition: 'bottom-left' });
+    await floatingSource.waitForFunction(() => document.querySelector('[data-bootcat-floating-control]')?.style.left === '16px' && document.querySelector('[data-bootcat-floating-control]')?.style.bottom === '16px');
+    let floatingBox = await floatingHost.boundingBox(); await floatingSource.mouse.click(floatingBox.x + 20, floatingBox.y + 20);
+    await page.waitForFunction(() => [...document.querySelectorAll('#results a')].some(link => link.href === 'https://corpus.test/floating-original'));
+    assert.equal(floatingSource.isClosed(), false);
+    assert.equal(await page.evaluate(async () => {
+      const { project } = await (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'get-project' });
+      const store = await import('./project-store.js'), saved = await store.readDownloadTarget(project.id, 'https://corpus.test/floating-original');
+      return (await (await store.readOriginal(project.id, saved.entry.doc.filename)).text()).includes('data-bootcat-floating-control');
+    }), false);
+    await floatingHost.waitFor({ state: 'hidden' });
+    async function popupFor(tab) {
+      await tab.bringToFront(); const created = context.waitForEvent('page');
+      await page.evaluate(() => (globalThis.browser ?? chrome).tabs.create({ url: (globalThis.browser ?? chrome).runtime.getURL('popup.html'), active: false }));
+      const popup = await created; await popup.waitForFunction(() => !document.querySelector('#show-floating-controls').disabled); return popup;
+    }
+    const closeSource = await context.newPage(); await closeSource.goto('https://corpus.test/floating-close');
+    await closeSource.locator('[data-bootcat-floating-control]').waitFor();
+    const capturePopup = await popupFor(closeSource);
+    await capturePopup.locator('#capture-action').waitFor(); await capturePopup.check('#close-captured-tab');
+    await capturePopup.waitForFunction(() => document.querySelector('#controls-feedback').textContent.startsWith('Preference saved'));
+    await capturePopup.selectOption('#floating-position', 'top-right');
+    await capturePopup.waitForFunction(() => !document.querySelector('#floating-position').disabled);
+    const sourceClosed = closeSource.waitForEvent('close'); await capturePopup.click('#save-page'); await capturePopup.close(); await sourceClosed;
+    await page.waitForFunction(() => [...document.querySelectorAll('#results a')].some(link => link.href === 'https://corpus.test/floating-close'));
+    const currentProject = await page.evaluate(async () => (await (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'get-project' })).project.id);
+    const trackedCreated = context.waitForEvent('page');
+    await page.evaluate(projectId => (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'open-project-search', projectId, engine: 'duckduckgo', query: 'collection-controls', active: false }), currentProject);
+    const trackedSource = await trackedCreated; await trackedSource.waitForLoadState('domcontentloaded');
+    await waitProjectTabsReady(1);
+    const collectPopup = await popupFor(trackedSource); await collectPopup.locator('#collect-action').waitFor(); await collectPopup.check('#close-collected-tab');
+    await collectPopup.waitForFunction(() => document.querySelector('#controls-feedback').textContent.startsWith('Preference saved'));
+    const searchClosed = trackedSource.waitForEvent('close'); await collectPopup.click('#collect'); await searchClosed; await collectPopup.close();
+    assert.equal(await page.evaluate(async projectId => (await (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'get-project-search-tabs', projectId })).history.find(item => item.query === 'collection-controls')?.status, currentProject), 'collected');
+    const floatingKeep = await context.newPage(); await floatingKeep.goto('https://corpus.test/floating-keep');
+    await floatingKeep.locator('[data-bootcat-floating-control]').waitFor();
+    floatingBox = await floatingKeep.locator('[data-bootcat-floating-control]').boundingBox();
+    await floatingKeep.mouse.click(floatingBox.x + floatingBox.width - 20, floatingBox.y + 20);
+    await floatingKeep.locator('[data-bootcat-floating-control]').waitFor({ state: 'hidden' });
+    assert.equal(await page.evaluate(async () => (await (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'get-collection-controls' })).preferences.floatingEnabled), false);
+    await setCollectionControls({ floatingEnabled: true }); await floatingKeep.locator('[data-bootcat-floating-control]').waitFor();
+    console.log('Floating controls, corner preference, popup switches, durable capture before closure and tracked collection closure passed.');
     await page.fill('#urls', Array.from({ length: 501 }, (_, i) => `https://corpus.test/large/${i}`).join('\n'));
     await page.waitForFunction(() => document.querySelector('#storage-status').textContent.startsWith('Saved in this browser'));
     assert.match(await page.locator('#urls-warning').innerText(), /501 URLs/);
@@ -865,6 +917,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.equal(await page.inputValue('#project-name'), 'Saved defaults');
     assert.equal(await page.locator('#start').isDisabled(), false);
     await clickConfirmed('#close-project');
+    await floatingKeep.locator('[data-bootcat-floating-control]').waitFor({ state: 'hidden' });
     for (const workspace of [page, secondWorkspace]) {
       await workspace.waitForFunction(() => document.querySelector('#project-status').textContent.startsWith('No active project'));
       assert.equal(await workspace.locator('#project-section .workspace-panel').evaluate(panel => panel.open), true);
@@ -890,6 +943,11 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.equal(await page.inputValue('#excluded-sites'), 'youtube.com\nfacebook.com\nexample.org');
     assert.equal(await page.inputValue('#urls'), '');
     assert.equal(await page.locator('#review-lists tbody tr').count(), 0);
+    await floatingKeep.locator('[data-bootcat-floating-control]').waitFor();
+    const keptControls = await page.evaluate(async () => (await (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'get-collection-controls' })).preferences);
+    assert.equal(keptControls.closeCollectedTab, true); assert.equal(keptControls.closeCapturedTab, true); assert.equal(keptControls.floatingPosition, 'top-right');
+    await setCollectionControls({ floatingEnabled: false }); await floatingKeep.locator('[data-bootcat-floating-control]').waitFor({ state: 'hidden' });
+    await floatingKeep.close(); await floatingSource.close();
     assert.deepEqual(errors, []);
     console.log('Inactive state, initial cancellation, project closure across windows and preference retention passed.');
     console.log('Workspace reuse, saved-search persistence and zero page errors passed.');

@@ -1,10 +1,13 @@
+import { readCollectionControls, saveCollectionControls } from './collection-preferences.js';
+import { createCollectionActions } from './collection-actions.js';
+import { createFloatingManager } from './floating-manager.js';
 import { readSettings, readSettingsState, saveSettings } from './settings.js';
 import { resetProjectLocalState } from './project-local-state.js';
 import { readUserDefaults, saveUserDefaults } from './user-defaults.js';
 import { validateLanguage } from './language-detection.js';
 import { ensureStoredProject, resetStoredProject, closeStoredProject, storedProjectState, hasStoredPage, getDeletionVersion } from './project-store.js';
 import { captureTabDocument } from './pdf-recovery.js';
-import { savePage } from './page-store.js';
+import { savePage, listSavedPages } from './page-store.js';
 import { getExtensionAPI } from './extension-api.js';
 const ext = getExtensionAPI();
 import { adapterForURL, extractResults } from "./engines.js";
@@ -66,14 +69,20 @@ async function workspaceTabs() {
 async function ensureWorkspace() {
   if (!(await workspaceTabs()).length) await ext.tabs.create({ url: ext.runtime.getURL('downloader.html'), active: false });
 }
-async function collectPage(tabId, projectId, expected) {
+async function workspaceNotice() {
+  try { await ensureWorkspace(); return {}; }
+  catch { return { workspaceWarning: 'Saved in BootCaT. Open the workspace from the extension popup to continue.' }; }
+}
+async function collectPage(tabId, projectId, expected, expectedURL) {
   const settings = await readSettings(ext.storage.local);
   const tab = await ext.tabs.get(tabId);
+  if (expectedURL && canonicalURL(tab.url) !== canonicalURL(expectedURL)) throw new Error('The tab changed. Collect the current page again.');
   const adapter = adapterForURL(tab.url);
   if (!adapter) throw new Error('Open a Google, DuckDuckGo or Ecosia web results page first.');
   const marker = expected ? null : await searchTabs.collectionMarker(projectId, tabId, tab.url);
   const injected = await ext.scripting.executeScript({ target: { tabId: tab.id }, func: extractResults, args: [adapter] });
   const result = injected[0]?.result;
+  if (expectedURL && result?.pageURL && canonicalURL(result.pageURL) !== canonicalURL(expectedURL)) throw new Error('The tab changed during collection. Collect the current page again.');
   if (!result || result.error) throw new Error(result?.error || 'Could not read this results page.');
   if (expected && (!matchesProjectSearch(expected.record, result.pageURL) || new URL(result.pageURL).href.split('#')[0] !== expected.url)) throw new Error('The tab changed during collection; left open.');
   if (!result.results.length) throw new Error(`No usable results found. ${result.unresolved ? `${result.unresolved} candidate links could not be resolved. ` : ''}The page may be a consent screen, CAPTCHA, or an unsupported layout. Try another engine or paste URLs in the workspace.`);
@@ -83,12 +92,90 @@ async function collectPage(tabId, projectId, expected) {
     const collection = { ...result, id: crypto.randomUUID(), collectedAt: new Date().toISOString() };
     await ext.storage.local.set({ collections: addCollection(collections, collection, settings) });
     if (marker) await searchTabs.markCollectedInQueue(marker, result);
-    await ensureWorkspace();
-    return { count: result.results.length, unresolved: result.unresolved, engine: adapter.name };
+    const notice = await workspaceNotice();
+    return { count: result.results.length, unresolved: result.unresolved, engine: adapter.name, ...notice };
   });
 }
 searchTabs = createProjectSearchTabs({ ext, serialize, assertProject, collectPage });
+
+const canonicalURL = value => { const url = new URL(value); url.hash = ''; return url.href; };
+const namedProject = project => !!project && (project.nameConfirmed === true || (project.nameConfirmed == null && !!project.name?.trim() && project.name !== 'Untitled project'));
+const collectionActions = createCollectionActions({ ext, serialize, assertProject });
+const floatingControls = createFloatingManager({ ext, getProject: () => serialize(ensureProject) });
+async function isSavedPage(projectId, url) {
+  if (await hasStoredPage(projectId, url)) return true;
+  return (await listSavedPages()).some(page => canonicalURL(page.url) === canonicalURL(url));
+}
+async function capturePage(message, project, tab) {
+
+    if (message.projectId && message.projectId !== project.id) throw new Error('The project changed. Reopen the BootCaT popup.');
+
+    if (!/^https?:\/\//.test(tab.url || '')) throw new Error('Open a web page first.');
+    if (adapterForURL(tab.url)) throw new Error('Use Collect results from this tab for a search results page.');
+    const saved = await serialize(async () => { await assertProject(project.id); return isSavedPage(project.id, tab.url); });
+    if (saved) return { alreadySaved: true, ...await workspaceNotice() };
+    const controller = new AbortController(), token = crypto.randomUUID();
+    const deletionVersion = await serialize(async () => { await assertProject(project.id); const version = await getDeletionVersion(project.id, tab.url); captures.set(token, controller); return version; });
+    try {
+      const page = await captureTabDocument(tab, ext.scripting, { signal: controller.signal, settings: await readSettings(ext.storage.local) });
+      return await serialize(async () => {
+        await assertProject(project.id);
+        if (canonicalURL(page.url) !== canonicalURL(tab.url)) throw new Error('The tab changed during capture. Add the current page again.');
+        if (await isSavedPage(project.id, page.url)) return { alreadySaved: true };
+        await savePage({ ...page, id: crypto.randomUUID() }, project.id, { url: tab.url, version: deletionVersion });
+        try { await ext.storage.local.set({ captureRevision: crypto.randomUUID() }); } catch {}
+        return workspaceNotice();
+      });
+    } finally { captures.delete(token); }
+}
+async function runPageAction(message) {
+  const project = await serialize(requireProject);
+  if (message.projectId && message.projectId !== project.id) throw new Error('The project changed. Reopen the BootCaT controls.');
+  const preferences = await readCollectionControls(ext.storage.local), collect = message.type === 'collect';
+  return collectionActions.run({ projectId: project.id, tabId: message.tabId, action: message.type, closeAfterSuccess: collect ? preferences.closeCollectedTab : preferences.closeCapturedTab },
+    tab => collect ? collectPage(tab.id, project.id, undefined, tab.url) : capturePage(message, project, tab));
+}
+async function floatingState(tabId) {
+  const preferences = await readCollectionControls(ext.storage.local), project = await serialize(ensureProject);
+  if (!preferences.floatingEnabled || !namedProject(project)) return { enabled: false };
+  const tab = await ext.tabs.get(tabId);
+  if (!/^https?:\/\//.test(tab.url || '')) return { enabled: false };
+  const engine = adapterForURL(tab.url);
+  const saved = await serialize(async () => {
+    await assertProject(project.id);
+    if (engine) {
+      const { collections = [] } = await ext.storage.local.get('collections');
+      return collections.some(item => item.engine === engine.id && canonicalURL(item.pageURL) === canonicalURL(tab.url) && !item.unresolved);
+    }
+    return isSavedPage(project.id, tab.url);
+  });
+  return { enabled: true, projectId: project.id, action: engine ? 'collect' : 'save-page', saved, position: preferences.floatingPosition,
+    closeAfterSuccess: engine ? preferences.closeCollectedTab : preferences.closeCapturedTab };
+}
+async function handleFloating(message, sender) {
+  const tab = await ext.tabs.get(sender.tab.id);
+  if (!/^https?:\/\//.test(tab.url || '') || canonicalURL(tab.url) !== canonicalURL(sender.url)) throw new Error('The page changed. Use the controls on the current page.');
+  if (message.type === 'get-floating-state') return { state: await floatingState(tab.id) };
+  const state = await floatingState(tab.id);
+  if (!state.enabled || message.projectId !== state.projectId) throw new Error('Floating controls are unavailable for this project.');
+  if (message.type === 'floating-hide') {
+    const preferences = await serialize(() => saveCollectionControls(ext.storage.local, { floatingEnabled: false }));
+    await floatingControls.sync(); return { preferences };
+  }
+  if (message.type === 'floating-open-workspace') return handle({ type: 'open-workspace' });
+  const action = message.type === 'floating-collect' ? 'collect' : message.type === 'floating-save-page' ? 'save-page' : null;
+  if (!action || action !== state.action) throw new Error('This action is not available on this page.');
+  return runPageAction({ type: action, projectId: state.projectId, tabId: tab.id });
+}
+
 async function handle(message) {
+  if (message.type === 'get-collection-controls') return { preferences: await readCollectionControls(ext.storage.local) };
+  if (message.type === 'save-collection-controls') {
+    const preferences = await serialize(() => saveCollectionControls(ext.storage.local, message.patch));
+    let floatingWarning;
+    try { await floatingControls.sync(); } catch { floatingWarning = 'Preferences saved. Some pages may need a reload before floating controls can appear.'; }
+    return { preferences, floatingWarning };
+  }
   if (message.type === 'get-settings') return { settings: await readSettingsState(ext.storage.local) };
   if (message.type === 'save-settings') return serialize(async () => ({ settings: await saveSettings(ext.storage.local, message.values, message.revision) }));
   if (message.type === 'open-project-search') return searchTabs.open(message);
@@ -155,39 +242,18 @@ async function handle(message) {
     const tab = await ext.tabs.get(message.tabId);
     return serialize(async () => {
       const project = await ensureProject();
-      return { projectId: project?.id ?? null, saved: project ? await hasStoredPage(project.id, tab.url) : false };
+      return { projectId: project?.id ?? null, saved: project ? await isSavedPage(project.id, tab.url) : false };
     });
   }
-  if (message.type === 'save-page') {
-    const project = await serialize(requireProject);
-    if (message.projectId && message.projectId !== project.id) throw new Error('The project changed. Reopen the BootCaT popup.');
-    const tab = await ext.tabs.get(message.tabId);
-    if (!/^https?:\/\//.test(tab.url || '')) throw new Error('Open a web page first.');
-    if (adapterForURL(tab.url)) throw new Error('Use Collect results from this tab for a search results page.');
-    const saved = await serialize(async () => { await assertProject(project.id); return hasStoredPage(project.id, tab.url); });
-    if (saved) { await ensureWorkspace(); return { alreadySaved: true }; }
-    const controller = new AbortController(), token = crypto.randomUUID();
-    const deletionVersion = await serialize(async () => { await assertProject(project.id); const version = await getDeletionVersion(project.id, tab.url); captures.set(token, controller); return version; });
-    try {
-      const page = await captureTabDocument(tab, ext.scripting, { signal: controller.signal, settings: await readSettings(ext.storage.local) });
-      return await serialize(async () => {
-        await assertProject(project.id);
-        if (await hasStoredPage(project.id, page.url)) return { alreadySaved: true };
-        await savePage({ ...page, id: crypto.randomUUID() }, project.id, { url: tab.url, version: deletionVersion });
-        try { await ext.storage.local.set({ captureRevision: crypto.randomUUID() }); } catch {}
-        await ensureWorkspace();
-        return {};
-      });
-    } finally { captures.delete(token); }
-  }
-  if (message.type !== "collect") throw new Error("Unknown request");
-  const project = await serialize(requireProject);
-  if (message.projectId && message.projectId !== project.id) throw new Error('The project changed. Reopen the BootCaT popup.');
-  return collectPage(message.tabId, project.id);
+  if (message.type === 'save-page' || message.type === 'collect') return runPageAction(message);
+  throw new Error('Unknown request');
 }
 ext.runtime.onMessage.addListener((message, sender, respond) => {
-  // Only our bundled UI can call this handler. There are no content scripts.
-  if (sender.id !== ext.runtime.id || !sender.url?.startsWith(ext.runtime.getURL(""))) return;
-  handle(message).then(data => respond({ ok: true, ...data }), error => respond({ ok: false, error: error.message }));
+  if (sender.id !== ext.runtime.id) return;
+  const ownUI = sender.url?.startsWith(ext.runtime.getURL(''));
+  const floatingTypes = new Set(['get-floating-state', 'floating-hide', 'floating-open-workspace', 'floating-collect', 'floating-save-page']);
+  const content = !ownUI && sender.frameId === 0 && Number.isInteger(sender.tab?.id) && /^https?:\/\//.test(sender.url || '') && floatingTypes.has(message?.type);
+  if (!ownUI && !content) return;
+  (content ? handleFloating(message, sender) : handle(message)).then(data => respond({ ok: true, ...data }), error => respond({ ok: false, error: error.message }));
   return true; // Keep the asynchronous reply channel open.
 });

@@ -1,3 +1,4 @@
+import { COLLECTION_CONTROLS_KEY, DEFAULT_COLLECTION_CONTROLS, collectionControlsFromRecord } from './collection-preferences.js';
 import { getExtensionAPI } from './extension-api.js';
 import { initVersionBadge } from './version.js';
 import { adapterForURL } from './engines.js';
@@ -9,7 +10,30 @@ const feedback = el('feedback'), pageFeedback = el('page-feedback'), status = el
 let project, activeTab, engine, initialized = false, reloading = false;
 let collecting = false, savingPage = false, alreadyCollected = false, unresolved = 0;
 let pageState = 'checking', pageRevision = 0, collectionRevision = 0, projectRevision = 0;
-let pageError = '', collectionError = '', generalError = '';
+let pageError = '', collectionError = '', generalError = '', pageWarning = '', collectionWarning = '';
+let preferences = DEFAULT_COLLECTION_CONTROLS, preferencesLoaded = false, preferenceRevision = 0;
+const savingPreferences = new Set();
+const preferenceFields = [['close-collected-tab', 'closeCollectedTab'], ['close-captured-tab', 'closeCapturedTab'], ['show-floating-controls', 'floatingEnabled'], ['floating-position', 'floatingPosition']];
+function renderPreferences() {
+  for (const [id, key] of preferenceFields) {
+    const input = el(id); if (key === 'floatingPosition') input.value = preferences[key]; else input.checked = preferences[key];
+    input.disabled = !preferencesLoaded || savingPreferences.has(key);
+  }
+}
+for (const [id, key] of preferenceFields) el(id).addEventListener('change', async () => {
+  if (!preferencesLoaded || savingPreferences.has(key)) return;
+  const value = key === 'floatingPosition' ? el(id).value : el(id).checked;
+  const previousValue = preferences[key], readRevision = preferenceRevision;
+  preferences = { ...preferences, [key]: value }; savingPreferences.add(key); renderPreferences(); render();
+  el('controls-feedback').textContent = 'Saving preference…';
+  try {
+    const reply = await ext.runtime.sendMessage({ type: 'save-collection-controls', patch: { [key]: value } });
+    if (!reply?.ok) throw new Error(reply?.error || 'Could not save collection preferences.');
+    if (preferenceRevision === readRevision) preferences = collectionControlsFromRecord({ version: 1, values: { ...preferences, [key]: reply.preferences?.[key] ?? value } });
+    el('controls-feedback').textContent = reply.floatingWarning || 'Preference saved for all projects.';
+  } catch (error) { if (preferenceRevision === readRevision) preferences = { ...preferences, [key]: previousValue }; el('controls-feedback').textContent = error.message; }
+  finally { savingPreferences.delete(key); renderPreferences(); render(); }
+});
 const namedProject = () => !!project && (project.nameConfirmed === true ||
   (project.nameConfirmed == null && !!project.name?.trim() && project.name !== 'Untitled project'));
 function reloadProject() {
@@ -22,6 +46,7 @@ function message(element, text, saved = false) {
 function render() {
   el('collect-action').hidden = el('capture-action').hidden = true;
   collect.disabled = savePage.disabled = true;
+  renderPreferences();
   collect.textContent = collecting ? 'Collecting…' : 'Collect results from this tab';
   savePage.textContent = savingPage ? 'Saving…' : 'Add page to corpus';
   message(feedback, ''); message(pageFeedback, '');
@@ -32,21 +57,21 @@ function render() {
   if (!/^https?:\/\//.test(activeTab?.url || '')) { message(status, 'This page cannot be collected.'); return; }
   message(status, '');
   if (engine) {
-    if (alreadyCollected && !collecting) {
-      message(feedback, `Results added${unresolved ? `. ${unresolved} candidate links were skipped because their destinations could not be resolved.` : ''}`, true);
+    if (alreadyCollected && !unresolved && !collecting) {
+      message(feedback, `Results added${collectionWarning ? `. ${collectionWarning}` : ''}`, true);
     } else {
-      el('collect-action').hidden = false; collect.disabled = collecting;
+      el('collect-action').hidden = false; collect.disabled = collecting || !preferencesLoaded || savingPreferences.size > 0;
       el('page-info').textContent = `${engine.name}${engine.experimental ? ' (experimental)' : ''} web results detected.`;
-      message(feedback, collectionError);
+      message(feedback, collectionError || (alreadyCollected && unresolved ? `${unresolved} candidate links could not be resolved. The tab stays open; review the page and collect again.` : collectionWarning));
     }
   } else if (pageState === 'checking' && !savingPage) {
     message(status, 'Checking whether this page is already in the corpus…');
   } else if (pageState === 'saved' && !savingPage) {
-    message(pageFeedback, 'Page already added to corpus', true);
+    message(pageFeedback, `Page already added to corpus${pageWarning ? `. ${pageWarning}` : ''}`, true);
   } else if (pageState === 'error' && !savingPage) {
     message(pageFeedback, pageError);
   } else {
-    el('capture-action').hidden = false; savePage.disabled = savingPage;
+    el('capture-action').hidden = false; savePage.disabled = savingPage || !preferencesLoaded || savingPreferences.size > 0;
     message(pageFeedback, pageError);
   }
 }
@@ -83,16 +108,24 @@ ext.storage.onChanged.addListener((changes, area) => {
     if (initialized && !wasNamed && namedProject()) { reloadProject(); return; }
     pageRevision++; render(); refreshPageState();
   }
-  if (changes.captureRevision) refreshPageState();
+  if (changes[COLLECTION_CONTROLS_KEY]) {
+    preferenceRevision++;
+    try { preferences = collectionControlsFromRecord(changes[COLLECTION_CONTROLS_KEY].newValue); preferencesLoaded = true; }
+    catch (error) { preferencesLoaded = false; el('controls-feedback').textContent = error.message; }
+    renderPreferences(); render();
+  }
+  if (changes.captureRevision || changes.workspaceRevision) refreshPageState();
   if (changes.collections) { collectionRevision++; updateCollectionState(changes.collections.newValue || []); }
 });
 async function initialize() {
   try {
-    const revision = projectRevision;
-    const [reply, tabs] = await Promise.all([
-      ext.runtime.sendMessage({ type: 'get-project' }), ext.tabs.query({ active: true, currentWindow: true })
+    const revision = projectRevision, preferenceRead = preferenceRevision;
+    const [reply, tabs, controls] = await Promise.all([
+      ext.runtime.sendMessage({ type: 'get-project' }), ext.tabs.query({ active: true, currentWindow: true }), ext.runtime.sendMessage({ type: 'get-collection-controls' })
     ]);
     if (!reply?.ok) throw new Error(reply?.error || 'Could not check the project. Open BootCaT to retry.');
+    if (!controls?.ok) throw new Error(controls?.error || 'Could not read collection preferences.');
+    if (preferenceRead === preferenceRevision) { preferences = collectionControlsFromRecord({ version: 1, values: controls.preferences }); preferencesLoaded = true; }
     if (revision === projectRevision) project = reply.project;
     if (!reloading) {
       [activeTab] = tabs; engine = adapterForURL(activeTab?.url);
@@ -108,24 +141,24 @@ async function initialize() {
 collect.addEventListener('click', async () => {
   if (collect.disabled || reloading || !namedProject() || !engine) return;
   const projectId = project.id;
-  collecting = true; collectionError = ''; render();
+  collecting = true; collectionError = collectionWarning = ''; render();
   try {
     const result = await ext.runtime.sendMessage({ type: 'collect', projectId, tabId: activeTab.id });
     if (reloading || project.id !== projectId) return;
     if (!result?.ok) throw new Error(result?.error || 'Collection failed. Try again.');
-    alreadyCollected = true; unresolved = result.unresolved || 0;
+    alreadyCollected = true; unresolved = result.unresolved || 0; collectionWarning = result.closeWarning || result.workspaceWarning || '';
   } catch (error) { if (!reloading && project.id === projectId) collectionError = error.message; }
   finally { collecting = false; render(); }
 });
 savePage.addEventListener('click', async () => {
   if (savePage.disabled || reloading || !namedProject() || engine) return;
   const projectId = project.id;
-  savingPage = true; pageRevision++; pageError = ''; render();
+  savingPage = true; pageRevision++; pageError = pageWarning = ''; render();
   try {
     const result = await ext.runtime.sendMessage({ type: 'save-page', projectId, tabId: activeTab.id });
     if (reloading || project.id !== projectId) return;
     if (!result?.ok) throw new Error(result?.error || 'Could not save this page. Try again.');
-    pageState = 'saved';
+    pageState = 'saved'; pageWarning = result.closeWarning || result.workspaceWarning || '';
   } catch (error) {
     if (!reloading && project.id === projectId) { pageState = 'available'; pageError = error.message; }
   } finally { savingPage = false; render(); }
