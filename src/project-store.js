@@ -48,7 +48,7 @@ function projectTransaction(projectId, names, mode, operation) {
 export function loadWorkspace(projectId) {
   return projectTransaction(projectId, ['documents'], 'readonly', (tx, done) => {
     const results = {};
-    for (const key of ['draft', 'batch', 'searches', 'corpusExport']) {
+    for (const key of ['draft', 'batch', 'searches', 'corpusExport', 'deleteRevision']) {
       const request = tx.objectStore('meta').get(key);
       request.onsuccess = () => { results[key] = request.result; };
     }
@@ -134,7 +134,7 @@ export function saveDocument(projectId, record, document, original, { advance = 
     };
   });
 }
-export function saveFailure(projectId, record) {
+export function saveFailure(projectId, record, { advance = true } = {}) {
   return projectTransaction(projectId, ['documents'], 'readwrite', (tx, done) => {
     const documents = tx.objectStore('documents'), request = documents.get(record.url);
     request.onsuccess = () => {
@@ -142,7 +142,7 @@ export function saveFailure(projectId, record) {
       if (request.result?.record) entry.record.previousAttempt = request.result.record;
       documents.put(entry); done(entry);
       const meta = tx.objectStore('meta'), batch = meta.get('batch');
-      batch.onsuccess = () => { const value = batch.result; value.processed++; meta.put(value); };
+      batch.onsuccess = () => { const value = batch.result; if (advance) value.processed++; meta.put(value); };
     };
   });
 }
@@ -171,12 +171,35 @@ export function saveLanguageCheck(projectId, url, filename, languageCheck, inclu
     };
   });
 }
+export const deletionKey = value => { try { const url = new URL(value); url.hash = ''; return 'deleted:' + url.href; } catch { return 'deleted:' + value; } };
+export function getDeletionVersion(projectId, url) {
+  return projectTransaction(projectId, [], 'readonly', (tx, done) => {
+    const request = tx.objectStore('meta').get(deletionKey(url)); request.onsuccess = () => done(request.result?.version || 0);
+  });
+}
+export function readDownloadTarget(projectId, url) {
+  return projectTransaction(projectId, ['documents'], 'readonly', (tx, done) => {
+    const target = {}, entry = tx.objectStore('documents').get(url), deleted = tx.objectStore('meta').get(deletionKey(url));
+    entry.onsuccess = () => { target.entry = entry.result; };
+    deleted.onsuccess = () => { target.deletedVersion = deleted.result?.version || 0; };
+    done(target);
+  });
+}
 export function removeDocument(projectId, url) {
-  return projectTransaction(projectId, ['documents', 'files', 'texts'], 'readwrite', tx => {
+  return projectTransaction(projectId, ['documents', 'files', 'texts', 'pages'], 'readwrite', tx => {
     const docs = tx.objectStore('documents'), request = docs.get(url);
     request.onsuccess = () => {
       const meta = tx.objectStore('meta'), batch = meta.get('batch');
       const removedBytes = request.result?.originalBytes || 0;
+      const aliases = [...new Set([url, request.result?.record.finalURL].filter(Boolean))];
+      const revision = meta.get('deleteRevision');
+      revision.onsuccess = () => {
+        const version = (revision.result?.value || 0) + 1;
+        meta.put({ key: 'deleteRevision', value: version });
+        for (const alias of aliases) meta.put({ key: deletionKey(alias), version });
+        const keys = new Set(aliases.map(deletionKey)), pages = tx.objectStore('pages'), cursor = pages.openKeyCursor();
+        cursor.onsuccess = () => { if (!cursor.result) return; if (keys.has(deletionKey(cursor.result.key))) pages.delete(cursor.result.key); cursor.result.continue(); };
+      };
       for (const name of request.result?.fileNames || []) tx.objectStore('files').delete(name);
       docs.delete(url); tx.objectStore('texts').delete(url);
       batch.onsuccess = () => {

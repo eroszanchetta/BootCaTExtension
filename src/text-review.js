@@ -21,8 +21,8 @@ export function initTextReview({ root = document, confirm, run, getProjectId, ge
   let current = null, baseText = '', editing = false, loading = false, saving = false, opened = false, generation = 0, confirming = false;
   const dirty = () => editing && text.value !== baseText;
   function controls() {
-    edit.disabled = !current || loading || saving || isRunning() || current.entry.doc.extraction.status !== 'ok' || editing;
-    save.disabled = loading || saving || isRunning() || !dirty(); close.disabled = saving || confirming;
+    edit.disabled = !current || loading || saving || isRunning(current?.entry.url) || current.entry.doc.extraction.status !== 'ok' || editing;
+    save.disabled = loading || saving || isRunning(current?.entry.url) || !dirty(); close.disabled = saving || confirming;
     text.readOnly = !editing || saving;
     dialog.setAttribute('aria-busy', String(loading || saving));
   }
@@ -97,7 +97,7 @@ export function initTextReview({ root = document, confirm, run, getProjectId, ge
           current = { id: selected.id, entry }; baseText = value; editing = false; committed = true;
           onSaved(entry); onSelect(entry.doc); metadataView();
         } catch (error) { failed = true; if (request === generation) status.textContent = `Text not saved: ${error.message}`; }
-      });
+      }, { url: selected.entry.url });
       if (request === generation && !committed && !failed && !ran) status.textContent = 'Could not save now. Another BootCaT window may be processing this project. Try Save again.';
     } catch (error) {
       if (request === generation) status.textContent = `Text not saved: ${error.message}`;

@@ -1,3 +1,4 @@
+import { createProjectWork, createExtractionQueue } from '../../src/project-work.js';
 import { initTextReview } from '../../src/text-review.js';
 import { corpusFingerprint, corpusSavedMessage } from '../../src/export-state.js';
 import { checkLanguage, hasLanguageWarning, languageMessage } from '../../src/language-detection.js';
@@ -40,7 +41,7 @@ export async function workspace(projectId, options = {}) {
   let archive, lastFilename, downloads = 0, confirm = true, reset, fetched = [], language = options.language || 'none';
   const context = vm.createContext({
     console, navigator: options.navigator || {}, Blob, URL: { createObjectURL: value => { archive = value; downloads++; return 'blob:test'; }, revokeObjectURL() {} },
-    AbortController, TextEncoder, Date, queueMicrotask, corpusFingerprint, corpusSavedMessage, initTextReview,
+    AbortController, TextEncoder, Date, queueMicrotask, corpusFingerprint, corpusSavedMessage, initTextReview, createProjectWork, createExtractionQueue,
     setTimeout: (fn, delay) => { if (delay < 1000) { queueMicrotask(fn); return 0; } return setTimeout(fn, delay); }, clearTimeout,
     document: { getElementById: get, createElement: tag => { const node = new Element(); if (tag === 'a') node.click = () => { lastFilename = node.download; }; return node; }, createElementNS: () => new Element(), createTextNode: text => ({ textContent: text }), body: new Element() },
     confirmAction: async () => confirm,
@@ -64,16 +65,18 @@ export async function workspace(projectId, options = {}) {
     }
   });
   const source = (await readFile(new URL('../../src/app.js', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
-  vm.runInContext(source, context);
+  // The final expression is the workspace startup promise. Await the complete
+  // metadata/activity check and capture drain before simulating user actions.
+  await vm.runInContext(source, context);
   await waitFor(() => vm.runInContext(projectId ? 'ready' : "document.getElementById('status').textContent.startsWith('No active project')", context));
-  await waitFor(() => !vm.runInContext('running', context));
+  await waitFor(() => !vm.runInContext('running || importing || documentJobs.size', context));
   return {
     get, fetched, reset: () => reset(), setConfirm: value => { confirm = value; }, archive: () => archive, downloads: () => downloads, filename: () => lastFilename,
-    state: () => vm.runInContext('({ entries, ready, running, pendingWrites, state })', context),
+    state: () => vm.runInContext('({ entries, ready, running, downloading, importing, jobs: documentJobs.size, pendingWrites, state })', context),
     async input(id, value) { get(id).value = value; await get(id).handlers.input?.(); await waitFor(() => !vm.runInContext('pendingWrites', context)); },
     click: id => get(id).handlers.click(),
     async focus() { await windowListeners.focus(); },
-    async notify(changes) { for (const listener of listeners) listener(changes, 'local'); await waitFor(() => !vm.runInContext('running', context)); },
+    async notify(changes) { for (const listener of listeners) listener(changes, 'local'); await waitFor(() => !vm.runInContext('running || importing', context)); },
     beforeUnload: () => { let prevented = false; windowListeners.beforeunload({ preventDefault() { prevented = true; } }); return prevented; }
   };
 }

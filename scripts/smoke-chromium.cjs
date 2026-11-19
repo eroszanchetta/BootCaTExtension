@@ -18,8 +18,20 @@ const { execFileSync } = require('node:child_process');
     const wrappedPDF = Buffer.from(pdfFixture({ wrapped: true, unpunctuated: true, paddingBytes: 15 * 1024 * 1024 }));
     // A real server verifies extension-worker fetches and cookie behavior without
     // relying on Playwright interception of protected PDF viewer requests.
-    const pendingSearchResponses = new Map(), resolvedQueries = new Set();
+    const pendingSearchResponses = new Map(), resolvedQueries = new Set(), pendingCorpusResponses = new Map(), corpusFetches = new Map(), resolvedCorpus = new Set();
     pdfServer = createServer((request, response) => {
+      if (request.url.startsWith('/concurrent/')) {
+        const name = request.url.split('/').at(-1);
+        if (request.headers['sec-fetch-dest'] !== 'document') corpusFetches.set(name, (corpusFetches.get(name) || 0) + 1);
+        const body = `<article><h1>Concurrent corpus fixture</h1>${Array.from({ length: 4 }, () => `<p>${paragraph}</p>`).join('')}</article>`;
+        if (['failed', 'upload'].includes(name) && !resolvedCorpus.has(name)) { response.writeHead(403, { 'Content-Type': 'text/html' }); response.end('CAPTCHA required'); return; }
+        response.writeHead(200, { 'Content-Type': 'text/html' });
+        if (name === 'blocked') {
+          response.write('<!doctype html>'); pendingCorpusResponses.set(name, () => response.end(body));
+          response.on('close', () => pendingCorpusResponses.delete(name));
+        } else response.end(body);
+        return;
+      }
       if (request.url.startsWith('/search-fixture')) {
         const query = new URL(request.url, 'http://fixture').searchParams.get('q') || '';
         const body = query === 'captcha' && !resolvedQueries.has(query) ? '<h1>CAPTCHA required</h1>' : `<a data-testid="result-title-a" href="https://corpus.test/search?q=${encodeURIComponent(query)}">Local result</a>${query === 'partial' ? '<a data-testid="result-title-a" href="https://duckduckgo.com/l/?opaque=1">Unresolved link</a>' : ''}`;
@@ -173,8 +185,20 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
         await page.locator('#text-review-dialog[open]').waitFor({ state: 'hidden' });
       }
     }
+    async function openIssues() {
+      if (await page.locator('#attention-section').isVisible() && !await page.locator('#attention-section').evaluate(panel => panel.open)) await page.locator('#attention-section > summary').click();
+    }
+    async function waitForFinished() {
+      try {
+        await page.waitForFunction(() => !document.querySelector('#start').disabled && document.querySelector('#status').textContent.startsWith('Finished.'));
+      } catch (error) {
+        console.error('Download wait state:', await page.evaluate(async () => ({ status: document.querySelector('#status').textContent, saved: document.querySelector('#saved-status').textContent, urls: document.querySelector('#urls').value, locks: await navigator.locks.query() })));
+        throw error;
+      }
+    }
     async function clickConfirmed(selector, accept = true) {
       await closeTextReview();
+      if (selector.includes('#review-lists') || selector.includes('#problem-results')) await openIssues();
       await page.click(selector); await page.locator('#confirmation-dialog[open]').waitFor();
       dialogMessages.push(await page.locator('#confirmation-message').innerText());
       assert.equal(await page.locator('#confirmation-cancel').evaluate(button => button === document.activeElement), true);
@@ -371,7 +395,7 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     await page.fill('#project-name', 'Energy corpus');
     assert.equal(await page.inputValue('#urls'), 'https://corpus.test/article');
     async function deleteAllRows() {
-      await closeTextReview();
+      await closeTextReview(); await openIssues();
       let count;
       while ((count = await page.locator('#review-lists .delete-button').count())) {
         await clickConfirmed('#review-lists .delete-button');
@@ -381,11 +405,12 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     for (const extractor of ['readability', 'defuddle']) {
       if (extractor === 'defuddle') {
         await clickConfirmed('#review-lists .delete-button');
+        await page.waitForFunction(() => !document.querySelector('#review-lists tbody tr') && !document.querySelector('#start').disabled);
         await page.fill('#urls', 'https://corpus.test/article');
       }
       await page.selectOption('#extractor', extractor);
       await page.click('#start');
-      await page.waitForFunction(() => !document.querySelector('#start').disabled && document.querySelector('#status').textContent.startsWith('Finished.'));
+      await waitForFinished();
       assert.match(await page.locator('#status').innerText(), /0 download errors, 0 extraction failures/);
       await search.goto('https://corpus.test/article');
       assert.equal((await page.evaluate(tabId => (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'get-page-corpus-state', tabId }), tabId)).saved, true, 'batch downloads count as already saved');
@@ -435,9 +460,54 @@ with zipfile.ZipFile(sys.argv[1]) as z:
       console.log(`${extractor}: search collection → download → extraction → ZIP passed`);
     }
     await deleteAllRows();
+    // Hold one real download open while the user edits and recovers other URLs.
+    const concurrentURLs = ['good', 'failed', 'upload', 'blocked', 'queued'].map(name => `${pdfOrigin}/concurrent/${name}`);
+    await page.fill('#urls', concurrentURLs.join('\n')); await page.click('#start');
+    const concurrentDeadline = Date.now() + 10000;
+    while (!pendingCorpusResponses.has('blocked') && Date.now() < concurrentDeadline) await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(pendingCorpusResponses.has('blocked'), true, 'the delayed batch URL must begin downloading');
+    assert.equal(await page.locator('#attention-section').evaluate(panel => panel.open), false);
+    assert.equal(await page.locator('#attention-heading').innerText(), 'Documents with issues');
+    assert.equal(await page.locator('#export').isDisabled(), true);
+    const parallelWorkspace = await context.newPage(); await parallelWorkspace.goto(origin + '/downloader.html');
+    await parallelWorkspace.waitForFunction(() => document.querySelector('#download-activity').textContent.includes('another BootCaT window'));
+    assert.equal(await parallelWorkspace.locator('#start').isDisabled(), true);
+    assert.equal(await parallelWorkspace.locator('#export').isDisabled(), true);
+    await page.bringToFront();
+    const goodRow = page.locator('#results tr').filter({ has: page.locator(`a[href="${concurrentURLs[0]}"]`) });
+    await goodRow.locator('.preview-button').click(); await page.locator('#text-review-edit').waitFor({ state: 'visible' });
+    await page.click('#text-review-edit');
+    const concurrentEdit = 'Edited while downloads continue. ' + paragraph;
+    await page.fill('#preview-text', concurrentEdit);
+    resolvedCorpus.add('failed'); await search.goto(concurrentURLs[1]);
+    const concurrentCapture = await page.evaluate(tabId => (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'save-page', tabId }), tabId);
+    assert.equal(concurrentCapture.ok, true, JSON.stringify(concurrentCapture));
+    await page.waitForFunction(url => [...document.querySelectorAll('#results a')].some(link => link.href === url), concurrentURLs[1]);
+    assert.equal(await page.inputValue('#preview-text'), concurrentEdit);
+    assert.equal(pendingCorpusResponses.has('blocked'), true, 'recovery must appear before the batch ends');
+    await page.click('#text-review-save');
+    await page.waitForFunction(() => document.querySelector('#text-review-status').textContent.startsWith('Text saved'));
+    await closeTextReview(); await openIssues();
+    const uploadRow = page.locator('#problem-results tr').filter({ has: page.locator(`a[href="${concurrentURLs[2]}"]`) });
+    const concurrentChooser = page.waitForEvent('filechooser'); await uploadRow.locator('.import-document-button').click();
+    await (await concurrentChooser).setFiles({ name: 'recovered.pdf', mimeType: 'application/pdf', buffer: Buffer.from(pdfFixture()) });
+    await page.waitForFunction(url => [...document.querySelectorAll('#results a')].some(link => link.href === url), concurrentURLs[2]);
+    assert.equal(pendingCorpusResponses.has('blocked'), true);
+    await search.goto(concurrentURLs[4]);
+    assert.equal((await page.evaluate(tabId => (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'save-page', tabId }), tabId)).ok, true);
+    await page.waitForFunction(url => [...document.querySelectorAll('#results a')].some(link => link.href === url), concurrentURLs[4]);
+    await parallelWorkspace.waitForFunction(() => document.querySelectorAll('#results tr').length === 4);
+    pendingCorpusResponses.get('blocked')();
+    await waitForFinished();
+    assert.equal(corpusFetches.get('queued') || 0, 0, 'queued manual recoveries must not download again');
+    assert.equal(corpusFetches.get('blocked'), 1);
+    assert.equal(await page.locator('#results tr').count(), 5);
+    assert.equal(await page.locator('#attention-section').isVisible(), false);
+    await parallelWorkspace.close(); await deleteAllRows();
+    console.log('Concurrent text editing, cross-window activity, manual capture/import and recovered-URL skipping passed.');
     await page.fill('#urls', 'https://corpus.test/document.pdf\nhttps://corpus.test/document.docx');
     await page.click('#start');
-    await page.waitForFunction(() => !document.querySelector('#start').disabled && document.querySelector('#status').textContent.startsWith('Finished.'));
+    await waitForFinished();
     assert.match(await page.locator('#status').innerText(), /0 download errors, 0 extraction failures/);
     assert.equal(await page.inputValue('#preview-text'), '');
     assert.equal(await page.locator('#pdf-notice').count(), 1);
@@ -472,14 +542,14 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     console.log('PDF/DOCX download, local extraction, preview and ZIP passed.');
     await deleteAllRows();
     await page.fill('#urls', 'https://corpus.test/large.docx'); await page.click('#start');
-    await page.waitForFunction(() => !document.querySelector('#start').disabled && document.querySelector('#status').textContent.startsWith('Finished.'));
+    await waitForFinished();
     assert.match(await page.locator('#status').innerText(), /0 download errors, 0 extraction failures/);
     await page.click('#review-lists .preview-button');
     await page.waitForFunction(() => document.querySelector('#preview-text').value.length > 3 * 1024 * 1024 && document.querySelector('#preview-text').value.startsWith('Larger DOCX corpus text.'));
     await deleteAllRows();
     await page.fill('#urls', 'https://corpus.test/wrapped.pdf');
     await page.click('#start');
-    await page.waitForFunction(() => !document.querySelector('#start').disabled && document.querySelector('#status').textContent.startsWith('Finished.'));
+    await waitForFinished();
     assert.match(await page.locator('#status').innerText(), /0 download errors, 0 extraction failures/);
     await page.click('#review-lists .preview-button');
     await page.waitForFunction(() => document.querySelector('#preview-text').value.includes('This is the final line'));
@@ -498,10 +568,13 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.ok(rawZip.includes(Buffer.from(rawPDF.name))); assert.ok(rawZip.includes(Buffer.from(rawPDF.text)));
     await deleteAllRows();
     await page.fill('#urls', pdfOrigin + '/oversized.pdf'); await page.click('#start');
-    await page.waitForFunction(() => !document.querySelector('#start').disabled && document.querySelector('#status').textContent.startsWith('Finished.'));
+    await waitForFinished();
     assert.equal(await page.locator('#problem-results tr').count(), 1);
     assert.equal(await page.locator('#results tr').count(), 0);
     assert.equal(await page.locator('#attention-section').isVisible(), true);
+    assert.equal(await page.locator('#attention-section').evaluate(panel => panel.open), false);
+    assert.equal(await page.locator('#attention-heading').innerText(), 'Documents with issues');
+    await openIssues();
     assert.match(await page.locator('#review-lists').innerText(), /50 MiB download limit/);
     assert.ok(!(await page.locator('#review-lists').innerText()).includes('CAPTCHA'));
     assert.equal(await page.locator('#review-lists .import-document-button').count(), 0);
@@ -509,14 +582,16 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     console.log('Large PDF batch download, layout cleanup, raw-text ZIP backup and explicit 50 MiB failure passed.');
     await page.fill('#urls', 'https://corpus.test/empty.pdf');
     await page.click('#start');
-    await page.waitForFunction(() => !document.querySelector('#start').disabled && document.querySelector('#status').textContent.startsWith('Finished.'));
+    await waitForFinished();
+    await openIssues();
     assert.match(await page.locator('#review-lists').innerText(), /Extraction failed/);
     assert.equal(await page.locator('#review-lists .import-document-button').count(), 0, 'successful downloads with failed extraction must not offer recovery');
     await deleteAllRows();
     await page.fill('#urls', 'https://corpus.test/blocked');
     await page.click('#start');
-    await page.waitForFunction(() => !document.querySelector('#start').disabled && document.querySelector('#status').textContent.startsWith('Finished.'));
+    await waitForFinished();
     assert.match(await page.locator('#status').innerText(), /1 download errors/);
+    await openIssues();
     assert.equal(await page.locator('#review-lists .import-document-button').count(), 1, 'failed downloads offer generic import');
     assert.match(await page.locator('#review-lists td').nth(2).innerText(), /Add page to corpus.*\(HTTP 403[^)]*\)$/);
     assert.equal(await page.locator('#review-lists a').getAttribute('href'), 'https://corpus.test/blocked');
@@ -564,7 +639,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     console.log('Automatic failed URL recovery, inert UTF-8 snapshots and inbox consumption passed.');
     await page.fill('#urls', `${pdfOrigin}/session-document\n${pdfOrigin}/always-blocked.pdf`);
     await page.click('#start');
-    await page.waitForFunction(() => !document.querySelector('#start').disabled && document.querySelector('#status').textContent.startsWith('Finished.'));
+    await waitForFinished();
     assert.match(await page.locator('#status').innerText(), /2 download errors/);
     await search.goto(pdfOrigin + '/login');
     await search.goto(pdfOrigin + '/session-document', { waitUntil: 'domcontentloaded' });
@@ -579,6 +654,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     await page.waitForFunction(() => document.querySelector('#preview-text').value.includes('Renewable energy corpus'));
     await closeTextReview();
     const localRow = page.locator('#review-lists tbody tr').filter({ has: page.locator(`a[href="${pdfOrigin}/always-blocked.pdf"]`) });
+    await openIssues();
     const invalidChooser = page.waitForEvent('filechooser'); await localRow.locator('.import-document-button').click();
     await page.evaluate(() => window.dispatchEvent(new Event('focus')));
     await (await invalidChooser).setFiles({ name: 'not-a-pdf.pdf', mimeType: 'application/pdf', buffer: Buffer.from('<html>CAPTCHA</html>') });
@@ -596,8 +672,9 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.equal(await page.locator('#review-lists tbody tr').count(), 2, 'recovery must replace failed rows');
     await page.fill('#urls', `${pdfOrigin}/session-document\n${pdfOrigin}/always-blocked.pdf\n${pdfOrigin}/always-blocked.docx`);
     await page.click('#start');
-    await page.waitForFunction(() => !document.querySelector('#start').disabled && document.querySelector('#status').textContent.startsWith('Finished.'));
+    await waitForFinished();
     const wordRow = page.locator('#review-lists tbody tr').filter({ has: page.locator(`a[href="${pdfOrigin}/always-blocked.docx"]`) });
+    await openIssues();
     assert.equal(await wordRow.locator('.import-document-button').innerText(), 'Import downloaded file');
     const wordChooser = page.waitForEvent('filechooser'); await wordRow.locator('.import-document-button').click();
     assert.equal(await page.locator('#import-document-picker').getAttribute('accept'), '');
@@ -651,9 +728,10 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     await page.selectOption('#project-language', 'ita');
     await page.waitForFunction(() => !document.querySelector('#start').disabled);
     await page.fill('#urls', 'https://corpus.test/article'); await page.click('#start');
-    await page.waitForFunction(() => !document.querySelector('#start').disabled && document.querySelector('#status').textContent.startsWith('Finished.'));
+    await waitForFinished();
     assert.equal(await page.locator('#problem-results tr').count(), 1);
     assert.equal(await page.locator('#problem-results input[type="checkbox"]').isChecked(), false);
+    await openIssues();
     assert.match(await page.locator('#problem-results').innerText(), /Detected English/);
     await page.click('#problem-results .preview-button');
     await page.waitForFunction(() => document.querySelector('#preview-text').value.includes('Renewable energy'));

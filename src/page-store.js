@@ -1,4 +1,5 @@
 import { transaction as dbTransaction } from './storage-db.js';
+import { deletionKey } from './project-store.js';
 export function validateSavedPages(pages) {
   if (pages.length > 20) throw new Error('Saved page limit reached (20). Open BootCaT to add them to the review list before saving more pages.');
   const size = pages.reduce((n, page) => n + (page.kind === 'pdf' ? page.blob.size : new TextEncoder().encode(page.html).length), 0);
@@ -16,11 +17,17 @@ export const removeSavedPage = page => transaction('readwrite', store => {
   // Do not delete a newer snapshot saved while the old one was importing.
   request.onsuccess = () => { if (request.result?.id === page.id) store.delete(page.url); };
 });
-export const savePage = (page, projectId) => dbTransaction(['pages', 'meta'], 'readwrite', (tx, done, fail) => {
+export const savePage = (page, projectId, expected) => dbTransaction(['pages', 'meta'], 'readwrite', (tx, done, fail) => {
   const store = tx.objectStore('pages');
   const active = tx.objectStore('meta').get('active');
   active.onsuccess = () => {
     if (projectId !== undefined && active.result?.projectId !== projectId) { fail(new Error('The project changed. Reopen BootCaT.')); return; }
+    if (expected) {
+      const deleted = tx.objectStore('meta').get(deletionKey(expected.url));
+      deleted.onsuccess = () => {
+        if ((deleted.result?.version || 0) !== expected.version) fail(new Error('This document was deleted while the page was being captured. Save it again if you want to add it back.'));
+      };
+    }
     const request = store.getAll();
     request.onsuccess = () => {
       try {
