@@ -22,7 +22,25 @@ jobs:
           package-manager-cache: false
       - run: npm install
       - run: npm audit --audit-level=high
-      - run: npm test
+      - run: npm test > unit-test.log 2>&1
+      - name: Report unit test failure
+        id: unit_report
+        if: failure()
+        run: |
+          python3 - <<'PYCODE'
+          from pathlib import Path
+          import os
+          path = Path('unit-test.log')
+          if path.exists():
+              log = path.read_text()
+              print(log)
+              tail = log.split('failing tests:')[-1] if 'failing tests:' in log else log[-6000:]
+              with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+                  output.write('message=' + ' | '.join(tail.splitlines())[-3000:] + '\n')
+          PYCODE
+      - name: "Unit test failure: ${{ steps.unit_report.outputs.message }}"
+        if: failure() && steps.unit_report.outputs.message != ''
+        run: exit 1
       - run: npm run package
       - name: Validate Firefox submission
         id: amo_lint
