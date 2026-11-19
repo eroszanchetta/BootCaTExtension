@@ -76,10 +76,10 @@ nav a:hover { background: #c7ddeb; }
 .workspace-panel > summary h2 { display: inline; margin: 0 auto 0 0; font-size: 1.2rem; }
 .panel-content { padding-top: 24px; }
 .section-counter { border-radius: 999px; background: #e7f2f8; color: #00658c; padding: 3px 10px; font-size: .8rem; font-variant-numeric: tabular-nums; }
-#project-dialog, #confirmation-dialog { width: min(520px, calc(100% - 32px)); max-height: calc(100vh - 48px); overflow: auto; padding: 32px; border: 1px solid #abc8e0; border-radius: 18px; color: #24323b; background: white; box-shadow: 0 24px 80px #004f7040; }
-#project-dialog::backdrop, #confirmation-dialog::backdrop { background: #17394c80; }
-#project-dialog h2, #confirmation-dialog h2 { margin: 12px 0; font-size: 1.6rem; }
-#project-dialog .actions, #confirmation-dialog .actions { margin-top: 24px; flex-wrap: wrap; }
+#project-dialog, #confirmation-dialog, #project-choice-dialog, #project-replace-dialog { width: min(520px, calc(100% - 32px)); max-height: calc(100vh - 48px); overflow: auto; padding: 32px; border: 1px solid #abc8e0; border-radius: 18px; color: #24323b; background: white; box-shadow: 0 24px 80px #004f7040; }
+#project-dialog::backdrop, #confirmation-dialog::backdrop, #project-choice-dialog::backdrop, #project-replace-dialog::backdrop { background: #17394c80; }
+#project-dialog h2, #confirmation-dialog h2, #project-choice-dialog h2, #project-replace-dialog h2 { margin: 12px 0; font-size: 1.6rem; }
+#project-dialog .actions, #confirmation-dialog .actions, #project-choice-dialog .actions, #project-replace-dialog .actions { margin-top: 24px; flex-wrap: wrap; }
 
 .attention-section { margin-top: 24px; padding: 20px; border: 1px solid #d5b976; border-radius: 12px; background: #fffbf2; }
 .attention-section summary { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -152,3 +152,12 @@ button.danger:hover { background: #87352e; }
 
 html { scroll-padding-top: var(--workspace-nav-offset, 112px); }
 section { scroll-margin-top: 0; }
+
+.project-name-row { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; }
+.project-name-row input { flex: 1; min-width: 0; margin: 0; font-weight: 650; }
+.project-name-row input[readonly] { background: #eef5f9; }
+.project-controls { display: flex; flex-direction: row; flex-wrap: wrap; gap: 10px; }
+.project-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.project-button svg { width: 21px; height: 21px; flex: 0 0 21px; }
+.project-export { margin-top: 22px; padding-top: 18px; border-top: 1px solid #c4d8e7; }
+@media(max-width:480px) { .project-controls .project-button { flex: 1 1 42%; } }

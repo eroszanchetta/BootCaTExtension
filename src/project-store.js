@@ -273,3 +273,26 @@ export function saveCorpusExport(projectId, receipt) {
     tx.objectStore('meta').put({ ...receipt, key: 'corpusExport' });
   });
 }
+
+// All stores are read in one transaction: an inbox handoff or edit is captured
+// entirely before or after its commit, never halfway through it.
+export function snapshotStoredProject(project) {
+  return projectTransaction(project.id, STORES, 'readonly', (tx, done) => {
+    const snapshot = { project: { ...project }, stores: {} };
+    for (const name of STORES) { const r = tx.objectStore(name).getAll(); r.onsuccess = () => { snapshot.stores[name] = r.result; }; }
+    done(snapshot);
+  });
+}
+export function replaceStoredProject(expectedId, snapshot, project) {
+  return transaction(STORES, 'readwrite', (tx, done, fail) => {
+    const active = tx.objectStore('meta').get('active');
+    active.onsuccess = () => {
+      if ((active.result?.projectId ?? null) !== expectedId) { fail(new Error('The project changed. Open the project file again.')); return; }
+      for (const name of STORES) {
+        const store = tx.objectStore(name); store.clear();
+        for (const record of snapshot.stores[name]) store.add(record);
+      }
+      tx.objectStore('meta').put({ key: 'active', projectId: project.id, project, collections: snapshot.stores.meta.find(r => r.key === 'searches').collections });
+    };
+  });
+}

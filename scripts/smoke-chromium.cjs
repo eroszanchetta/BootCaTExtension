@@ -113,7 +113,7 @@ const { execFileSync } = require('node:child_process');
     const openPanels = async () => page.locator('.workspace-panel').evaluateAll(panels => panels.forEach(panel => { panel.open = true; }));
     const assertCollapsed = async () => {
       await page.waitForFunction(() => !document.querySelector('#start').disabled);
-      assert.deepEqual(await page.locator('.workspace-panel[open]').evaluateAll(panels => panels.map(panel => panel.closest('section').id)), []);
+      assert.deepEqual(await page.locator('.workspace-panel[open]').evaluateAll(panels => panels.map(panel => panel.closest('section').id)), ['project-section']);
       assert.equal(await page.locator('#more-search-options').getAttribute('open'), null);
     };
     const openSearchOptions = async () => {
@@ -149,20 +149,20 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
 `, zipPath, language, releaseVersion]);
     }
 
-    await page.locator('#project-dialog[open]').waitFor();
-    assert.equal(await page.locator('#project-dialog-cancel').isDisabled(), true);
-    assert.equal(await page.locator('#project-dialog-close').isVisible(), true);
-    await page.keyboard.press('Escape');
-    assert.equal(await page.locator('#project-dialog[open]').count(), 1);
+    await page.locator('#project-choice-dialog[open]').waitFor();
+    await page.keyboard.press('Escape'); assert.equal(await page.locator('#project-choice-dialog[open]').count(), 1);
     assert.equal(await page.evaluate(async () => (await (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'get-project' })).project), null);
     for (const selector of ['#urls', '#start', '#export', '#seeds', '#tuples', '#engine', '#project-name']) assert.equal(await page.locator(selector).isDisabled(), true, selector);
+    await page.click('#project-choice-new'); await page.locator('#project-dialog[open]').waitFor();
+    await page.click('#project-dialog-cancel'); await page.locator('#project-choice-dialog[open]').waitFor();
+    await page.click('#project-choice-new');
     await page.selectOption('#project-dialog-language', 'none'); await page.fill('#project-dialog-name', 'First corpus'); await submitProject();
     await page.locator('#project-dialog[open]').waitFor({ state: 'hidden' });
     await page.waitForFunction(() => document.querySelector('#project-name').value === 'First corpus' && !document.querySelector('#start').disabled);
     await assertCollapsed();
-    assert.equal(await page.locator('.workspace-panel').count(), 6);
+    assert.equal(await page.locator('.workspace-panel').count(), 5);
     assert.equal(await page.locator('#export-metadata, #metadata-export-status').count(), 0);
-    assert.equal(await page.locator('#save-section #export').count(), 1);
+    assert.equal(await page.locator('#project-section #export').count(), 1);
     assert.equal(await page.locator('#review-section #export, #log-section, #save-searches, #collected-results, #project-tab-details').count(), 0);
     assert.equal(await page.locator('#search-form').count(), 0);
     await page.locator('nav a[href="#seeds-section"]').click();
@@ -199,6 +199,12 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     async function clickConfirmed(selector, accept = true) {
       await closeTextReview();
       if (selector.includes('#review-lists') || selector.includes('#problem-results')) await openIssues();
+      if (selector === '#close-project') {
+        await page.click(selector); await page.locator('#project-replace-dialog[open]').waitFor();
+        if (accept === 'escape') await page.keyboard.press('Escape');
+        else await page.click(accept ? '#project-replace-continue' : '#project-replace-dialog button[value=cancel]');
+        await page.locator('#project-replace-dialog[open]').waitFor({ state: 'hidden' }); return;
+      }
       await page.click(selector); await page.locator('#confirmation-dialog[open]').waitFor();
       dialogMessages.push(await page.locator('#confirmation-message').innerText());
       assert.equal(await page.locator('#confirmation-cancel').evaluate(button => button === document.activeElement), true);
@@ -211,10 +217,10 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
       const nextName = await page.inputValue('#project-dialog-name');
       await page.click('#project-dialog-submit');
       if (replacing) {
-        await page.locator('#confirmation-dialog[open]').waitFor();
-        assert.match(await page.locator('#confirmation-message').innerText(), /All data that you have not exported will be lost/);
-        await page.click('#confirmation-accept');
-        await page.locator('#confirmation-dialog[open]').waitFor({ state: 'hidden' });
+        await page.locator('#project-replace-dialog[open]').waitFor();
+        assert.match(await page.locator('#project-replace-message').innerText(), /All data that you have not exported will be lost/);
+        await page.click('#project-replace-continue');
+        await page.locator('#project-replace-dialog[open]').waitFor({ state: 'hidden' });
       }
       await page.waitForFunction(name => document.querySelector('#project-name').value === name && !document.querySelector('#start').disabled, nextName);
     }
@@ -237,8 +243,8 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     await settingsWindow.close(); await page.fill('#urls', '');
     const navNames = await page.locator('nav a').allTextContents();
     assert.equal(navNames.at(-2), 'Save'); assert.equal(navNames.at(-1), 'Help');
-    await page.locator('nav a[href="#save-section"]').click();
-    assert.equal(await page.locator('#save-section .workspace-panel').getAttribute('open'), '');
+    await page.locator('nav a[href="#project-section"]').click();
+    assert.equal(await page.locator('#project-section .workspace-panel').getAttribute('open'), '');
     assert.equal(await page.evaluate(() => document.querySelector('[aria-labelledby="project-heading"]').nextElementSibling.id), 'seeds-section');
     assert.equal(await page.inputValue('#tuple-length'), '3');
     assert.equal(await page.locator('#generate-tuples').isDisabled(), true);
@@ -438,7 +444,8 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     await page.waitForFunction(() => document.querySelector('#collection-status').textContent.includes('1 unique URLs'));
     await page.waitForFunction(() => document.querySelector('#urls').value === 'https://corpus.test/article');
     assert.equal(await page.locator('#use-collected').count(), 0);
-    await page.fill('#project-name', 'Energy corpus');
+    assert.equal(await page.locator('#project-name').getAttribute('readonly'), '');
+    await page.click('#rename-project'); await page.fill('#project-dialog-name', 'Energy corpus'); await page.click('#project-dialog-submit');
     assert.equal(await page.inputValue('#urls'), 'https://corpus.test/article');
     async function deleteAllRows() {
       await closeTextReview(); await openIssues();
@@ -575,7 +582,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     const documentsDownload = page.waitForEvent('download'); await closeTextReview(); await page.click('#export');
     await (await documentsDownload).saveAs(join(root, 'documents.zip'));
     await checkCorpusReport(join(root, 'documents.zip'));
-    await page.waitForFunction(() => document.querySelector('#export').textContent === 'Corpus saved');
+    await page.waitForFunction(() => document.querySelector('#export').textContent === 'Corpus exported');
     assert.equal(await page.locator('#export').isDisabled(), true);
     assert.match(await page.locator('#export-status').innerText(), /Corpus saved.*Downloads folder/);
     await page.reload(); await assertCollapsed(); await openPanels();
@@ -754,8 +761,8 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.equal(await page.inputValue('#urls'), 'https://corpus.test/keep-on-cancel');
     await page.click('#new-project');
     await page.selectOption('#project-dialog-language', 'none'); await page.fill('#project-dialog-name', 'Fresh corpus');
-    await page.click('#project-dialog-submit'); await page.locator('#confirmation-dialog[open]').waitFor();
-    await page.click('#confirmation-cancel'); await page.locator('#project-dialog[open]').waitFor();
+    await page.click('#project-dialog-submit'); await page.locator('#project-replace-dialog[open]').waitFor();
+    await page.click('#project-replace-dialog button[value=cancel]'); await page.locator('#project-dialog[open]').waitFor();
     assert.equal(await page.inputValue('#project-name'), 'Energy corpus');
     assert.equal(await page.inputValue('#urls'), 'https://corpus.test/keep-on-cancel');
     assert.equal(await page.inputValue('#project-dialog-name'), 'Fresh corpus');
@@ -901,6 +908,36 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.equal(await page.evaluate(async () => (await (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'get-collection-controls' })).preferences.floatingEnabled), false);
     await setCollectionControls({ floatingEnabled: true }); await floatingKeep.locator('[data-bootcat-floating-control]').waitFor();
     console.log('Floating controls, corner preference, popup switches, durable capture before closure and tracked collection closure passed.');
+    // Save/open through the native picker and the real extension worker.
+    await page.waitForFunction(() => !document.querySelector('#save-project').disabled);
+    const portableDownload = page.waitForEvent('download'); await page.click('#save-project');
+    const portableFile = join(root, 'complete.bootcat'); await (await portableDownload).saveAs(portableFile);
+    execFileSync('python3', ['-c', "import zipfile,json,sys; z=zipfile.ZipFile(sys.argv[1]); assert z.testzip() is None; p=json.loads(z.read('project.json')); assert p['format']=='BootCaTProject' and p['version']==1; assert any(n.startswith('originals/') for n in z.namelist())", portableFile]);
+    await page.waitForFunction(() => !document.querySelector('#save-project').disabled);
+    const beforePortable = await page.evaluate(async () => (await (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'get-project' })).project.id);
+    let projectChooser = page.waitForEvent('filechooser'); await page.click('#open-project');
+    await (await projectChooser).setFiles({ name: 'damaged.bootcat', mimeType: 'application/zip', buffer: Buffer.from('damaged project') });
+    await page.waitForFunction(() => document.querySelector('#project-file-status').textContent.startsWith('Could not open project'));
+    assert.equal(await page.evaluate(async () => (await (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'get-project' })).project.id), beforePortable);
+    await page.fill('#urls', 'https://corpus.test/unsaved-after-snapshot');
+    projectChooser = page.waitForEvent('filechooser'); await page.click('#open-project'); await (await projectChooser).setFiles(portableFile);
+    await page.locator('#project-replace-dialog[open]').waitFor(); await page.click('#project-replace-dialog button[value=cancel]');
+    assert.equal(await page.inputValue('#urls'), 'https://corpus.test/unsaved-after-snapshot');
+    await page.waitForFunction(() => !document.querySelector('#open-project').disabled);
+    projectChooser = page.waitForEvent('filechooser'); await page.click('#open-project'); await (await projectChooser).setFiles(portableFile);
+    await page.locator('#project-replace-dialog[open]').waitFor();
+    const saveBeforeReplace = page.waitForEvent('download'); await page.click('#project-replace-save'); await (await saveBeforeReplace).saveAs(join(root, 'before-replacement.bootcat'));
+    await page.waitForFunction(() => !document.querySelector('#project-replace-continue').disabled);
+    await page.click('#project-replace-continue');
+    await page.waitForFunction(() => document.querySelector('#project-name').value === 'Saved defaults' && !document.querySelector('#start').disabled);
+    await assertCollapsed(); await openPanels();
+    const afterPortable = await page.evaluate(async () => (await (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'get-project' })).project.id);
+    assert.notEqual(afterPortable, beforePortable);
+    assert.equal((await page.inputValue('#urls')).includes('unsaved-after-snapshot'), false);
+    assert.equal(await page.locator('#results a[href="https://corpus.test/floating-original"]').count(), 1);
+    const restoredTracking = await page.evaluate(async projectId => (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'get-project-search-tabs', projectId }), afterPortable);
+    assert.equal(restoredTracking.tabs.length, 0); assert.ok(restoredTracking.history.some(r => r.query === 'collection-controls' && r.status === 'collected'));
+    console.log('Native portable project save/open, validation before replacement, cancellation, save-first and collected-query restoration passed.');
     await page.fill('#urls', Array.from({ length: 501 }, (_, i) => `https://corpus.test/large/${i}`).join('\n'));
     await page.waitForFunction(() => document.querySelector('#storage-status').textContent.startsWith('Saved in this browser'));
     assert.match(await page.locator('#urls-warning').innerText(), /501 URLs/);
@@ -925,18 +962,22 @@ with zipfile.ZipFile(sys.argv[1]) as z:
       assert.equal(await workspace.locator('#close-project').isVisible(), false);
       assert.equal(await workspace.locator('#start').isDisabled(), true);
       assert.equal(await workspace.inputValue('#urls'), '');
-      await workspace.locator('#project-dialog[open]').waitFor();
-      assert.equal(await workspace.locator('#project-dialog-close').isVisible(), true);
-      assert.equal(await workspace.locator('#project-dialog-cancel').isDisabled(), true);
+      await workspace.locator('#project-choice-dialog[open]').waitFor();
+      assert.equal(await workspace.locator('#project-choice-close').isVisible(), true);
     }
     const inactivePopup = await context.newPage(); await inactivePopup.goto(origin + '/popup.html');
     await inactivePopup.waitForFunction(() => document.querySelector('#popup-status').textContent.includes('Create a project'));
     assert.equal(await inactivePopup.locator('#collect-action, #capture-action').evaluateAll(items => items.every(item => item.hidden)), true);
     await inactivePopup.close();
     const workspaceClosed = secondWorkspace.waitForEvent('close');
-    await secondWorkspace.click('#project-dialog-close'); await workspaceClosed;
+    await secondWorkspace.click('#project-choice-close'); await workspaceClosed;
     assert.equal(page.isClosed(), false, 'Close BootCaT closes only its own workspace');
-    await page.bringToFront(); await page.fill('#project-dialog-name', 'After closing');
+    await page.bringToFront();
+    const inactiveOpen = page.waitForEvent('filechooser'); await page.click('#project-choice-open'); await (await inactiveOpen).setFiles(portableFile);
+    await page.waitForFunction(() => document.querySelector('#project-name').value === 'Saved defaults' && !document.querySelector('#start').disabled);
+    await assertCollapsed(); await openPanels();
+    await clickConfirmed('#close-project'); await page.locator('#project-choice-dialog[open]').waitFor();
+    await page.click('#project-choice-new'); await page.fill('#project-dialog-name', 'After closing');
     await page.selectOption('#project-dialog-language', 'none'); await submitProject();
     await page.waitForFunction(() => document.querySelector('#project-name').value === 'After closing' && !document.querySelector('#start').disabled);
     await assertCollapsed(); await openPanels(); await openSearchOptions();
