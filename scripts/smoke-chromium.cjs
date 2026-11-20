@@ -349,7 +349,7 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     console.log('Leading badge/open icon, popup collection status and manual-close retention passed.');
     await page.waitForFunction(() => document.querySelector('#open-all-queries').textContent === 'Run missing queries (1)' && !document.querySelector('#open-all-queries').disabled);
     await clickConfirmed('#open-all-queries', false);
-    assert.equal(context.pages().length, tabCount); assert.ok(dialogMessages.at(-1).includes('refuse automated batch queries'));
+    assert.equal(context.pages().length, tabCount); assert.equal(dialogMessages.at(-1), 'Open 1 DuckDuckGo search tab?');
     const batchPages = [], recordQueryPage = tab => batchPages.push(tab); context.on('page', recordQueryPage);
     const allBatchCreated = context.waitForEvent('page', { predicate: () => batchPages.length >= 1 });
     await clickConfirmed('#open-all-queries');

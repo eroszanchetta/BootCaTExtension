@@ -267,7 +267,7 @@ export function initSeedsUI({ minimumSeeds = DEFAULT_SETTINGS.minimumSeeds, draf
       const plan = queryPlan(prepared, engine, tabState, filter); queries = plan.missing;
       if (!queries.length) return;
       const label = plan.started ? 'Run missing queries' : 'Run all queries';
-      const approved = await confirmAction({ title: `${label}?`, message: `Open ${queries.length.toLocaleString()} ${plan.started ? 'missing, uncollected ' : ''}${queries.length === 1 ? 'query' : 'queries'} in new ${engineName()} tabs? Existing tabs and collected queries will be skipped. Search engines may refuse automated batch queries, block requests or show CAPTCHAs. Many tabs may slow your browser.`, confirmLabel: label });
+      const approved = await confirmAction({ title: `${label}?`, message: `Open ${queries.length.toLocaleString()} ${engineName()} search tab${queries.length === 1 ? '' : 's'}?`, confirmLabel: label });
       if (!approved || destroyed || getProjectId() !== projectAtConfirmation) return;
       opening = startedOpening = true; confirming = false; stopped = false; notifyOpening(); controls();
       for (const query of queries) {

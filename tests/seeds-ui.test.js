@@ -64,11 +64,11 @@ test('generate, edit and prepare tuples without opening tabs; engine changes upd
   app.input('tuples', 'changed query'); assert.equal(app.get('prepared-queries').children.length, 0);
   assert.equal(app.get('open-all-queries').disabled, true);
 });
-test('batch opening requires confirmation, warns about engine refusal and opens only the approved queries', async () => {
+test('batch opening confirms the engine and tab count and opens only the approved queries', async () => {
   const app = fixture({ draft: { tuples: 'first\nsecond', preparedQueries: ['first', 'second'] } });
   app.setConfirmed(false); await app.click('open-all-queries'); assert.equal(app.opened.length, 0);
   app.setConfirmed(true); await app.click('open-all-queries'); assert.equal(app.opened.length, 2);
-  assert.ok(app.confirmations.every(message => /refuse automated batch queries/.test(message)));
+  assert.ok(app.confirmations.every(message => message === 'Open 2 Google search tabs?'));
   assert.deepEqual(app.opened.map(value => [new URL(value.url).searchParams.get('q'), value.active]), [['first', false], ['second', false]]);
 });
 

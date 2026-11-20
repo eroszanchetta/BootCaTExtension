@@ -66,6 +66,11 @@ for (const url of ['https://www.google.com/search?q=energy', 'https://duckduckgo
     const reopened = await popup(state, url);
     assert.equal(reopened.get('collect').disabled, true);
     assert.equal(reopened.get('feedback').textContent, 'URLs added');
+    assert.equal(reopened.get('close-collected-option').hidden, false);
+    assert.equal(reopened.get('close-captured-option').hidden, true);
+    reopened.get('close-collected-tab').checked = true; await reopened.get('close-collected-tab').handlers.change();
+    assert.equal((await popup(state, url)).get('close-collected-tab').checked, true);
+    assert.equal(reopened.requests(), 0, 'changing the preference must not collect again');
     const next = await popup(state, url + '&page=2');
     assert.equal(next.get('collect').disabled, false);
     assert.equal(next.get('save-page').disabled, true);
@@ -100,6 +105,10 @@ test('saved pages stay disabled on popup reopen, and become available after corp
   assert.equal(reopened.get('save-page').disabled, true); assert.equal(reopened.get('page-feedback').textContent, 'Page already added to corpus');
   assert.equal(reopened.get('page-feedback').classList.contains('saved'), true);
   assert.equal(reopened.get('capture-action').hidden, true);
+  assert.equal(reopened.get('close-captured-option').hidden, false);
+  assert.equal(reopened.get('close-collected-option').hidden, true);
+  reopened.get('close-captured-tab').checked = true; await reopened.get('close-captured-tab').handlers.change();
+  assert.equal((await popup(state, url)).get('close-captured-tab').checked, true);
   state.saved = false; const removed = await popup(state, url); assert.equal(removed.get('save-page').disabled, false);
   state.saved = true; removed.notify({ captureRevision: { newValue: 'capture' } });
   await new Promise(resolve => setImmediate(resolve)); assert.equal(removed.get('save-page').disabled, true);
@@ -109,6 +118,7 @@ for (const project of [null, { id: 'current', name: 'Untitled project', nameConf
   const ui = await popup({ collections: [], project }, 'https://www.google.com/search?q=energy');
   assert.equal(ui.get('collect-action').hidden, true); assert.equal(ui.get('capture-action').hidden, true);
   assert.equal(ui.get('floating-preferences').hidden, true);
+  assert.equal(ui.get('close-collected-option').hidden, true); assert.equal(ui.get('close-captured-option').hidden, true);
   assert.match(ui.get('popup-status').textContent, /Create a project/);
   assert.equal(ui.get('collect').disabled, true); assert.equal(ui.get('save-page').disabled, true);
 });
