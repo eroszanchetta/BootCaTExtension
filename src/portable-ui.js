@@ -1,3 +1,4 @@
+import { prepareDownloadBlob } from './download-blob.js';
 import { makeProjectArchive, openProjectArchive } from './portable-project.js';
 import { stageProject, readStagedProject, removeStagedProject } from './project-transfer.js';
 import { projectFilename } from './project-ui.js';
@@ -12,8 +13,10 @@ export function initPortableUI({ getProject, isBusy, isDirty, flush, exclusive, 
     if (isBusy()) throw new Error('Stop or wait for active processing before saving or changing projects.');
   }
   function setBusy(value) { busy = value; onBusy(value); }
-  function download(blob, filename) {
-    const url = URL.createObjectURL(blob), link = document.createElement('a');
+  async function download(blob, filename) {
+    status.textContent = 'Preparing project download…';
+    const independent = await prepareDownloadBlob(blob);
+    const url = URL.createObjectURL(independent), link = document.createElement('a');
     link.href = url; link.download = filename; document.body.append(link); link.click(); link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
@@ -33,7 +36,7 @@ export function initPortableUI({ getProject, isBusy, isDirty, flush, exclusive, 
         const archive = await makeProjectArchive(snapshot, { appVersion: version });
         if (identity() !== project.id) throw new Error('The project changed. Save it again.');
         const filename = `${projectFilename(project.name)}.bootcat`;
-        download(archive, filename); status.textContent = `Download started: ${filename}. Keep this file to reopen the complete project.`;
+        await download(archive, filename); status.textContent = `Download started: ${filename}. Keep this file to reopen the complete project.`;
         return true;
       });
       if (!result) throw new Error('Another BootCaT window is processing this project. Wait for it to finish.');
