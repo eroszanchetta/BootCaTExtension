@@ -35,7 +35,7 @@
       <p id="project-file-status" class="hint" role="status" aria-live="polite"></p>
       <div class="language-settings"><label for="project-language">Project language</label><select id="project-language" disabled></select>
       <button id="recheck-language" type="button" class="secondary" disabled>Recheck saved texts</button></div>
-      <p id="language-status" class="hint" role="status" aria-live="polite">Language detection is optional and runs locally. Changing this setting does not recheck existing texts until you click Recheck saved texts.</p>
+      <p id="language-status" class="hint" role="status" aria-live="polite">Language detection is optional. Changing this setting does not recheck existing texts until you click Recheck saved texts.</p>
       <div class="project-export">      <button id="export" class="project-button" disabled><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-5-5 5 5 5-5M4 15v6h16v-6"/></svg><span id="export-label">Export Corpus</span></button>
       <p id="export-status" class="hint" role="status" aria-live="polite">Export all corpus data as a ZIP file to your computer.</p>
 </div>
@@ -46,7 +46,7 @@
       <details class="workspace-panel"><summary><h2 id="seeds-heading">Seeds &amp; Tuples</h2><span id="seeds-counter" class="section-counter">0 seeds</span><span id="tuples-counter" class="section-counter">0 tuples</span></summary><div class="panel-content">
       <label for="seeds">Seeds, one per line</label>
       <textarea id="seeds" spellcheck="false" disabled placeholder="renewable energy&#10;storage&#10;electricity network&#10;generation&#10;capacity"></textarea>
-      <p class="hint">Enter at least 5 distinct seeds. Each seed can be one word or several words. There is no fixed upper limit on seed count. Blank and duplicate lines are ignored.</p>
+      <p class="hint">Enter at least 5 distinct seeds. Each seed can be one word or several words.</p>
       <p id="seed-status" role="status" aria-live="polite"></p>
       <div class="tuple-settings">
         <div><label for="tuple-length">Seeds per tuple</label><input id="tuple-length" type="number" min="1" max="10" step="1" value="3" disabled><p id="tuple-length-hint" class="hint"></p></div>
@@ -89,16 +89,15 @@
       <div id="query-pagination" class="actions" hidden><button id="previous-queries" type="button" class="secondary">Previous</button><span id="query-page"></span><button id="next-queries" type="button" class="secondary">Next</button></div>
       <div class="actions"><button id="open-all-queries" type="button" disabled>Run all queries</button><button id="stop-query-tabs" type="button" class="secondary" hidden>Stop opening tabs</button></div>
       <p id="query-run-hint" class="hint" role="status" aria-live="polite"></p>
-      <p class="hint">Search engines may refuse automated batch queries, block requests or show CAPTCHAs. Opening many tabs can slow your browser. You will be asked to confirm before opening the missing queries.</p>
+      <p class="hint">Search engines may refuse automated batch queries, block requests or show CAPTCHAs. Opening many tabs can slow your browser.</p>
       <p id="query-status" role="status" aria-live="polite"></p>
       <h3>Collect project search tabs</h3>
       <p id="project-tab-count" role="status" aria-live="polite">Checking project search tabs…</p>
       <div class="actions"><button id="collect-project-tabs" type="button" disabled>Collect results and close search tabs</button><button id="collect-loaded-tabs" type="button" class="secondary" hidden disabled>Collect loaded tabs</button><button id="stop-project-tabs" type="button" class="secondary" hidden>Stop collecting</button></div>
-      <p class="hint">Only tabs opened by BootCaT for this project in this browser session are included. Tabs close only after their results are saved. Failed, loading, partial or changed pages stay open. A stopped collection keeps saved results.</p>
-      <p class="hint">Normal, Ctrl/Cmd and middle clicks on query links are tracked. Tabs opened through the browser's link context menu or duplicated later must be collected manually. Browser or extension restarts clear tab tracking.</p>
+      <p class="hint">Only tabs opened by BootCaT for this project in this browser session are included.</p>
       <p id="project-tab-loading-hint" class="hint" role="status"></p>
       <p id="project-tab-status" role="status" aria-live="polite"></p>
-      <p class="hint">On the results tab, click the BootCaT toolbar icon → Collect results. Collected URLs appear in the download list automatically. Browse more results and collect again as needed. Switch engine here if one stops working.</p>
+      <p class="hint">On the results tab, click the BootCaT toolbar icon → Collect results from this tab. You can also use the floating control to collect results.</p>
       <p id="collection-status" role="status" aria-live="polite">Loading saved searches…</p>
       <div class="actions collection-actions">
         <button id="clear-searches" class="secondary" disabled>Clear searches</button>
@@ -149,7 +148,7 @@
       </div>
       </div></details>
     </section>
-    <footer>Local processing · No BootCaT server · HTML · PDF · DOCX text extraction · No page scripts executed · <a href="about.html" target="_blank" rel="noopener noreferrer">About, privacy &amp; licence</a></footer>
+    <footer>BootCaT runs in your browser · <a href="about.html" target="_blank" rel="noopener noreferrer">About, privacy &amp; licence</a></footer>
   </main>
   <dialog id="text-review-dialog" aria-labelledby="preview-title" aria-describedby="preview-meta">
     <div class="text-review-header"><h2 id="preview-title">Document text</h2><button id="text-review-close" type="button" class="secondary" aria-label="Close text review" title="Close text review">✕</button></div>

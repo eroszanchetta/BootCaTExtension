@@ -12,5 +12,5 @@ export async function corpusFingerprint(workspace, project, collections) {
 }
 
 export function corpusSavedMessage(filename) {
-  return `Corpus saved as “${filename}”. You’ll find it in your Downloads folder, or the location selected in your browser. Change the project to save an updated copy.`;
+  return `Corpus saved as “${filename}”. You’ll find it in your Downloads folder.`;
 }
