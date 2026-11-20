@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { IDBFactory } from 'fake-indexeddb';
-import { workspace, extracted } from './helpers/workspace.js';
+import { workspace, extracted, waitFor } from './helpers/workspace.js';
 test('Build Corpus skips saved originals, retries download failures, and maintains separate visible/included counters', async () => {
   globalThis.indexedDB = new IDBFactory(); let recover = false;
   try {
@@ -27,5 +27,27 @@ test('Build Corpus skips saved originals, retries download failures, and maintai
     assert.equal(reopened.get('documents-count').textContent, '2 documents'); assert.equal(reopened.get('included-count').textContent, '1 included');
     await reopened.input('urls', reopened.get('urls').value + '\nhttps://example.org/new'); assert.equal(reopened.get('start').disabled, false);
     assert.equal(reopened.get('start').textContent, 'Download URLs');
+  } finally { delete globalThis.indexedDB; }
+});
+
+test('closing is guarded during an active download and allowed after completion or stopping', async () => {
+  globalThis.indexedDB = new IDBFactory();
+  try {
+    for (const stop of [false, true]) {
+      let release;
+      const gate = new Promise(resolve => { release = resolve; });
+      const app = await workspace(`close-guard-${stop}`, { fetch: async (url, signal) => {
+        await gate; signal.throwIfAborted();
+        return { bytes: new Uint8Array([1]), contentType: 'text/html', finalURL: url, status: 200 };
+      } });
+      assert.equal(app.beforeUnload(), false);
+      await app.input('urls', 'https://example.org/pending');
+      const batch = app.click('start');
+      await waitFor(() => app.fetched.length === 1);
+      assert.equal(app.beforeUnload(), true);
+      if (stop) await app.click('stop');
+      release(); await batch;
+      assert.equal(app.beforeUnload(), false);
+    }
   } finally { delete globalThis.indexedDB; }
 });

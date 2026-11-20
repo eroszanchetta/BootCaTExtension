@@ -182,11 +182,26 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     assert.equal(await page.inputValue('#urls'), '');
     await page.locator('#extractor').focus();
     assert.notEqual(await page.locator('#urls').evaluate(el => getComputedStyle(el, '::placeholder').color), 'rgba(0, 0, 0, 0)');
+    let cancelUnload = false;
     const dialogMessages = [];
     page.on('dialog', dialog => {
-      if (dialog.type() === 'beforeunload') return dialog.accept();
+      if (dialog.type() === 'beforeunload') return cancelUnload ? dialog.dismiss() : dialog.accept();
       errors.push('Unexpected browser dialog: ' + dialog.message()); return dialog.dismiss();
     });
+    async function waitForSavedDraft() {
+      await page.waitForFunction(async () => {
+        const store = await import('./project-store.js');
+        const saved = await store.loadWorkspace(await store.storedProjectId());
+        return [['urls', 'urls'], ['seeds', 'seeds'], ['tuples', 'tuples'], ['search-site', 'searchSite'], ['excluded-sites', 'excludedSites']].every(([id, key]) => saved.draft[key] === document.getElementById(id).value);
+      });
+    }
+    async function assertSectionPosition(id) {
+      await page.waitForFunction(id => {
+        const section = document.getElementById(id), bar = document.querySelector('.topbar');
+        const top = section.getBoundingClientRect().top, offset = parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop);
+        return section.querySelector('.workspace-panel').open && top >= bar.getBoundingClientRect().bottom && Math.abs(top - offset) < 3;
+      }, id);
+    }
     async function closeTextReview() {
       if (await page.locator('#text-review-dialog').evaluate(dialog => dialog.open)) {
         await page.click('#text-review-close');
@@ -259,6 +274,13 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     assert.equal(await page.evaluate(() => document.querySelector('[aria-labelledby="project-heading"]').nextElementSibling.id), 'seeds-section');
     assert.equal(await page.inputValue('#tuple-length'), '3');
     assert.equal(await page.locator('#generate-tuples').isDisabled(), true);
+    assert.equal(await page.locator('#storage-status').count(), 0);
+    for (const width of [600, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.locator('#search-section .workspace-panel').evaluate(panel => { panel.open = false; });
+      await page.fill('#tuples', 'scroll test'); await page.click('#prepare-queries');
+      await assertSectionPosition('search-section');
+    }
     await page.fill('#tuples', 'manual query without seeds');
     await page.click('#prepare-queries'); assert.equal(await page.locator('#prepared-queries a').innerText(), 'manual query without seeds');
     await page.fill('#seeds', 'one\ntwo\nthree\nfour');
@@ -285,7 +307,7 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     const queryURL = await page.locator('#prepared-queries a').first().getAttribute('href');
     assert.equal(new URL(queryURL).origin, pdfOrigin); assert.equal(new URL(queryURL).pathname, '/search-fixture');
     assert.equal(new URL(queryURL).searchParams.get('q'), '"custom phrase" energy');
-    await page.waitForFunction(() => document.querySelector('#storage-status').textContent.startsWith('Changes saved in this browser'));
+    await waitForSavedDraft();
     await page.reload(); await assertCollapsed(); await openPanels();
     await page.waitForFunction(() => document.querySelectorAll('#prepared-queries a').length === 2);
     assert.equal(await page.inputValue('#engine'), 'duckduckgo'); assert.ok((await page.inputValue('#seeds')).includes('renewable energy'));
@@ -362,13 +384,14 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     await page.bringToFront();
     await page.waitForFunction(() => document.querySelector('#project-tab-count').textContent.startsWith('1 of 1 project search tabs loaded.'));
     await waitProjectTabsReady(1);
-    await page.locator('#urls-section .workspace-panel').evaluate(panel => { panel.open = false; });
+    await page.locator('#urls-section .workspace-panel, #review-section .workspace-panel').evaluateAll(panels => panels.forEach(panel => { panel.open = false; }));
     const closedBatchPages = batchPages.map(tab => tab.waitForEvent('close'));
     await page.click('#collect-project-tabs'); await Promise.all(closedBatchPages);
     await page.waitForFunction(() => document.querySelector('#project-tab-status').textContent.startsWith('Finished.') && !document.querySelector('#project-tab-status').textContent.includes('0 tabs closed'));
     assert.match(await page.locator('#project-tab-status').innerText(), /1 result page saved; 1 tab closed/);
     assert.equal(await page.locator('#collect-project-tabs').isDisabled(), true);
-    await page.waitForFunction(() => document.querySelector('#urls-section .workspace-panel').open);
+    await page.waitForFunction(() => document.querySelector('#urls-section .workspace-panel').open && document.querySelector('#review-section .workspace-panel').open);
+    await assertSectionPosition('urls-section');
     assert.equal(unrelatedSearch.isClosed(), false);
     await page.waitForFunction(() => document.querySelector('#urls').value.split('\n').filter(Boolean).length === 2);
     assert.ok(!(await page.inputValue('#urls')).includes('unrelated'));
@@ -538,6 +561,13 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     const concurrentDeadline = Date.now() + 10000;
     while (!pendingCorpusResponses.has('blocked') && Date.now() < concurrentDeadline) await new Promise(resolve => setTimeout(resolve, 20));
     assert.equal(pendingCorpusResponses.has('blocked'), true, 'the delayed batch URL must begin downloading');
+    // A real reload must offer the browser's confirmation and allow cancelling.
+    cancelUnload = true;
+    const unloadDialog = page.waitForEvent('dialog', dialog => dialog.type() === 'beforeunload');
+    const attemptedReload = page.reload().catch(error => { assert.match(error.message, /ERR_ABORTED|aborted|canceled/i); });
+    await unloadDialog; await attemptedReload; cancelUnload = false;
+    assert.equal(await page.locator('#stop').isDisabled(), false);
+
     assert.equal(await page.locator('#attention-section').evaluate(panel => panel.open), false);
     assert.equal(await page.locator('#attention-heading').innerText(), 'Documents with issues');
     assert.equal(await page.locator('#export').isDisabled(), true);
@@ -842,7 +872,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.equal(new URL(await page.locator('#prepared-queries a').getAttribute('href')).searchParams.get('q'), filteredQuery);
     await page.click('#save-site-defaults');
     await page.waitForFunction(() => document.querySelector('#site-default-status').textContent.startsWith('Default exclusions saved'));
-    await page.waitForFunction(() => document.querySelector('#storage-status').textContent.startsWith('Changes saved in this browser'));
+    await waitForSavedDraft();
     await page.reload(); await assertCollapsed(); await openPanels();
     await page.waitForFunction(() => document.querySelectorAll('#prepared-queries a').length === 1);
     assert.equal(await page.locator('#prepared-queries a').innerText(), filteredQuery);
@@ -865,7 +895,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     await page.fill('#search-site', 'https://research.example.edu/path');
     await page.waitForFunction(() => document.querySelector('#prepared-queries a').textContent.includes('site:research.example.edu'));
     assert.equal(context.pages().length, filteredTabsBefore);
-    await page.waitForFunction(() => document.querySelector('#storage-status').textContent.startsWith('Changes saved in this browser'));
+    await waitForSavedDraft();
     await page.locator('#more-search-options > summary').click();
     await page.reload(); await assertCollapsed(); await openPanels();
     await page.waitForFunction(() => !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled && document.querySelectorAll('#prepared-queries a').length === 1);
@@ -962,7 +992,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.equal(restoredTracking.tabs.length, 0); assert.ok(restoredTracking.history.some(r => r.query === 'collection-controls' && r.status === 'collected'));
     console.log('Native portable project save/open, validation before replacement, cancellation, save-first and collected-query restoration passed.');
     await page.fill('#urls', Array.from({ length: 501 }, (_, i) => `https://corpus.test/large/${i}`).join('\n'));
-    await page.waitForFunction(() => document.querySelector('#storage-status').textContent.startsWith('Changes saved in this browser'));
+    await waitForSavedDraft();
     assert.match(await page.locator('#urls-warning').innerText(), /501 URLs/);
     assert.equal(await page.locator('#urls-counter').innerText(), '501 URLs');
     await page.reload(); await assertCollapsed(); await openPanels();
