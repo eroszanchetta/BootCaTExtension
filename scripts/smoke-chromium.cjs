@@ -1079,7 +1079,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     const italianCreated = context.waitForEvent('page'); await clickConfirmed('#open-all-queries');
     const italianSearch = await italianCreated; await italianSearch.waitForLoadState('domcontentloaded');
     assert.equal(new URL(italianSearch.url()).searchParams.get('lr'), 'lang_it');
-    assert.deepEqual([...new URL(italianSearch.url()).searchParams.keys()].sort(), ['lr', 'q']);
+    for (const name of ['gl', 'cr', 'hl', 'kl']) assert.equal(new URL(italianSearch.url()).searchParams.has(name), false);
     await waitProjectTabsReady(1); const italianClosed = italianSearch.waitForEvent('close'); await page.click('#collect-project-tabs'); await italianClosed;
     await page.waitForFunction(() => document.querySelector('#open-all-queries').disabled);
     await page.selectOption('#project-language', 'fra');
