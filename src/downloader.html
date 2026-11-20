@@ -37,8 +37,7 @@
       <button id="recheck-language" type="button" class="secondary" disabled>Recheck saved texts</button></div>
       <p id="language-status" class="hint" role="status" aria-live="polite">Language detection is optional and runs locally. Changing this setting does not recheck existing texts until you click Recheck saved texts.</p>
       <div class="project-export">      <button id="export" class="project-button" disabled><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-5-5 5 5 5-5M4 15v6h16v-6"/></svg><span id="export-label">Export Corpus</span></button>
-      <p id="export-status" class="hint" role="status" aria-live="polite">Export your corpus as a ZIP file to your computer.</p>
-      <p class="hint">Includes source files, selected corpus texts, original extractions in raw-text, raw PDF text in raw-pdf, Report.xlsx, URL/seed/tuple lists, search sources and extraction metadata.</p>
+      <p id="export-status" class="hint" role="status" aria-live="polite">Export all corpus data as a ZIP file to your computer.</p>
 </div>
       <p id="project-status" class="hint" role="status" aria-live="polite">Loading project…</p>
       </div></details>
@@ -55,13 +54,13 @@
       </div>
       <p id="tuple-warning" class="hint performance-warning" role="status" aria-live="polite"></p>
       <div class="actions"><button id="generate-tuples" type="button" disabled>Generate tuples</button><button id="stop-tuples" type="button" class="secondary" hidden>Stop generation</button></div>
-      <p class="hint">Multi-word seeds are enclosed in double quotes. Seeds do not repeat within a tuple; reordering the same seeds does not create another combination. Generating again replaces the tuples below.</p>
+      <p class="hint">Generating again replaces the tuples below.</p>
       <p id="tuple-status" role="status" aria-live="polite"></p>
       <label for="tuples">Tuples (editable, one per line)</label>
       <textarea id="tuples" spellcheck="false" disabled placeholder="Generate tuples above, then edit them here."></textarea>
       <p class="hint">Each tuple will become a query to the selected search engine</p>
       <button id="prepare-queries" type="button" disabled>Create search queries</button>
-      <p class="hint">Uses the search engine selected below. Queries open only when you click a query link or Run all queries.</p>
+      <p class="hint">Uses the search engine selected in "Search" section below.</p>
       </div></details>
     </section>
     <section id="search-section" aria-labelledby="search-heading" tabindex="-1">
@@ -75,13 +74,13 @@
         <select id="search-filetype" disabled></select>
         <label for="search-site">Restrict search to site/domain</label>
         <input id="search-site" type="text" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" disabled aria-describedby="search-site-hint search-filter-status" placeholder="e.g. unibo.it or https://www.unibo.it/">
-        <p id="search-site-hint" class="hint">Optional. Enter one domain or website URL. URLs use only their domain; leave blank to search all websites.</p>
+        <p id="search-site-hint" class="hint">Enter one domain (e.g. wikipedia.org)</p>
         <label for="excluded-sites">Excluded websites, one per line</label>
         <textarea id="excluded-sites" spellcheck="false" disabled placeholder="youtube.com&#10;facebook.com"></textarea>
-        <p class="hint">Enter domains or website URLs. Restrictions are added to search queries; engines may not honour every operator. Ecosia support depends on its search provider.</p>
+        <p class="hint">Enter domains or website URLs. Selected search engine may not honour this.</p>
         <p id="search-filter-status" class="hint" role="status" aria-live="polite"></p>
         <button id="save-site-defaults" type="button" class="secondary" disabled>Save exclusions as my default</button>
-        <p id="site-default-status" class="hint" role="status" aria-live="polite">Edits apply to this project. Saving as your default uses this list for new projects in this browser.</p>
+        <p id="site-default-status" class="hint" role="status" aria-live="polite">Edits apply to this project. Saving as your default uses this list for all future projects.</p>
       </div>
       </details>
       <h3 id="query-list-heading">Search queries</h3>
