@@ -36,12 +36,12 @@ test('closing is guarded during an active download and allowed after completion 
     for (const stop of [false, true]) {
       let release;
       const gate = new Promise(resolve => { release = resolve; });
-      const app = await workspace(`close-guard-${stop}`, { fetch: async (url, signal) => {
+      const app = await workspace('close-guard', { fetch: async (url, signal) => {
         await gate; signal.throwIfAborted();
         return { bytes: new Uint8Array([1]), contentType: 'text/html', finalURL: url, status: 200 };
       } });
       assert.equal(app.beforeUnload(), false);
-      await app.input('urls', 'https://example.org/pending');
+      await app.input('urls', `https://example.org/pending-${stop}`);
       const batch = app.click('start');
       await waitFor(() => app.fetched.length === 1);
       assert.equal(app.beforeUnload(), true);
