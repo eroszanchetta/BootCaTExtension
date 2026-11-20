@@ -294,7 +294,7 @@ test('restored workspaces wait for authoritative state and ignore an older openi
   assert.equal(app.get('open-all-queries').disabled, false);
   app.setState({ revision: 4, tabs: [], history: [{ engine: 'google', query: 'first', status: 'collected' }] });
   assert.equal(app.get('open-all-queries').disabled, true);
-  assert.match(app.get('query-run-hint').textContent, /already been collected/);
+  assert.match(app.get('query-run-hint').textContent, /All search results have been collected/);
 });
 
 test('a tab opened in another window during confirmation is skipped by the background request', async () => {

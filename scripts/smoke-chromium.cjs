@@ -352,7 +352,7 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     const allBatchCreated = context.waitForEvent('page', { predicate: () => batchPages.length >= 1 });
     await clickConfirmed('#open-all-queries');
     await allBatchCreated;
-    await page.waitForFunction(() => document.querySelector('#query-status').textContent.startsWith('1 of 1 search tabs opened'));
+    await page.waitForFunction(() => document.querySelector('#query-status').textContent.startsWith('Opened 1 search tab.'));
     await Promise.all(batchPages.map(tab => tab.waitForLoadState('domcontentloaded'))); context.off('page', recordQueryPage);
     assert.equal(batchPages.length, 1);
     assert.deepEqual(batchPages.map(tab => new URL(tab.url()).searchParams.get('q')).sort(), ['storage generation']);
@@ -437,7 +437,7 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     const troubleReady = context.waitForEvent('page', { predicate: () => troublePages.length >= 3 });
     await clickConfirmed('#open-all-queries'); await troubleReady;
     await Promise.all(troublePages.map(tab => tab.waitForLoadState('domcontentloaded'))); context.off('page', recordTrouble);
-    await page.waitForFunction(() => document.querySelector('#query-status').textContent.startsWith('3 of 3 search tabs opened'));
+    await page.waitForFunction(() => document.querySelector('#query-status').textContent.startsWith('Opened 3 search tabs.'));
     const movedPage = troublePages.find(tab => new URL(tab.url()).searchParams.get('q') === 'moved'); await movedPage.goto(pdfOrigin + '/login');
     await page.bringToFront();
     await page.waitForFunction(() => document.querySelector('#project-tab-count').textContent.startsWith('2 of 2 project search tabs loaded.'));
@@ -615,6 +615,28 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.match(await page.locator('#status').innerText(), /^Finished\.$/);
     assert.equal(await page.inputValue('#preview-text'), '');
     assert.equal(await page.locator('#pdf-notice').count(), 0);
+    const inclusionToggle = page.locator('#results input[type="checkbox"]').first();
+    await inclusionToggle.scrollIntoViewIfNeeded(); await inclusionToggle.focus();
+    const beforeInclusion = await inclusionToggle.evaluate(el => {
+      globalThis.originalInclusionInput = el;
+      globalThis.inclusionVisibility = [];
+      globalThis.inclusionObserver = new MutationObserver(() => inclusionVisibility.push(document.querySelector('#export-guidance').hidden));
+      inclusionObserver.observe(document.querySelector('#export-guidance'), { attributes: true });
+      return { y: scrollY, height: el.closest('tr').getBoundingClientRect().height, width: document.querySelector('#included-count').getBoundingClientRect().width };
+    });
+    await inclusionToggle.uncheck();
+    await page.waitForFunction(() => document.querySelector('#included-count').textContent === '1 included' && !document.querySelector('#results input[type="checkbox"]').disabled);
+    const afterInclusion = await inclusionToggle.evaluate(el => {
+      inclusionObserver.disconnect();
+      return { y: scrollY, height: el.closest('tr').getBoundingClientRect().height, width: document.querySelector('#included-count').getBoundingClientRect().width, same: el === originalInclusionInput, focused: el === document.activeElement, hidden: inclusionVisibility };
+    });
+    assert.equal(afterInclusion.same, true); assert.equal(afterInclusion.focused, true);
+    assert.ok(Math.abs(beforeInclusion.y - afterInclusion.y) < 2);
+    assert.equal(afterInclusion.height, beforeInclusion.height); assert.equal(afterInclusion.width, beforeInclusion.width);
+    assert.ok(afterInclusion.hidden.every(hidden => !hidden), 'inclusion saves must not blink the export banner');
+    await inclusionToggle.check();
+    await page.waitForFunction(() => document.querySelector('#included-count').textContent === '2 included' && !document.querySelector('#results input[type="checkbox"]').disabled);
+
     assert.ok(!(await page.locator('#review-lists').innerText()).includes('PDF reading order'));
     await page.locator('#review-lists .preview-button').nth(0).click();
     await page.waitForFunction(() => document.querySelector('#results tr')?.classList.contains('preview-selected'));
@@ -941,7 +963,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     await closeSource.locator('[data-bootcat-floating-control]').waitFor();
     const capturePopup = await popupFor(closeSource);
     await capturePopup.locator('#capture-action').waitFor(); await capturePopup.check('#close-captured-tab');
-    await capturePopup.waitForFunction(() => document.querySelector('#controls-feedback').textContent.startsWith('Preference saved'));
+    await capturePopup.waitForFunction(() => !document.querySelector('#close-captured-tab').disabled && !document.querySelector('#close-collected-tab').disabled && document.querySelector('#controls-feedback').textContent === '');
     await capturePopup.selectOption('#floating-position', 'top-right');
     await capturePopup.waitForFunction(() => !document.querySelector('#floating-position').disabled);
     const sourceClosed = closeSource.waitForEvent('close'); await capturePopup.click('#save-page'); await capturePopup.close(); await sourceClosed;
@@ -952,7 +974,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     const trackedSource = await trackedCreated; await trackedSource.waitForLoadState('domcontentloaded');
     await waitProjectTabsReady(1);
     const collectPopup = await popupFor(trackedSource); await collectPopup.locator('#collect-action').waitFor(); await collectPopup.check('#close-collected-tab');
-    await collectPopup.waitForFunction(() => document.querySelector('#controls-feedback').textContent.startsWith('Preference saved'));
+    await collectPopup.waitForFunction(() => !document.querySelector('#close-captured-tab').disabled && !document.querySelector('#close-collected-tab').disabled && document.querySelector('#controls-feedback').textContent === '');
     const searchClosed = trackedSource.waitForEvent('close'); await collectPopup.click('#collect'); await searchClosed; await collectPopup.close();
     assert.equal(await page.evaluate(async projectId => (await (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'get-project-search-tabs', projectId })).history.find(item => item.query === 'collection-controls')?.status, currentProject), 'collected');
     const floatingKeep = await context.newPage(); await floatingKeep.goto('https://corpus.test/floating-keep');

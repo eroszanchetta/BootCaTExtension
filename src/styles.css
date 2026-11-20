@@ -178,3 +178,6 @@ section { scroll-margin-top: 0; }
 /* Hints never become input values; hide examples while entering URLs. */
 #urls:focus::placeholder { color: transparent; }
 #status:empty, #corpus-status:empty, #collection-status:empty, #project-tab-status:empty, #project-tab-loading-hint:empty, #download-readiness:empty { display: none; }
+
+.document-counts .section-counter { box-sizing: border-box; min-inline-size: 14ch; text-align: center; white-space: nowrap; }
+#query-status:empty, #query-run-hint:empty { display: none; }

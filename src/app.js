@@ -40,7 +40,7 @@ let projectId, state, entries = [], searchUI, seedsUI, projectTabsUI, archiveURL
 let exportSaved = false, exportRevision = 0;
 let writes = Promise.resolve(), pendingWrites = 0, writeError = null, capturesPending = false, refreshing = false;
 let pickingDocument = false, documentImportTarget = null, documentImportStatus = { url: null, message: '' };
-const rows = new Map(), controls = new Map(), documentJobs = new Map(), operationControllers = new Set();
+const rows = new Map(), controls = new Map(), documentJobs = new Map(), inclusionJobs = new Set(), operationControllers = new Set();
 const coordinator = createProjectWork({ locks: navigator.locks, getProjectId: () => projectId });
 const extractionQueue = createExtractionQueue(navigator.locks);
 let metadataRevision = 0, captureSignal = 0;
@@ -126,7 +126,7 @@ function updateControls() {
   const pending = idle ? pendingURLs().length : 0;
   ui.start.disabled = !idle || !pending;
   const parsed = idle ? parseURLs(ui.urls.value) : null;
-  document.getElementById('download-readiness').textContent = !idle ? '' : parsed.errors.length ? parsed.errors[0] : pending ? '' : parsed.urls.length ? 'All listed URLs have been downloaded. Add more URLs to download additional documents.' : 'Add URLs in the URLs section to start building your corpus.';
+  if (!inclusionJobs.size) document.getElementById('download-readiness').textContent = !idle ? '' : parsed.errors.length ? parsed.errors[0] : pending ? '' : parsed.urls.length ? 'All listed URLs have been downloaded. Add more URLs to download additional documents.' : 'Add URLs in the URLs section to start building your corpus.';
   ui.export.disabled = !ready || exclusive || batch || importing || hasDocumentWork() || exportSaved || !entries.length;
   ui.urls.disabled = ui.extractor.disabled = !ready || exclusive || batch;
   ui['project-language'].disabled = !ready || exclusive || batch || hasDocumentWork();
@@ -135,7 +135,7 @@ function updateControls() {
   textReview?.refreshControls();
   for (const [url, items] of controls) {
     const busy = !ready || isDocumentBusy(url);
-    items.activity.textContent = busy ? 'Processing this document…' : '';
+    items.activity.textContent = busy && !inclusionJobs.has(url) ? 'Processing this document…' : '';
     items.trash.disabled = busy;
     if (items.importDocument) items.importDocument.disabled = busy;
     if (items.acceptLanguage) items.acceptLanguage.disabled = busy;
@@ -170,7 +170,12 @@ function updateCounts() {
 function renderExportGuidance() {
   const banner = document.getElementById('export-guidance');
   const busy = !ready || resetting || running || isBatchActive() || importing || hasDocumentWork() || remoteActivity.exclusive || portableBusy || pendingWrites || capturesPending || writeError;
-  if (busy) { banner.hidden = true; return; }
+  if (busy) {
+    // A brief inclusion save does not change the corpus's readiness until committed.
+    const inclusionOnly = inclusionJobs.size && ready && !resetting && !running && !isBatchActive() && !importing && !remoteActivity.exclusive && !portableBusy && !pendingWrites && !capturesPending && !writeError && [...documentJobs.keys(), ...remoteActivity.documents].every(url => inclusionJobs.has(url));
+    if (!inclusionOnly) banner.hidden = true;
+    return;
+  }
   const included = entries.filter(entry => !needsAttention(entry) && entry.doc.extraction.included).length;
   banner.hidden = !included;
   if (!included) return;
@@ -209,13 +214,14 @@ function renderRow(entry) {
     checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = entries.find(entry => entry.url === url)?.doc?.extraction.included || false;
     checkbox.setAttribute('aria-label', `Include ${e.title || url} in corpus`);
     checkbox.addEventListener('change', async () => {
-      const value = checkbox.checked;
+      const value = checkbox.checked, hadFocus = document.activeElement === checkbox;
       await documentWork(url, async () => {
         await storage.setIncluded(projectId, url, value);
         const latest = await storage.readDownloadTarget(projectId, url);
-        if (latest.entry) remember(latest.entry, { keepPreview: true });
-      });
+        if (latest.entry) remember(latest.entry, { keepPreview: true, updateRow: false });
+      }, { inclusion: true });
       checkbox.checked = entries.find(entry => entry.url === url)?.doc?.extraction.included || false;
+      if (hadFocus && document.activeElement === document.body) checkbox.focus({ preventScroll: true });
     });
     selection.append(checkbox);
     const origin = record.source === 'local-file' ? `Imported ${formatByMIME(record.contentType)?.label || 'document'}` : record.source === 'browser-session' ? 'PDF saved using browser session' : record.outcome === 'captured' ? 'Saved from browser tab' : 'Downloaded';
@@ -315,11 +321,11 @@ ui['import-document-picker'].addEventListener('change', async () => {
   if (!started && !resetting) documentImportMessage(target.url, 'File not imported: another operation is running. Choose the file again when it finishes.');
   documentImportTarget = null; ui['import-document-picker'].value = '';
 });
-function remember(entry, { keepPreview = false } = {}) {
+function remember(entry, { keepPreview = false, updateRow = true } = {}) {
   metadataRevision++;
   const index = entries.findIndex(item => item.url === entry.url);
   if (index < 0) entries.push(entry); else entries[index] = entry;
-  if (previewURL === entry.url && !keepPreview && !textReview?.isDirty()) clearPreview(); renderRow(entry); invalidateArchive(); updateCounts();
+  if (previewURL === entry.url && !keepPreview && !textReview?.isDirty()) clearPreview(); if (updateRow) renderRow(entry); invalidateArchive(); updateCounts();
 }
 function renderEntries() {
   ui.results.replaceChildren(); ui['problem-results'].replaceChildren(); rows.clear(); controls.clear();
@@ -351,7 +357,7 @@ async function refreshMetadata() {
     let changed = false;
     const previous = new Map(entries.map(entry => [entry.url, entry]));
     for (const entry of saved.entries) {
-      if (JSON.stringify(previous.get(entry.url)) !== JSON.stringify(entry)) { renderRow(entry); changed = true; }
+      if (JSON.stringify(previous.get(entry.url)) !== JSON.stringify(entry)) { if (!inclusionJobs.has(entry.url)) renderRow(entry); changed = true; }
       previous.delete(entry.url);
     }
     for (const url of previous.keys()) { rows.get(url)?.remove(); rows.delete(url); controls.delete(url); changed = true; }
@@ -373,8 +379,9 @@ async function refreshActivity() {
     }
   }
 }
-async function documentWork(url, task, { wait = false, propagate = false } = {}) {
+async function documentWork(url, task, { wait = false, propagate = false, inclusion = false } = {}) {
   if (!ready || resetting || running || (!wait && isDocumentBusy(url))) return false;
+  if (inclusion) inclusionJobs.add(url);
   documentJobs.set(url, (documentJobs.get(url) || 0) + 1); updateControls();
   let executed = false, succeeded = false;
   try {
@@ -387,6 +394,11 @@ async function documentWork(url, task, { wait = false, propagate = false } = {})
   finally {
     const remaining = (documentJobs.get(url) || 1) - 1;
     if (remaining) documentJobs.set(url, remaining); else documentJobs.delete(url);
+    if (inclusion) {
+      // Clear our released lock from the activity snapshot before unfreezing feedback.
+      try { remoteActivity = await coordinator.activity(); } catch (error) { report(error); }
+      inclusionJobs.delete(url);
+    }
     if (!resetting) { updateControls(); await notifyWorkspace(); refreshActivity(); }
   }
   return executed && succeeded;

@@ -23,16 +23,16 @@ function renderPreferences() {
 for (const [id, key] of preferenceFields) el(id).addEventListener('change', async () => {
   if (!preferencesLoaded || savingPreferences.has(key)) return;
   const value = key === 'floatingPosition' ? el(id).value : el(id).checked;
-  const previousValue = preferences[key], readRevision = preferenceRevision;
+  const previousValue = preferences[key], readRevision = preferenceRevision, hadFocus = document.activeElement === el(id);
   preferences = { ...preferences, [key]: value }; savingPreferences.add(key); renderPreferences(); render();
-  el('controls-feedback').textContent = 'Saving preference…';
+  el('controls-feedback').textContent = '';
   try {
     const reply = await ext.runtime.sendMessage({ type: 'save-collection-controls', patch: { [key]: value } });
     if (!reply?.ok) throw new Error(reply?.error || 'Could not save collection preferences.');
     if (preferenceRevision === readRevision) preferences = collectionControlsFromRecord({ version: 1, values: { ...preferences, [key]: reply.preferences?.[key] ?? value } });
-    el('controls-feedback').textContent = reply.floatingWarning || 'Preference saved for all projects.';
+    el('controls-feedback').textContent = reply.floatingWarning || '';
   } catch (error) { if (preferenceRevision === readRevision) preferences = { ...preferences, [key]: previousValue }; el('controls-feedback').textContent = error.message; }
-  finally { savingPreferences.delete(key); renderPreferences(); render(); }
+  finally { savingPreferences.delete(key); renderPreferences(); render(); if (hadFocus && document.activeElement === document.body) el(id).focus({ preventScroll: true }); }
 });
 const namedProject = () => !!project && (project.nameConfirmed === true ||
   (project.nameConfirmed == null && !!project.name?.trim() && project.name !== 'Untitled project'));

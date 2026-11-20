@@ -50,7 +50,7 @@ export function initSeedsUI({ minimumSeeds = DEFAULT_SETTINGS.minimumSeeds, draf
     const plan = queryPlan(prepared, engineID(), tabState), button = el('open-all-queries');
     button.disabled = busy() || pendingOpens > 0 || !tabStateReady || filterPending || !filtersValid || !plan.missing.length;
     button.textContent = opening ? 'Opening queries…' : prepared.length && !tabStateReady ? 'Checking query tabs…' : prepared.length && !plan.missing.length ? 'No queries to open' : plan.started ? `Run missing queries (${plan.missing.length.toLocaleString()})` : 'Run all queries';
-    el('query-run-hint').textContent = !prepared.length ? '' : !tabStateReady ? 'Checking which queries have open tabs or saved results…' : !plan.missing.length ? (plan.open ? 'Queries are open in other browser tabs or already collected. Close an uncollected tab to make its query available again.' : 'All queries have already been collected.') : plan.started ? `${plan.missing.length.toLocaleString()} uncollected ${plan.missing.length === 1 ? 'query has' : 'queries have'} no open tab. Existing tabs and collected queries will be skipped.` : 'Each query will open once. Queries with an open tab or saved results will be skipped.';
+    el('query-run-hint').textContent = !prepared.length ? '' : !tabStateReady ? 'Checking search tabs…' : !plan.missing.length ? (plan.open ? 'All queries are open or collected.' : 'All search results have been collected.') : plan.started ? '' : 'Queries already open or collected will be skipped.';
     el('stop-tuples').hidden = !generating; el('stop-query-tabs').hidden = !opening;
     el('engine').disabled = opening;
     el('tuple-length').disabled = busy() || !parseSeeds(el('seeds').value).length;
@@ -138,7 +138,7 @@ export function initSeedsUI({ minimumSeeds = DEFAULT_SETTINGS.minimumSeeds, draf
         pendingOpens++; notifyOpening(); controls();
         try {
           await openProjectSearch({ projectId: getProjectId(), engine: engineID(), query, active: !(event.button === 1 || event.ctrlKey || event.metaKey) });
-          if (!destroyed) { await refreshQueryState(); el('query-status').textContent = 'Search tab opened and tracked for this project.'; }
+          if (!destroyed) { await refreshQueryState(); el('query-status').textContent = ''; }
         } catch (error) { if (!destroyed) el('query-status').textContent = error.message; }
         finally { pendingOpens--; notifyOpening(); if (!destroyed) controls(); }
       };
@@ -221,7 +221,7 @@ export function initSeedsUI({ minimumSeeds = DEFAULT_SETTINGS.minimumSeeds, draf
       onChange({ preparedQueries: prepared, preparedQueryBases: bases, preparedFilters, ...patch });
       filtersValid = true; markFilterError(); el('search-filter-status').textContent = '';
     } catch (error) { applyFilters(); el('query-status').textContent = error.message; return; }
-    el('query-status').textContent = prepared.length ? 'Queries are ready. Use the run button to open missing searches.' : 'Enter at least one tuple or query, one per line.';
+    el('query-status').textContent = prepared.length ? '' : 'Enter at least one tuple or query, one per line.';
     render();
     if (prepared.length) openWorkspaceSection('search-section', { scroll: true });
   });
@@ -274,10 +274,10 @@ export function initSeedsUI({ minimumSeeds = DEFAULT_SETTINGS.minimumSeeds, draf
         if (result.opened === false) skipped++; else opened++;
         if (!destroyed) {
           if (Array.isArray(result.tabs)) updateTabState(result);
-          el('query-status').textContent = `Opened ${opened.toLocaleString()} of ${queries.length.toLocaleString()} search tabs…`;
+          el('query-status').textContent = `Opening ${(opened + skipped).toLocaleString()} of ${queries.length.toLocaleString()} search tabs…`;
         }
       }
-      if (!destroyed) el('query-status').textContent = `${stopped ? 'Stopped. ' : ''}${opened.toLocaleString()} of ${queries.length.toLocaleString()} search tabs opened and tracked.${skipped ? ` ${skipped.toLocaleString()} already open or collected queries skipped.` : ''} Use Collect results and close project search tabs below.`;
+      if (!destroyed) el('query-status').textContent = `${stopped ? `Stopped. Opened ${opened.toLocaleString()} of ${queries.length.toLocaleString()} search tabs.` : `Opened ${opened.toLocaleString()} search tab${opened === 1 ? '' : 's'}.`}${skipped ? ` ${skipped.toLocaleString()} already open or collected queries skipped.` : ''}`;
     } catch (error) {
       if (!destroyed) el('query-status').textContent = `Opened ${opened.toLocaleString()} of ${queries.length.toLocaleString()} tabs before an error: ${error.message}. Missing queries can be retried once their tab state is checked.`;
     } finally {
