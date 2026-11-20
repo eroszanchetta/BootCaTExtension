@@ -17,7 +17,7 @@
         <a href="#seeds-section" class="menu-item"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V11M12 15C5 15 3 10 3 5c6 0 9 3 9 8M12 11c0-5 3-8 9-8 0 6-3 10-9 10"/></svg><span>Seeds &amp; Tuples</span></a>
         <a href="#search-section" class="menu-item"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><span>Search</span></a>
         <a href="#urls-section" class="menu-item"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m10 14 4-4M8 16l-1 1a4 4 0 0 1-6-6l4-4a4 4 0 0 1 6 0m2 2 1-1a4 4 0 0 1 6 6l-4 4a4 4 0 0 1-6 0" transform="translate(1 -1)"/></svg><span>URLs</span></a>
-        <a href="#review-section" class="menu-item"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-5-5 5 5 5-5M4 15v6h16v-6"/></svg><span>Download</span></a>
+        <a href="#review-section" class="menu-item"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3h9l4 4v12H8ZM17 3v4h4M4 7v15h13M11 11h7M11 15h7"/></svg><span>Build Corpus</span></a>
         <a href="https://docs.sslmit.unibo.it/doku.php?id=bootcat:start" target="_blank" rel="noopener noreferrer" class="menu-item"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9 9a3 3 0 0 1 6 0c0 2-3 2-3 5m0 3h.01"/></svg><span>Help</span></a>
         <button id="open-settings" class="menu-item" type="button"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m9 3-.6 2.2-2 .8-2-.7L2 9l1.6 1.5v3L2 15l2.4 3.7 2-.7 2 .8L9 21h6l.6-2.2 2-.8 2 .7L22 15l-1.6-1.5v-3L22 9l-2.4-3.7-2 .7-2-.8L15 3Z"/><circle cx="12" cy="12" r="3"/></svg><span>Settings</span></button>
       </nav>
@@ -116,12 +116,13 @@
         <select id="extractor" disabled><option value="readability" selected>Mozilla Readability (default)</option><option value="defuddle">Defuddle</option></select>
         <p class="hint">The choice applies to HTML pages. PDF, DOCX and plain-text files use their own extraction with either setting.</p>
       </div>
-      <div class="actions"><button id="start" disabled>Download URLs</button><button id="stop" class="secondary" disabled>Stop</button></div>
-      <p id="download-limit-hint" class="hint">Keep this tab open. Public pages only; login cookies are not sent. Up to 50 MiB per file. Completed pages are saved in this browser; interrupted downloads can be resumed.</p>
       </div></details>
     </section>
     <section id="review-section" aria-labelledby="results-heading" tabindex="-1">
-      <details class="workspace-panel"><summary><h2 id="results-heading">Download</h2></summary><div class="panel-content">
+      <details class="workspace-panel"><summary><h2 id="results-heading">Build Corpus</h2></summary><div class="panel-content">
+      <div class="actions"><button id="start" disabled>Download URLs</button><button id="stop" class="secondary" disabled>Stop</button></div>
+      <p id="download-limit-hint" class="hint">Keep this tab open. Public pages only; login cookies are not sent. Up to 50 MiB per file. Completed pages are saved in this browser; interrupted downloads can be resumed.</p>
+      <p id="download-readiness" class="hint" role="status" aria-live="polite"></p>
       <p class="hint" id="pdf-notice">PDF reading order, columns, headers and line breaks may need review. OCR is not performed.</p>
       <p class="hint">New PDF extractions replace newlines with spaces unless the preceding character is a dot. Hyphens are preserved. Raw PDF text is retained in the ZIP's raw-pdf folder for comparison.</p>
       <p id="download-activity" class="hint" role="status"></p>
@@ -132,6 +133,7 @@
       <p id="document-import-status" role="status" aria-live="polite"></p>
       <p class="hint">Check below to see the download status of each URL</p>
       <div id="review-lists">
+      <div class="document-list-heading"><h3 id="documents-heading">Corpus documents</h3><div class="document-counts" role="status" aria-live="polite" aria-atomic="true"><span id="documents-count" class="section-counter">0 documents</span><span id="included-count" class="section-counter">0 included</span></div></div>
       <div class="table-wrap"><table aria-label="Documents with usable text"><thead><tr><th scope="col">Include</th><th scope="col">URL</th><th scope="col">Download / extraction</th><th scope="col">Delete</th></tr></thead><tbody id="results"></tbody></table></div>
       <details id="attention-section" class="attention-section" aria-labelledby="attention-heading" data-default-collapsed hidden>
         <summary><h3 id="attention-heading">Documents with issues</h3><span id="attention-count" class="section-counter">0 documents</span></summary>
