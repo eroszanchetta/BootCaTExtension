@@ -153,6 +153,8 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     await page.keyboard.press('Escape'); assert.equal(await page.locator('#project-choice-dialog[open]').count(), 1);
     assert.equal(await page.evaluate(async () => (await (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'get-project' })).project), null);
     for (const selector of ['#urls', '#start', '#export', '#seeds', '#tuples', '#engine', '#project-name']) assert.equal(await page.locator(selector).isDisabled(), true, selector);
+    assert.deepEqual(await page.locator('#project-choice-dialog .actions button').allTextContents(), ['New Project', 'Open Project', 'Close BootCaT']);
+    assert.equal(await page.locator('#project-choice-new').evaluate(button => button === document.activeElement), true);
     await page.click('#project-choice-new'); await page.locator('#project-dialog[open]').waitFor();
     await page.click('#project-dialog-cancel'); await page.locator('#project-choice-dialog[open]').waitFor();
     await page.click('#project-choice-new');
@@ -723,7 +725,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.match(await page.locator('#status').innerText(), /^Finished\.$/);
     await openIssues();
     assert.equal(await page.locator('#review-lists .import-document-button').count(), 1, 'failed downloads offer generic import');
-    assert.match(await page.locator('#review-lists td').nth(2).innerText(), /Add page to corpus.*\(HTTP 403[^)]*\)$/);
+    assert.match(await page.locator('#review-lists td').nth(2).innerText(), /Add this page to corpus.*\(HTTP 403[^)]*\)$/);
     assert.equal(await page.locator('#review-lists a').getAttribute('href'), 'https://corpus.test/blocked');
     await search.goto('https://corpus.test/blocked');
     await search.evaluate(() => {

@@ -69,22 +69,31 @@ const assert = require('node:assert/strict');
           assert.equal((await measure()).x, false, `${name}: ${scenario} initial narrow overflow`);
           await page.setViewportSize({ width: 360, height: 600 });
           assert.equal(await page.locator('#workspace').isVisible(), true);
+          assert.ok(await page.locator('.popup-brand').evaluate(header => {
+            const icon = header.querySelector('img').getBoundingClientRect(), title = header.querySelector('#app-version').getBoundingClientRect();
+            return title.left >= icon.right && Math.abs((icon.top + icon.bottom) / 2 - (title.top + title.bottom) / 2) < 2;
+          }));
+          assert.equal(await page.locator('.popup-action h3').count(), 0);
+
           assert.equal(await page.locator('#collect').isVisible(), ['search', 'error'].includes(scenario));
           assert.equal(await page.locator('#save-page').isVisible(), scenario === 'page');
-          const toggle = page.locator('#show-floating-controls');
-          await toggle.focus();
-          assert.equal(await toggle.getAttribute('role'), 'switch');
-          assert.equal(await toggle.evaluate(el => getComputedStyle(el).appearance), 'none');
-          const previousToggle = await toggle.isChecked();
-          await page.keyboard.press('Space');
-          await page.waitForFunction(() => !document.querySelector('#show-floating-controls').disabled);
-          assert.equal(await toggle.isChecked(), !previousToggle);
-          assert.equal(await page.locator('#controls-feedback').innerText(), '');
-          await page.keyboard.press('Space');
-          await page.waitForFunction(() => !document.querySelector('#show-floating-controls').disabled);
-          assert.equal(await toggle.isChecked(), previousToggle);
+          assert.equal(await page.locator('#floating-preferences').isVisible(), scenario !== 'setup');
+          if (scenario !== 'setup') {
+            const toggle = page.locator('#show-floating-controls');
+            await toggle.focus();
+            assert.equal(await toggle.getAttribute('role'), 'switch');
+            assert.equal(await toggle.evaluate(el => getComputedStyle(el).appearance), 'none');
+            const previousToggle = await toggle.isChecked();
+            await page.keyboard.press('Space');
+            await page.waitForFunction(() => !document.querySelector('#show-floating-controls').disabled);
+            assert.equal(await toggle.isChecked(), !previousToggle);
+            assert.equal(await page.locator('#controls-feedback').innerText(), '');
+            await page.keyboard.press('Space');
+            await page.waitForFunction(() => !document.querySelector('#show-floating-controls').disabled);
+            assert.equal(await toggle.isChecked(), previousToggle);
+          }
           if (scenario === 'saved') assert.equal(await page.locator('#page-feedback').innerText(), 'Page already added to corpus');
-          if (scenario === 'collected') assert.equal(await page.locator('#feedback').innerText(), 'Results added');
+          if (scenario === 'collected') assert.equal(await page.locator('#feedback').innerText(), 'URLs added');
           if (scenario === 'search' || scenario === 'page') {
             const action = page.locator(scenario === 'search' ? '#collect' : '#save-page');
             assert.ok((await action.boundingBox()).width < (await page.locator('#workspace').boundingBox()).width);

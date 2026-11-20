@@ -45,7 +45,7 @@
     const strip = document.createElement('div'); strip.className = 'strip'; strip.setAttribute('role', 'group'); strip.setAttribute('aria-label', 'BootCaT collection controls');
     tooltip = document.createElement('div'); tooltip.id = 'bootcat-floating-tooltip'; tooltip.className = 'bubble'; tooltip.setAttribute('role', 'tooltip'); tooltip.hidden = true;
     feedback = document.createElement('div'); feedback.className = 'bubble'; feedback.setAttribute('role', 'status'); feedback.setAttribute('aria-live', 'polite'); feedback.hidden = true;
-    primary = button('capture', 'Add page to corpus', perform);
+    primary = button('capture', 'Add this page to corpus', perform);
     strip.append(primary, button('workspace', 'Open BootCaT', () => command('floating-open-workspace')), button('hide', 'Hide floating controls', () => command('floating-hide')), tooltip, feedback);
     root.append(strip); document.documentElement.append(host);
   }
@@ -57,7 +57,7 @@
     const strip = root.querySelector('.strip'); strip.classList.toggle('bottom', !top); strip.classList.toggle('left', left);
     primary.disabled = busy || flash || current.saved;
     icon(primary, busy ? 'busy' : flash || current.saved ? 'saved' : current.action === 'collect' ? 'collect' : 'capture');
-    label(primary, busy ? 'Saving…' : flash || current.saved ? 'Saved in BootCaT' : current.action === 'collect' ? `Collect results${current.closeAfterSuccess ? ' and close tab' : ' from this tab'}` : `Add page to corpus${current.closeAfterSuccess ? ' and close tab' : ''}`);
+    label(primary, busy ? 'Saving…' : flash || current.saved ? 'Saved in BootCaT' : current.action === 'collect' ? `Add URLs from this tab to corpus${current.closeAfterSuccess ? ' and close tab' : ''}` : `Add this page to corpus${current.closeAfterSuccess ? ' and close tab' : ''}`);
     feedback.textContent = note; feedback.hidden = !note; feedback.classList.toggle('error', !!note && !flash);
     if (note) tooltip.hidden = true;
   }

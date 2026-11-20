@@ -58,14 +58,14 @@ for (const url of ['https://www.google.com/search?q=energy', 'https://duckduckgo
     assert.equal(first.get('collect-action').hidden, false); assert.equal(first.get('capture-action').hidden, true);
     await first.get('collect').handlers.click();
     assert.equal(first.get('collect').disabled, true);
-    assert.equal(first.get('feedback').textContent, 'Results added');
+    assert.equal(first.get('feedback').textContent, 'URLs added');
     assert.equal(first.get('collect-action').hidden, true); assert.equal(first.get('feedback').hidden, false);
     assert.equal(first.get('feedback').classList.contains('saved'), true);
     await first.get('collect').handlers.click();
     assert.equal(first.requests(), 1, 'must not collect twice');
     const reopened = await popup(state, url);
     assert.equal(reopened.get('collect').disabled, true);
-    assert.equal(reopened.get('feedback').textContent, 'Results added');
+    assert.equal(reopened.get('feedback').textContent, 'URLs added');
     const next = await popup(state, url + '&page=2');
     assert.equal(next.get('collect').disabled, false);
     assert.equal(next.get('save-page').disabled, true);
@@ -108,6 +108,7 @@ test('saved pages stay disabled on popup reopen, and become available after corp
 for (const project of [null, { id: 'current', name: 'Untitled project', nameConfirmed: false }]) test('project setup hides both actions and offers a clear next step', async () => {
   const ui = await popup({ collections: [], project }, 'https://www.google.com/search?q=energy');
   assert.equal(ui.get('collect-action').hidden, true); assert.equal(ui.get('capture-action').hidden, true);
+  assert.equal(ui.get('floating-preferences').hidden, true);
   assert.match(ui.get('popup-status').textContent, /Create a project/);
   assert.equal(ui.get('collect').disabled, true); assert.equal(ui.get('save-page').disabled, true);
 });

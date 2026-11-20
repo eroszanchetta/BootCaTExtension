@@ -37,7 +37,7 @@ test('all failed download URLs share generic guidance and an unrestricted picker
   const rows = app.get('problem-results').children, button = row => row.children[1].children.find(item => item.className === 'secondary import-document-button');
   for (const row of rows) {
     assert.equal(button(row).textContent, 'Import downloaded file');
-    assert.match(row.children[2].textContent, /Add page to corpus/);
+    assert.match(row.children[2].textContent, /Add this page to corpus/);
     assert.match(row.children[2].textContent, /Import downloaded file/);
     assert.doesNotMatch(row.children[2].textContent, /PDF|DOCX/);
   }
