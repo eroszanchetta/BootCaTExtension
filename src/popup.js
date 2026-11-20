@@ -45,6 +45,7 @@ function message(element, text, saved = false) {
 }
 function render() {
   el('collect-action').hidden = el('capture-action').hidden = true;
+  el('close-collected-option').hidden = el('close-captured-option').hidden = true;
   el('floating-preferences').hidden = !initialized || reloading || !namedProject();
   collect.disabled = savePage.disabled = true;
   renderPreferences();
@@ -57,6 +58,8 @@ function render() {
   if (!namedProject()) { message(status, 'Create a project in BootCaT to start collecting.'); return; }
   if (!/^https?:\/\//.test(activeTab?.url || '')) { message(status, 'This page cannot be collected.'); return; }
   message(status, '');
+  el('close-collected-option').hidden = !engine;
+  el('close-captured-option').hidden = !!engine;
   if (engine) {
     if (alreadyCollected && !unresolved && !collecting) {
       message(feedback, `URLs added${collectionWarning ? `. ${collectionWarning}` : ''}`, true);

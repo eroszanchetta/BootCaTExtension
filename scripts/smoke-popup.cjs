@@ -77,6 +77,17 @@ const assert = require('node:assert/strict');
 
           assert.equal(await page.locator('#collect').isVisible(), ['search', 'error'].includes(scenario));
           assert.equal(await page.locator('#save-page').isVisible(), scenario === 'page');
+          assert.equal(await page.locator('#close-collected-option').isVisible(), ['search', 'collected', 'error'].includes(scenario));
+          assert.equal(await page.locator('#close-captured-option').isVisible(), ['page', 'saved'].includes(scenario));
+          if (['saved', 'collected'].includes(scenario)) {
+            const toggle = page.locator(scenario === 'saved' ? '#close-captured-tab' : '#close-collected-tab');
+            const previous = await toggle.isChecked();
+            await toggle.focus(); await page.keyboard.press('Space');
+            await page.waitForFunction(() => !document.querySelector('#close-captured-tab').disabled && !document.querySelector('#close-collected-tab').disabled);
+            assert.equal(await toggle.isChecked(), !previous);
+            assert.equal(await page.locator('#collect, #save-page').evaluateAll(buttons => buttons.every(button => button.disabled)), true);
+          }
+
           assert.equal(await page.locator('#floating-preferences').isVisible(), scenario !== 'setup');
           if (scenario !== 'setup') {
             const toggle = page.locator('#show-floating-controls');
