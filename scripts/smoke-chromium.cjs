@@ -112,7 +112,7 @@ const { execFileSync } = require('node:child_process');
 
     const openPanels = async () => page.locator('.workspace-panel').evaluateAll(panels => panels.forEach(panel => { panel.open = true; }));
     const assertCollapsed = async () => {
-      await page.waitForFunction(() => !document.querySelector('#start').disabled);
+      await page.waitForFunction(() => !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled);
       assert.deepEqual(await page.locator('.workspace-panel[open]').evaluateAll(panels => panels.map(panel => panel.closest('section').id)), ['project-section']);
       assert.equal(await page.locator('#more-search-options').getAttribute('open'), null);
     };
@@ -158,7 +158,7 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     await page.click('#project-choice-new');
     await page.selectOption('#project-dialog-language', 'none'); await page.fill('#project-dialog-name', 'First corpus'); await submitProject();
     await page.locator('#project-dialog[open]').waitFor({ state: 'hidden' });
-    await page.waitForFunction(() => document.querySelector('#project-name').value === 'First corpus' && !document.querySelector('#start').disabled);
+    await page.waitForFunction(() => document.querySelector('#project-name').value === 'First corpus' && !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled);
     await assertCollapsed();
     assert.equal(await page.locator('.workspace-panel').count(), 5);
     assert.equal(await page.locator('#export-metadata, #metadata-export-status').count(), 0);
@@ -190,7 +190,7 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     }
     async function waitForFinished() {
       try {
-        await page.waitForFunction(() => !document.querySelector('#start').disabled && document.querySelector('#status').textContent.startsWith('Finished.'));
+        await page.waitForFunction(() => !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled && document.querySelector('#status').textContent.startsWith('Finished.'));
       } catch (error) {
         console.error('Download wait state:', await page.evaluate(async () => ({ status: document.querySelector('#status').textContent, saved: document.querySelector('#saved-status').textContent, urls: document.querySelector('#urls').value, locks: await navigator.locks.query() })));
         throw error;
@@ -222,7 +222,7 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
         await page.click('#project-replace-continue');
         await page.locator('#project-replace-dialog[open]').waitFor({ state: 'hidden' });
       }
-      await page.waitForFunction(name => document.querySelector('#project-name').value === name && !document.querySelector('#start').disabled, nextName);
+      await page.waitForFunction(name => document.querySelector('#project-name').value === name && !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled, nextName);
     }
     await page.click('#open-settings');
     await page.waitForFunction(() => document.querySelector('#settings-dialog').open && !document.querySelector('#settings-save').disabled);
@@ -242,7 +242,7 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     await page.waitForFunction(() => document.querySelector('#download-limit-hint').textContent.includes('50 MiB') && document.querySelector('#urls-warning').textContent === '');
     await settingsWindow.close(); await page.fill('#urls', '');
     const navNames = await page.locator('nav a').allTextContents();
-    assert.equal(navNames.at(-2), 'Download'); assert.equal(await page.locator('#save-section').count(), 0); assert.equal(navNames.at(-1), 'Help');
+    assert.equal(navNames.at(-2), 'Build Corpus'); assert.equal(await page.locator('#save-section').count(), 0); assert.equal(navNames.at(-1), 'Help');
     await page.locator('nav a[href="#project-section"]').click();
     assert.equal(await page.locator('#project-section .workspace-panel').getAttribute('open'), '');
     assert.equal(await page.evaluate(() => document.querySelector('[aria-labelledby="project-heading"]').nextElementSibling.id), 'seeds-section');
@@ -458,13 +458,16 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     for (const extractor of ['readability', 'defuddle']) {
       if (extractor === 'defuddle') {
         await clickConfirmed('#review-lists .delete-button');
-        await page.waitForFunction(() => !document.querySelector('#review-lists tbody tr') && !document.querySelector('#start').disabled);
+        await page.waitForFunction(() => !document.querySelector('#review-lists tbody tr') && !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled);
         await page.fill('#urls', 'https://corpus.test/article');
       }
       await page.selectOption('#extractor', extractor);
       await page.click('#start');
       await waitForFinished();
       assert.match(await page.locator('#status').innerText(), /0 download errors, 0 extraction failures/);
+      assert.equal(await page.locator('#start').isDisabled(), true);
+      assert.equal(await page.locator('#documents-count').innerText(), '1 document');
+      assert.equal(await page.locator('#included-count').innerText(), '1 included');
       await search.goto('https://corpus.test/article');
       assert.equal((await page.evaluate(tabId => (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'get-page-corpus-state', tabId }), tabId)).saved, true, 'batch downloads count as already saved');
       assert.equal(await page.inputValue('#preview-text'), '');
@@ -586,10 +589,12 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.equal(await page.locator('#export').isDisabled(), true);
     assert.match(await page.locator('#export-status').innerText(), /Corpus saved.*Downloads folder/);
     await page.reload(); await assertCollapsed(); await openPanels();
-    await page.waitForFunction(() => !document.querySelector('#start').disabled);
+    await page.waitForFunction(() => !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled);
     assert.equal(await page.locator('#export').isDisabled(), true);
     assert.match(await page.locator('#export-status').innerText(), /Corpus saved/);
     await page.locator('#results input[type="checkbox"]').first().uncheck();
+    await page.waitForFunction(() => document.querySelector('#included-count').textContent === '1 included');
+    assert.equal(await page.locator('#documents-count').innerText(), '2 documents');
     await page.waitForFunction(() => !document.querySelector('#export').disabled);
     assert.match(await page.locator('#export-status').innerText(), /Project changed/);
     console.log('PDF/DOCX download, local extraction, preview and ZIP passed.');
@@ -675,7 +680,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     await page.waitForFunction(() => document.querySelector('#preview-text').value.includes('Renewable energy'));
     assert.ok((await page.inputValue('#preview-text')).includes('Renewable energy'));
     await page.reload(); await assertCollapsed(); await openPanels();
-    await page.waitForFunction(() => document.querySelectorAll('#review-lists tbody tr').length === 1 && !document.querySelector('#start').disabled);
+    await page.waitForFunction(() => document.querySelectorAll('#review-lists tbody tr').length === 1 && !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled);
     assert.equal(await page.inputValue('#preview-text'), '');
     await page.click('#review-lists .preview-button');
     await page.waitForFunction(() => document.querySelector('#preview-text').value.includes('Renewable energy'));
@@ -700,7 +705,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.equal(recoveredPDF.ok, true, JSON.stringify(recoveredPDF));
     const sessionRow = page.locator('#review-lists tbody tr').filter({ has: page.locator(`a[href="${pdfOrigin}/session-document"]`) });
     await sessionRow.locator('.preview-button').waitFor();
-    await page.waitForFunction(() => !document.querySelector('#start').disabled);
+    await page.waitForFunction(() => !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled);
     assert.match(await sessionRow.innerText(), /PDF saved using browser session/);
     assert.ok(!(await sessionRow.innerText()).includes('PDF reading order'));
     await sessionRow.locator('.preview-button').click();
@@ -720,7 +725,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     const largePDF = Buffer.from(pdfFixture({ paddingBytes: 15 * 1024 * 1024 }));
     await (await chooserEvent).setFiles({ name: 'downloaded.pdf', mimeType: 'application/pdf', buffer: largePDF });
     await localRow.locator('.preview-button').waitFor();
-    await page.waitForFunction(() => !document.querySelector('#start').disabled);
+    await page.waitForFunction(() => !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled);
     assert.match(await localRow.innerText(), /Imported PDF/);
     assert.equal(await page.locator('#review-lists tbody tr').count(), 2, 'recovery must replace failed rows');
     await page.fill('#urls', `${pdfOrigin}/session-document\n${pdfOrigin}/always-blocked.pdf\n${pdfOrigin}/always-blocked.docx`);
@@ -733,7 +738,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.equal(await page.locator('#import-document-picker').getAttribute('accept'), '');
     await (await wordChooser).setFiles({ name: 'downloaded.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', buffer: largeDOCX });
     await wordRow.locator('.preview-button').waitFor();
-    await page.waitForFunction(() => !document.querySelector('#start').disabled);
+    await page.waitForFunction(() => !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled);
     assert.match(await wordRow.innerText(), /Imported DOCX/);
     await wordRow.locator('.preview-button').click();
     await page.waitForFunction(() => document.querySelector('#preview-text').value.length > 3 * 1024 * 1024);
@@ -743,7 +748,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.ok((await readFile(recoveredPath)).includes(largePDF), 'ZIP must contain the complete imported PDF original');
     assert.ok((await readFile(recoveredPath)).includes(largeDOCX), 'ZIP must contain the complete imported DOCX original');
     await page.reload(); await assertCollapsed(); await openPanels();
-    await page.waitForFunction(() => document.querySelectorAll('#review-lists tbody tr').length === 3 && !document.querySelector('#start').disabled);
+    await page.waitForFunction(() => document.querySelectorAll('#review-lists tbody tr').length === 3 && !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled);
     assert.equal(await page.inputValue('#preview-text'), '');
     assert.match(await page.locator('#review-lists').innerText(), /Imported PDF/);
     assert.match(await page.locator('#review-lists').innerText(), /Imported DOCX/);
@@ -779,7 +784,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.equal(await page.locator('#export').isDisabled(), true);
     assert.equal(await page.evaluate(async () => (await (await import('./page-store.js')).readSavedPages()).length), 0);
     await page.selectOption('#project-language', 'ita');
-    await page.waitForFunction(() => !document.querySelector('#start').disabled);
+    await page.waitForFunction(() => !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled);
     await page.fill('#urls', 'https://corpus.test/article'); await page.click('#start');
     await waitForFinished();
     assert.equal(await page.locator('#problem-results tr').count(), 1);
@@ -793,7 +798,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     await page.waitForFunction(() => document.querySelectorAll('#results tr').length === 1 && !document.querySelector('#recheck-language').disabled);
     assert.equal(await page.locator('#attention-section').isVisible(), false);
     await page.click('#recheck-language');
-    await page.waitForFunction(() => document.querySelector('#language-status').textContent.startsWith('1 of 1 saved texts rechecked') && !document.querySelector('#start').disabled);
+    await page.waitForFunction(() => document.querySelector('#language-status').textContent.startsWith('1 of 1 saved texts rechecked') && !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled);
     assert.equal(await page.locator('#results tr').count(), 1, 'manual override must survive recheck');
     const acceptedDownload = page.waitForEvent('download'); await closeTextReview(); await page.click('#export');
     const acceptedZIP = join(root, 'accepted-language.zip'); await (await acceptedDownload).saveAs(acceptedZIP);
@@ -801,7 +806,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
 
     await page.uncheck('#results input[type="checkbox"]');
     await page.selectOption('#project-language', 'none'); await page.click('#recheck-language');
-    await page.waitForFunction(() => document.querySelector('#language-status').textContent.startsWith('1 of 1 saved texts rechecked') && !document.querySelector('#start').disabled);
+    await page.waitForFunction(() => document.querySelector('#language-status').textContent.startsWith('1 of 1 saved texts rechecked') && !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled);
     assert.equal(await page.locator('#results input[type="checkbox"]').isChecked(), false, 'disabling detection must preserve manual exclusion');
     const languageDownload = page.waitForEvent('download'); await closeTextReview(); await page.click('#export');
     const languageZIP = join(root, 'language.zip'); await (await languageDownload).saveAs(languageZIP);
@@ -845,12 +850,12 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     await page.waitForFunction(() => document.querySelector('#storage-status').textContent.startsWith('Saved in this browser'));
     await page.locator('#more-search-options > summary').click();
     await page.reload(); await assertCollapsed(); await openPanels();
-    await page.waitForFunction(() => !document.querySelector('#start').disabled && document.querySelectorAll('#prepared-queries a').length === 1);
+    await page.waitForFunction(() => !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled && document.querySelectorAll('#prepared-queries a').length === 1);
     assert.equal(await page.inputValue('#search-site'), 'https://research.example.edu/path');
     assert.ok((await page.locator('#prepared-queries a').innerText()).includes('site:research.example.edu'));
     await page.click('#new-project'); await page.fill('#project-dialog-name', 'Saved defaults');
     await page.selectOption('#project-dialog-language', 'none'); await submitProject();
-    await page.waitForFunction(() => document.querySelector('#project-name').value === 'Saved defaults' && !document.querySelector('#start').disabled);
+    await page.waitForFunction(() => document.querySelector('#project-name').value === 'Saved defaults' && !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled);
     await assertCollapsed(); await openPanels();
     assert.equal(await page.inputValue('#excluded-sites'), 'youtube.com\nfacebook.com\nexample.org');
     assert.equal(await page.inputValue('#search-site'), '');
@@ -929,7 +934,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     const saveBeforeReplace = page.waitForEvent('download'); await page.click('#project-replace-save'); await (await saveBeforeReplace).saveAs(join(root, 'before-replacement.bootcat'));
     await page.waitForFunction(() => !document.querySelector('#project-replace-continue').disabled);
     await page.click('#project-replace-continue');
-    await page.waitForFunction(() => document.querySelector('#project-name').value === 'Saved defaults' && !document.querySelector('#start').disabled);
+    await page.waitForFunction(() => document.querySelector('#project-name').value === 'Saved defaults' && !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled);
     await assertCollapsed(); await openPanels();
     const afterPortable = await page.evaluate(async () => (await (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'get-project' })).project.id);
     assert.notEqual(afterPortable, beforePortable);
@@ -943,16 +948,16 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.match(await page.locator('#urls-warning').innerText(), /501 URLs/);
     assert.equal(await page.locator('#urls-counter').innerText(), '501 URLs');
     await page.reload(); await assertCollapsed(); await openPanels();
-    await page.waitForFunction(() => document.querySelector('#urls').value.split('\n').length === 501 && !document.querySelector('#start').disabled);
+    await page.waitForFunction(() => document.querySelector('#urls').value.split('\n').length === 501 && !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled);
     assert.match(await page.locator('#urls-warning').innerText(), /501 URLs/);
     assert.equal(await page.locator('#urls-counter').innerText(), '501 URLs');
     // Lifecycle closure propagates to other workspace windows and retains defaults.
     const secondWorkspace = await context.newPage(); await secondWorkspace.goto(origin + '/downloader.html');
-    await secondWorkspace.waitForFunction(() => !document.querySelector('#start').disabled);
+    await secondWorkspace.waitForFunction(() => !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled);
     await page.bringToFront();
     await clickConfirmed('#close-project', false);
     assert.equal(await page.inputValue('#project-name'), 'Saved defaults');
-    assert.equal(await page.locator('#start').isDisabled(), false);
+    assert.equal(await page.locator('#save-project').isDisabled(), false);
     await clickConfirmed('#close-project');
     await floatingKeep.locator('[data-bootcat-floating-control]').waitFor({ state: 'hidden' });
     for (const workspace of [page, secondWorkspace]) {
@@ -974,12 +979,12 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.equal(page.isClosed(), false, 'Close BootCaT closes only its own workspace');
     await page.bringToFront();
     const inactiveOpen = page.waitForEvent('filechooser'); await page.click('#project-choice-open'); await (await inactiveOpen).setFiles(portableFile);
-    await page.waitForFunction(() => document.querySelector('#project-name').value === 'Saved defaults' && !document.querySelector('#start').disabled);
+    await page.waitForFunction(() => document.querySelector('#project-name').value === 'Saved defaults' && !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled);
     await assertCollapsed(); await openPanels();
     await clickConfirmed('#close-project'); await page.locator('#project-choice-dialog[open]').waitFor();
     await page.click('#project-choice-new'); await page.fill('#project-dialog-name', 'After closing');
     await page.selectOption('#project-dialog-language', 'none'); await submitProject();
-    await page.waitForFunction(() => document.querySelector('#project-name').value === 'After closing' && !document.querySelector('#start').disabled);
+    await page.waitForFunction(() => document.querySelector('#project-name').value === 'After closing' && !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled);
     await assertCollapsed(); await openPanels(); await openSearchOptions();
     assert.equal(await page.inputValue('#excluded-sites'), 'youtube.com\nfacebook.com\nexample.org');
     assert.equal(await page.inputValue('#urls'), '');

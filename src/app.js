@@ -110,6 +110,7 @@ function warnURLs() { const count = parseURLs(ui.urls.value).urls.length; docume
 function queueDraft(patch) {
   if (!ready || resetting) return writes;
   invalidateArchive(); Object.assign(state.draft, patch); pendingWrites++; storageMessage();
+  if (Object.hasOwn(patch, 'urls')) updateControls();
   writes = writes.then(() => storage.saveDraft(projectId, patch)).then(() => { writeError = null; }, error => { writeError = error; report(error); }).finally(() => { pendingWrites--; if (!writeError) storageMessage(); });
   return writes;
 }
@@ -121,12 +122,16 @@ function pendingURLs() {
 function updateControls() {
   projectUI.refreshControls?.();
   const batch = isBatchActive(), exclusive = running || remoteActivity.exclusive || portableBusy;
-  ui.start.disabled = !ready || exclusive || batch || importing || hasDocumentWork();
+  const idle = ready && !exclusive && !batch && !importing && !hasDocumentWork();
+  const pending = idle ? pendingURLs().length : 0;
+  ui.start.disabled = !idle || !pending;
+  const parsed = idle ? parseURLs(ui.urls.value) : null;
+  document.getElementById('download-readiness').textContent = !idle ? '' : parsed.errors.length ? parsed.errors[0] : pending ? `${pending.toLocaleString()} URL${pending === 1 ? '' : 's'} ready to download. Saved pages will be skipped.` : parsed.urls.length ? 'All listed URLs have been downloaded. Add new URLs to build more of your corpus.' : 'Add URLs in the URLs section to start building your corpus.';
   ui.export.disabled = !ready || exclusive || batch || importing || hasDocumentWork() || exportSaved || !entries.length;
   ui.urls.disabled = ui.extractor.disabled = !ready || exclusive || batch;
   ui['project-language'].disabled = !ready || exclusive || batch || hasDocumentWork();
   ui['recheck-language'].disabled = !ready || exclusive || batch || hasDocumentWork() || !entries.some(entry => entry.doc?.extraction.status === 'ok');
-  ui.start.textContent = !exclusive && !batch && ready && ['running', 'stopped'].includes(state.batch.state) && pendingURLs().length ? 'Resume downloads' : 'Download URLs';
+  ui.start.textContent = !exclusive && !batch && ready && ['running', 'stopped'].includes(state.batch.state) && pending ? 'Resume downloads' : 'Download URLs';
   textReview?.refreshControls();
   for (const [url, items] of controls) {
     const busy = !ready || isDocumentBusy(url);
@@ -153,6 +158,9 @@ function updateCounts() {
   ui['attention-section'].hidden = !problems;
   if (!problems) ui['attention-section'].open = false;
   ui['attention-count'].textContent = `${problems.toLocaleString()} document${problems === 1 ? '' : 's'}`;
+  const listed = entries.filter(entry => !needsAttention(entry));
+  document.getElementById('documents-count').textContent = `${listed.length.toLocaleString()} document${listed.length === 1 ? '' : 's'}`;
+  document.getElementById('included-count').textContent = `${listed.filter(entry => entry.doc.extraction.included).length.toLocaleString()} included`;
   const documents = entries.filter(entry => entry.doc?.extraction.status === 'ok');
   const included = documents.filter(entry => entry.doc.extraction.included);
   ui['corpus-status'].textContent = `${included.length} of ${documents.length} extracted texts included · ${included.reduce((sum, entry) => sum + entry.doc.extraction.characters, 0).toLocaleString()} characters. Unchecked pages retain their originals.`;

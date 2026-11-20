@@ -159,8 +159,23 @@ const assert = require('node:assert/strict');
           await workspace.getByRole('button', { name: 'Settings', exact: true }).click();
           await workspace.waitForFunction(() => document.querySelector('#settings-dialog').open && !document.querySelector('#settings-save').disabled);
         };
-        assert.deepEqual(await workspace.locator('nav .menu-item span').allTextContents(), ['Project', 'Seeds & Tuples', 'Search', 'URLs', 'Download', 'Help', 'Settings']);
+        assert.deepEqual(await workspace.locator('nav .menu-item span').allTextContents(), ['Project', 'Seeds & Tuples', 'Search', 'URLs', 'Build Corpus', 'Help', 'Settings']);
         assert.equal(await workspace.locator('nav .menu-item svg[aria-hidden="true"]').count(), 7);
+        assert.equal(await workspace.locator('#urls-section #start').count(), 0);
+        assert.equal(await workspace.locator('#review-section #start').count(), 1);
+        assert.equal(await workspace.locator('#results-heading').innerText(), 'Build Corpus');
+        for (const width of [1280, 800, 640, 390]) {
+          await workspace.setViewportSize({ width, height: 850 });
+          const edges = await workspace.evaluate(() => {
+            const content = document.querySelector('main > section').getBoundingClientRect();
+            const logo = document.querySelector('.brand img').getBoundingClientRect();
+            const menuRight = Math.max(...[...document.querySelectorAll('nav .menu-item')].map(item => item.getBoundingClientRect().right));
+            return { left: Math.abs(logo.left - content.left), right: Math.abs(menuRight - content.right), overflow: document.documentElement.scrollWidth > innerWidth };
+          });
+          assert.ok(edges.left <= 1 && edges.right <= 1, `${name}: header alignment at ${width}px: ${JSON.stringify(edges)}`);
+          assert.equal(edges.overflow, false);
+        }
+        await workspace.setViewportSize({ width: 1050, height: 850 });
         await openSettings();
         assert.equal(await workspace.inputValue('#setting-fileMiB'), '50');
         assert.equal(await workspace.locator('#settings-advanced').evaluate(panel => panel.open), false);
