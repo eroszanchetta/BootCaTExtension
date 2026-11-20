@@ -8,7 +8,7 @@ function fixture(options = {}) {
   let currentProject = 'project', nextId = 1, writes = Promise.resolve();
   const tabs = new Map(), session = {}, collected = [], removed = [], saved = new Set(), gets = new Map();
   const serialize = task => { const next = writes.then(task); writes = next.catch(() => {}); return next; };
-  const assertProject = async id => { if (id !== currentProject) throw new Error('The project changed.'); };
+  const assertProject = async id => { if (id !== currentProject) throw new Error('The project changed.'); return { language: options.language || 'none' }; };
   const ext = {
     runtime: { onStartup: event(), onInstalled: event() },
     storage: { local: { get: async () => ({ collections: options.collections || [] }) }, session: {
@@ -300,4 +300,26 @@ test('restoring already-collected provenance does not write again when browser s
   const second = await app.state();
   assert.equal(second.revision, first.revision, 'unchanged completion must not trigger another storage event and refresh');
   assert.equal((await app.state()).revision, first.revision);
+});
+
+test('Google tabs retain language ownership, reject stale requests and restore language-specific completion from saved URLs', async () => {
+  const options = { language: 'ita', collections: [{ engine: 'google', query: 'saved', pageURL: 'https://www.google.com/search?q=saved&lr=lang_it', unresolved: 0, results: [{ url: 'https://example.org/' }] }] };
+  const app = fixture(options);
+  const opening = { projectId: 'project', engine: 'google', query: 'energy', onlyMissing: true, languageFilter: 'lang_it' };
+  const first = await app.manager.open(opening);
+  assert.equal(new URL(app.tabs.get(first.tabId).url).searchParams.get('lr'), 'lang_it');
+  assert.equal((await app.manager.open(opening)).opened, false);
+  const record = { engine: 'google', query: 'energy', languageFilter: 'lang_it' };
+  assert.equal(matchesProjectSearch(record, 'https://www.google.it/search?q=energy&lr=lang_it&start=10'), true);
+  assert.equal(matchesProjectSearch(record, 'https://www.google.com/search?q=energy&lr=lang_fr'), false);
+  assert.equal(matchesProjectSearch(record, 'https://www.google.com/search?q=energy'), false);
+  assert.equal((await app.manager.open({ ...opening, query: 'saved' })).opened, false);
+  options.language = 'fra';
+  await assert.rejects(app.manager.open(opening), /language changed/);
+  const french = await app.manager.open({ ...opening, languageFilter: 'lang_fr' });
+  assert.equal(french.opened, true); assert.notEqual(french.tabId, first.tabId);
+  assert.equal((await app.manager.open({ ...opening, query: 'saved', languageFilter: 'lang_fr' })).opened, true);
+  const marker = await app.manager.collectionMarker('project', french.tabId, app.tabs.get(french.tabId).url);
+  await app.serialize(() => app.manager.markCollectedInQueue(marker, { pageURL: marker.url, unresolved: 0 }));
+  assert.equal((await app.state()).history.find(item => item.query === 'energy' && item.languageFilter === 'lang_fr').status, 'collected');
 });

@@ -1,13 +1,14 @@
+import { searchLanguageFilter, languageFilterFromURL } from './search-language.js';
 import { normalizeQuery, queryKey, queryPlan } from './query-lifecycle.js';
 import { adapterForURL, searchURL } from './engines.js';
 export const SEARCH_TABS_KEY = 'projectSearchTabs';
 export const SLOW_TAB_MS = 30_000;
 const empty = () => ({ tabs: [], history: [], batch: null });
 function remember(data, record, status, reason = '') {
-  const previous = (data.history || []).find(item => item.projectId === record.projectId && queryKey(item.engine, item.query) === queryKey(record.engine, record.query));
+  const previous = (data.history || []).find(item => item.projectId === record.projectId && queryKey(item.engine, item.query, item.languageFilter) === queryKey(record.engine, record.query, record.languageFilter));
   if (previous?.status === 'collected' && status !== 'collected') return;
-  data.history = (data.history || []).filter(item => !(item.projectId === record.projectId && queryKey(item.engine, item.query) === queryKey(record.engine, record.query)));
-  data.history.push({ projectId: record.projectId, engine: record.engine, query: record.query, status, reason });
+  data.history = (data.history || []).filter(item => !(item.projectId === record.projectId && queryKey(item.engine, item.query, item.languageFilter) === queryKey(record.engine, record.query, record.languageFilter)));
+  data.history.push({ projectId: record.projectId, engine: record.engine, query: record.query, ...(record.languageFilter ? { languageFilter: record.languageFilter } : {}), status, reason });
 }
 function rememberClosed(data, record) {
   const collected = record.status === 'collected';
@@ -28,7 +29,7 @@ const queryText = normalizeQuery;
 export function matchesProjectSearch(record, value) {
   try {
     const adapter = adapterForURL(value), url = new URL(value);
-    return !url.username && !url.password && adapter?.id === record.engine && queryText(url.searchParams.get(adapter.queryParam) || '') === queryText(record.query);
+    return !url.username && !url.password && adapter?.id === record.engine && queryText(url.searchParams.get(adapter.queryParam) || '') === queryText(record.query) && languageFilterFromURL(record.engine, value) === (record.languageFilter || '');
   } catch { return false; }
 }
 function isProviderGate(record, value) {
@@ -66,11 +67,11 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
     // snapshots are deliberately excluded: those queries still need collection.
     let changed = false;
     const { collections = [] } = await ext.storage.local?.get('collections') || {};
-    const history = new Map((data.history || []).map(item => [JSON.stringify([item.projectId, queryKey(item.engine, item.query)]), item]));
+    const history = new Map((data.history || []).map(item => [JSON.stringify([item.projectId, queryKey(item.engine, item.query, item.languageFilter)]), item]));
     for (const collection of collections) {
       if (typeof collection.query !== 'string' || !collection.engine || collection.unresolved || !collection.results?.length) continue;
-      const item = { projectId, engine: collection.engine, query: collection.query, status: 'collected', reason: 'Results saved in this project.' };
-      const key = JSON.stringify([projectId, queryKey(item.engine, item.query)]);
+      const item = { projectId, engine: collection.engine, query: collection.query, ...(languageFilterFromURL(collection.engine, collection.pageURL) ? { languageFilter: languageFilterFromURL(collection.engine, collection.pageURL) } : {}), status: 'collected', reason: 'Results saved in this project.' };
+      const key = JSON.stringify([projectId, queryKey(item.engine, item.query, item.languageFilter)]);
       // Browser storage may reorder object fields. Compare the actual completion
       // value, rather than JSON object order, to avoid an onChanged refresh loop.
       if (history.get(key)?.status === 'collected') continue;
@@ -78,20 +79,22 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
     }
     if (changed) { data.history = [...history.values()]; await write(data); }
   }
-  async function open({ projectId, engine, query, active, onlyMissing = false }) {
+  async function open({ projectId, engine, query, active, onlyMissing = false, languageFilter }) {
     if (typeof query !== 'string' || !query.trim()) throw new Error('Enter a search query first.');
-    const url = searchURL(engine, query);
     return serialize(async () => {
-      await assertProject(projectId);
+      const project = await assertProject(projectId);
+      const effectiveFilter = searchLanguageFilter(engine, project?.language);
+      if (languageFilter !== undefined && languageFilter !== effectiveFilter) throw new Error('The project language changed. Try opening the query again.');
+      const url = searchURL(engine, query, effectiveFilter);
       const data = await read();
       if (onlyMissing) {
         await reconcile(data, projectId); await restoreCollected(data, projectId);
         const state = status(data, projectId);
-        if (!queryPlan([query], engine, state).missing.length) return { opened: false, ...state };
+        if (!queryPlan([query], engine, state, effectiveFilter).missing.length) return { opened: false, ...state };
       }
       const tab = await ext.tabs.create({ url, active: active !== false });
       if (!Number.isInteger(tab?.id)) throw new Error('The browser did not return a search tab ID.');
-      const record = { tabId: tab.id, token: crypto.randomUUID(), projectId, engine, query, createdURL: url, revision: 0 };
+      const record = { tabId: tab.id, token: crypto.randomUUID(), projectId, engine, query, ...(effectiveFilter ? { languageFilter: effectiveFilter } : {}), createdURL: url, revision: 0 };
       updateLoading(record, tab); data.tabs.push(record);
       try { await write(data); }
       catch (error) { throw new Error(`The search tab opened but could not be tracked. Collect it manually. (${error.message})`); }
@@ -101,7 +104,7 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
   function status(data, projectId) {
     const batch = data.batch?.projectId === projectId ? data.batch : null;
     const tabs = data.tabs.filter(record => record.projectId === projectId).map(record => ({
-      tabId: record.tabId, engine: record.engine, query: record.query, status: record.status || 'loading', reason: record.reason || '', unloaded: !!record.unloaded,
+      tabId: record.tabId, engine: record.engine, query: record.query, ...(record.languageFilter ? { languageFilter: record.languageFilter } : {}), status: record.status || 'loading', reason: record.reason || '', unloaded: !!record.unloaded,
       slow: record.status === 'loading' && Date.now() - record.loadingSince >= SLOW_TAB_MS
     }));
     return { revision: data.revision || 0, count: tabs.length, loaded: tabs.filter(tab => tab.status !== 'loading' && !tab.unloaded).length,
@@ -291,6 +294,7 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
       const adapter = adapterForURL(url);
       return { projectId, tabId, url: canonical(url), engine: adapter?.id,
         query: adapter ? new URL(url).searchParams.get(adapter.queryParam) || '' : '',
+        languageFilter: languageFilterFromURL(adapter?.id, url),
         record: record ? { ...record } : null, navigation: navigation.get(tabId) || 0 };
     });
   }
@@ -310,7 +314,7 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
     const status = result.unresolved ? 'attention' : 'collected';
     const reason = result.unresolved ? 'Partial results saved. Some links could not be resolved; inspect this tab and retry.' : 'Results saved. This tab remains open.';
     if (record) { record.status = status; record.reason = reason; }
-    remember(data, { projectId: marker.projectId, engine: marker.engine, query: marker.query }, status, reason);
+    remember(data, { projectId: marker.projectId, engine: marker.engine, query: marker.query, languageFilter: marker.languageFilter }, status, reason);
     await write(data);
   }
   return { open, getState, start, stop, focus, collectionMarker, markCollectedInQueue, resetInQueue };

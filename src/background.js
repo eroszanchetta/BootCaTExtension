@@ -50,6 +50,7 @@ async function assertProject(id) {
   const project = await ensureProject();
   if (!project) throw new Error('No active project. Create a project in BootCaT first.');
   if (project.id !== id) throw new Error('The project changed. Collect or save the page again for the new project.');
+  return project;
 }
 async function requireProject() {
   const project = await ensureProject();

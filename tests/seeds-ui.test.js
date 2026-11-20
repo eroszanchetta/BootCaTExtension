@@ -1,3 +1,4 @@
+import { searchLanguageFilter } from '../src/search-language.js';
 import { DEFAULT_SETTINGS } from '../src/settings.js';
 import { queryKey, queryPlan } from '../src/query-lifecycle.js';
 import { SEARCH_FILE_TYPES, DEFAULT_EXCLUDED_SITES, normalizeSearchFilters } from '../src/search-filters.js';
@@ -26,24 +27,24 @@ function fixture(options = {}) {
   const get = id => elements.get(id) || (elements.set(id, new Element()), elements.get(id));
   get('engine').value = 'google';
   const context = vm.createContext({
-    DEFAULT_SETTINGS, setTimeout, clearTimeout, queryKey, queryPlan, openWorkspaceSection() {}, combinationCount, SEARCH_FILE_TYPES, DEFAULT_EXCLUDED_SITES, normalizeSearchFilters,
+    DEFAULT_SETTINGS, searchLanguageFilter, setTimeout, clearTimeout, queryKey, queryPlan, openWorkspaceSection() {}, combinationCount, SEARCH_FILE_TYPES, DEFAULT_EXCLUDED_SITES, normalizeSearchFilters,
     document: { getElementById: get, createElement: () => new Element(), createElementNS: () => new Element() },
     confirmAction: async ({ message }) => { confirmations.push(message); return options.confirm ? options.confirm(message) : confirmed; },
     getExtensionAPI: () => ({ runtime: { sendMessage: async message => message.type === 'get-project-search-tabs' ? (options.stateReply ? options.stateReply(stateReply()) : stateReply()) : options.saveDefaults ? options.saveDefaults(message) : { ok: true } }, tabs: { create: async value => { if (options.open) await options.open(value, opened.length); opened.push(value); } } }),
     getProjectId: () => 'project',
-    openProjectSearch: async ({ projectId, engine, query, active, onlyMissing }) => {
+    openProjectSearch: async ({ projectId, engine, query, active, onlyMissing, languageFilter }) => {
       assert.equal(projectId, 'project');
-      if (onlyMissing && !queryPlan([query], engine, tabState).missing.length) return { opened: false, ...stateReply() };
-      const value = { url: searchURL(engine, query), active };
+      if (onlyMissing && !queryPlan([query], engine, tabState, languageFilter).missing.length) return { opened: false, ...stateReply() };
+      const value = { url: searchURL(engine, query, languageFilter), active };
       if (options.open) await options.open(value, opened.length); opened.push(value);
-      tabState.tabs.push({ tabId: opened.length, engine, query, status: 'loading' });
+      tabState.tabs.push({ tabId: opened.length, engine, query, ...(languageFilter ? { languageFilter } : {}), status: 'loading' });
       return { tabId: opened.length, opened: true, ...stateReply() };
     },
     ENGINES, searchURL, buildSearchQuery, parseSeeds, parseQueries, AbortController, BigInt,
     generateTuples: (text, length, count, config) => generateTuples(text, length, count, { ...config, random: () => 0n }),
-    onOpeningChange: options.onOpeningChange || (() => {}), draft, onChange: patch => Object.assign(draft, patch)
+    getLanguage: options.getLanguage || (() => 'none'), onOpeningChange: options.onOpeningChange || (() => {}), draft, onChange: patch => Object.assign(draft, patch)
   });
-  vm.runInContext(source + '\nglobalThis.seeds = initSeedsUI({draft, onChange, getProjectId, onOpeningChange});', context);
+  vm.runInContext(source + '\nglobalThis.seeds = initSeedsUI({draft, onChange, getProjectId, onOpeningChange, getLanguage});', context);
   const ui = vm.runInContext('seeds', context);
   if (!options.unready) ui.updateTabState(tabState);
   return { setState(value) { tabState = value; ui.updateTabState(value); }, get, draft, opened, confirmations, setConfirmed: value => { confirmed = value; }, ui: vm.runInContext('seeds', context),
@@ -332,3 +333,17 @@ test('failed tab-state checks never open a batch and a later authoritative refre
   app.ui.setMinimumSeeds(1); app.input('tuple-length', '3');
   assert.equal(app.get('generate-tuples').disabled, true);
  });
+
+test('project language updates Google links and completion badges while leaving visible tuples unchanged', async () => {
+  let language = 'ita';
+  const app = fixture({ getLanguage: () => language, draft: { tuples: 'energy', preparedQueries: ['energy'] }, tabState: { tabs: [], history: [{ engine: 'google', query: 'energy', languageFilter: 'lang_it', status: 'collected' }] } });
+  const url = () => new URL(app.get('prepared-queries').children[0].children[2].href);
+  assert.equal(url().searchParams.get('lr'), 'lang_it'); assert.equal(app.get('open-all-queries').disabled, true);
+  language = 'fra'; app.ui.refreshLanguage();
+  assert.equal(url().searchParams.get('lr'), 'lang_fr'); assert.equal(app.get('open-all-queries').disabled, false);
+  await app.click('open-all-queries'); assert.equal(new URL(app.opened[0].url).searchParams.get('lr'), 'lang_fr');
+  language = 'none'; app.ui.refreshLanguage(); assert.equal(url().searchParams.has('lr'), false);
+  app.get('engine').value = 'duckduckgo'; language = 'ita'; app.get('engine').handlers.change();
+  assert.equal(url().searchParams.has('lr'), false); assert.equal(url().searchParams.has('kl'), false);
+  assert.equal(app.get('tuples').value, 'energy');
+});

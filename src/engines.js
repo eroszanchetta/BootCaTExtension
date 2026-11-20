@@ -19,11 +19,12 @@ export function adapterForURL(value) {
     return ENGINES.find(engine => engine.id === id);
   } catch { return null; }
 }
-export function searchURL(engineID, query) {
+export function searchURL(engineID, query, languageFilter = '') {
   const engine = ENGINES.find(item => item.id === engineID);
   if (!engine) throw new Error("Unknown search engine");
   const url = new URL(engine.searchURL);
   url.searchParams.set(engine.queryParam, query);
+  if (engineID === 'google' && languageFilter) url.searchParams.set('lr', languageFilter);
   return url.href;
 }
 // All query modifiers are provider concerns; collected URLs are never filtered.
