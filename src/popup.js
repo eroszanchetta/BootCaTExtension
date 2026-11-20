@@ -45,10 +45,11 @@ function message(element, text, saved = false) {
 }
 function render() {
   el('collect-action').hidden = el('capture-action').hidden = true;
+  el('floating-preferences').hidden = !initialized || reloading || !namedProject();
   collect.disabled = savePage.disabled = true;
   renderPreferences();
-  collect.textContent = collecting ? 'Collecting…' : 'Collect results from this tab';
-  savePage.textContent = savingPage ? 'Saving…' : 'Add page to corpus';
+  collect.textContent = collecting ? 'Collecting…' : 'Add URLs from this tab to corpus';
+  savePage.textContent = savingPage ? 'Saving…' : 'Add this page to corpus';
   message(feedback, ''); message(pageFeedback, '');
   if (reloading) { message(status, 'Project changed. Refreshing…'); return; }
   if (generalError) { message(status, generalError); return; }
@@ -58,7 +59,7 @@ function render() {
   message(status, '');
   if (engine) {
     if (alreadyCollected && !unresolved && !collecting) {
-      message(feedback, `Results added${collectionWarning ? `. ${collectionWarning}` : ''}`, true);
+      message(feedback, `URLs added${collectionWarning ? `. ${collectionWarning}` : ''}`, true);
     } else {
       el('collect-action').hidden = false; collect.disabled = collecting || !preferencesLoaded || savingPreferences.size > 0;
       el('page-info').textContent = `${engine.name}${engine.experimental ? ' (experimental)' : ''} web results detected.`;

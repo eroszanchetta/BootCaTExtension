@@ -92,7 +92,7 @@
       <p id="query-status" role="status" aria-live="polite"></p>
       <h3>Collect project search tabs</h3>
       <p id="project-tab-count" role="status" aria-live="polite">Checking project search tabs…</p>
-      <div class="actions"><button id="collect-project-tabs" type="button" disabled>Collect results and close search tabs</button><button id="collect-loaded-tabs" type="button" class="secondary" hidden disabled>Collect loaded tabs</button><button id="stop-project-tabs" type="button" class="secondary" hidden>Stop collecting</button></div>
+      <div class="actions"><button id="collect-project-tabs" type="button" disabled>Add URLs and close search tabs</button><button id="collect-loaded-tabs" type="button" class="secondary" hidden disabled>Add URLs and close loaded tabs</button><button id="stop-project-tabs" type="button" class="secondary" hidden>Stop collecting</button></div>
       <p id="project-tab-loading-hint" class="hint" role="status"></p>
       <p id="project-tab-status" role="status" aria-live="polite"></p>
       <p id="collection-status" role="status" aria-live="polite"></p>
@@ -178,8 +178,8 @@
   </dialog>
   <dialog id="project-choice-dialog" aria-labelledby="project-choice-title">
     <h2 id="project-choice-title">Welcome to BootCaT</h2>
-    <p>Open a saved project or create a new one to begin.</p>
-    <div class="actions"><button id="project-choice-open" type="button">Open Project</button><button id="project-choice-new" type="button" class="secondary">New Project</button><button id="project-choice-close" type="button" class="secondary">Close BootCaT</button></div>
+    <p>Create a new project or open a saved one to begin.</p>
+    <div class="actions"><button id="project-choice-new" type="button" autofocus>New Project</button><button id="project-choice-open" type="button" class="secondary">Open Project</button><button id="project-choice-close" type="button" class="secondary">Close BootCaT</button></div>
     <p id="project-choice-error" class="error" role="alert"></p>
   </dialog>
   <dialog id="project-replace-dialog" aria-labelledby="project-replace-title">

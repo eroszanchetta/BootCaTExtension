@@ -113,7 +113,7 @@ async function capturePage(message, project, tab) {
     if (message.projectId && message.projectId !== project.id) throw new Error('The project changed. Reopen the BootCaT popup.');
 
     if (!/^https?:\/\//.test(tab.url || '')) throw new Error('Open a web page first.');
-    if (adapterForURL(tab.url)) throw new Error('Use Collect results from this tab for a search results page.');
+    if (adapterForURL(tab.url)) throw new Error('Use Add URLs from this tab to corpus for a search results page.');
     const saved = await serialize(async () => { await assertProject(project.id); return isSavedPage(project.id, tab.url); });
     if (saved) return { alreadySaved: true, ...await workspaceNotice() };
     const controller = new AbortController(), token = crypto.randomUUID();

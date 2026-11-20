@@ -16,7 +16,7 @@ export function initProjectUI({ onReset, onRename, onSaveProject = async () => {
   const chooser = document.getElementById('project-choice-dialog'), choiceError = document.getElementById('project-choice-error');
   const open = document.getElementById('open-project'), save = document.getElementById('save-project'), rename = document.getElementById('rename-project');
   name.readOnly = true;
-  function showChooser() { if (!project && !changingProject && !chooser.open) chooser.showModal(); }
+  function showChooser() { if (!project && !changingProject && !chooser.open) { chooser.showModal(); document.getElementById('project-choice-new').focus(); } }
   chooser.addEventListener('cancel', event => event.preventDefault());
   document.getElementById('project-choice-new').addEventListener('click', () => { chooser.close(); showDialog('new'); });
   document.getElementById('project-choice-open').addEventListener('click', () => onOpenProject());

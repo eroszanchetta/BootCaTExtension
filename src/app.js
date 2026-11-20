@@ -200,7 +200,7 @@ async function preview(doc) { await textReview.open(doc.url); }
 function errorTip(record) {
   if (record.errorCode === 'DOWNLOAD_TOO_LARGE') return record.error;
   if (record.outcome === 'cancelled') return 'Stopped by user. Click Resume downloads to try again.';
-  return `Could not download this page or file. Open its URL and complete any CAPTCHA or sign-in. Then use Add page to corpus in the BootCaT popup, or download the file using your browser and choose Import downloaded file here. (${record.error || 'Download interrupted'})`;
+  return `Could not download this page or file. Open its URL and complete any CAPTCHA or sign-in. Then use Add this page to corpus in the BootCaT popup, or download the file using your browser and choose Import downloaded file here. (${record.error || 'Download interrupted'})`;
 }
 function renderRow(entry) {
   const { url, record, doc } = entry;

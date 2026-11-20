@@ -1,25 +1,20 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>BootCaT</title><link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="popup.css"></head>
-<body><main><div class="popup-brand"><img src="icons/icon-48.png" width="48" height="48" alt="BootCaT"></div><span id="app-version" class="badge">BootCaT</span>
+<body><main><div class="popup-brand"><img src="icons/icon-48.png" width="48" height="48" alt=""><span id="app-version" class="badge">BootCaT</span></div>
 <button id="workspace" type="button">Open BootCaT</button>
-<p class="hint">Open the main BootCaT window.</p>
 <p id="popup-status" class="hint" role="status" aria-live="polite">Checking project and current tab…</p>
 <div id="collect-action" class="popup-action" hidden>
-<h3>Collect search results</h3>
 <p id="page-info"></p>
-<button id="collect" type="button" class="secondary" disabled>Collect results from this tab</button>
-<p class="hint">Only results on the current page are collected.</p>
+<button id="collect" type="button" class="secondary" disabled>Add URLs from this tab to corpus</button>
 <label class="popup-switch"><input id="close-collected-tab" type="checkbox" role="switch">Close tab after success</label>
 </div>
 <p id="feedback" role="status" aria-live="polite" hidden></p>
 <div id="capture-action" class="popup-action" hidden>
-<h3>Save individual pages</h3>
-<button id="save-page" type="button" class="secondary" disabled>Add page to corpus</button>
-<p class="hint">Directly add the current page to your corpus, for example after completing a CAPTCHA.</p>
+<button id="save-page" type="button" class="secondary" disabled>Add this page to corpus</button>
 <label class="popup-switch"><input id="close-captured-tab" type="checkbox" role="switch">Close tab after success</label>
 </div>
 <p id="page-feedback" role="status" aria-live="polite" hidden></p>
-<div class="floating-preferences">
+<div id="floating-preferences" class="floating-preferences" hidden>
 <label class="popup-switch"><input id="show-floating-controls" type="checkbox" role="switch">Show floating controls</label>
 <label for="floating-position">Floating-control position</label>
 <select id="floating-position"><option value="top-right">Top right</option><option value="top-left">Top left</option><option value="bottom-right">Bottom right</option><option value="bottom-left">Bottom left</option></select>
