@@ -243,7 +243,7 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
       await page.click('#project-dialog-submit');
       if (replacing) {
         await page.locator('#project-replace-dialog[open]').waitFor();
-        assert.match(await page.locator('#project-replace-message').innerText(), /All data that you have not exported will be lost/);
+        assert.equal(await page.locator('#project-replace-message').innerText(), 'Creating a new project replaces the current one. Save the current project first if you want to keep it.');
         await page.click('#project-replace-continue');
         await page.locator('#project-replace-dialog[open]').waitFor({ state: 'hidden' });
       }
