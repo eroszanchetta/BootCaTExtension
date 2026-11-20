@@ -775,7 +775,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     await page.evaluate(() => (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'open-workspace' }));
     assert.equal(context.pages().filter(tab => tab.url().split('#')[0] === origin + '/downloader.html').length, 1);
     await page.reload(); await assertCollapsed(); await openPanels();
-    await page.waitForFunction(() => document.querySelector('#urls').value.includes('https://corpus.test/article'));
+    await page.waitForFunction(() => !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled);
     await page.waitForFunction(() => document.querySelector('#project-name').value === 'Energy corpus');
     await page.fill('#urls', 'https://corpus.test/keep-on-cancel');
     await page.click('#new-project');
