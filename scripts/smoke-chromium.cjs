@@ -564,8 +564,10 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     // A real reload must offer the browser's confirmation and allow cancelling.
     cancelUnload = true;
     const unloadDialog = page.waitForEvent('dialog', dialog => dialog.type() === 'beforeunload');
-    const attemptedReload = page.reload().catch(error => { assert.match(error.message, /ERR_ABORTED|aborted|canceled/i); });
-    await unloadDialog; await attemptedReload; cancelUnload = false;
+    await page.evaluate(() => { setTimeout(() => location.reload(), 0); });
+    await unloadDialog;
+    await page.waitForFunction(() => !document.querySelector('#stop').disabled);
+    cancelUnload = false;
     assert.equal(await page.locator('#stop').isDisabled(), false);
 
     assert.equal(await page.locator('#attention-section').evaluate(panel => panel.open), false);
