@@ -164,3 +164,9 @@ test('cancelling the native PDF chooser allows focus refresh and a subsequent se
 test('old generic PDF notices are hidden without losing specific warnings', () => {
   assert.deepEqual(fileWarnings({ warnings: [PDF_REVIEW_NOTICE, '1 page(s) contain no extractable text; scans may require OCR.'] }), ['1 page(s) contain no extractable text; scans may require OCR.']);
 });
+
+ test('PDF review details retain layout and OCR advice without repeating it in every row', () => {
+  const extraction = { warnings: [PDF_REVIEW_NOTICE, 'Specific warning'] };
+  assert.deepEqual(fileWarnings(extraction), ['Specific warning']);
+  assert.deepEqual(fileWarnings(extraction, { details: true }), ['Check PDF text layout before use. OCR is not performed.', 'Specific warning']);
+ });

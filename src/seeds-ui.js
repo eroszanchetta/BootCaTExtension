@@ -1,3 +1,4 @@
+import { DEFAULT_SETTINGS } from './settings.js';
 import { queryKey, queryPlan } from './query-lifecycle.js';
 import { getExtensionAPI } from './extension-api.js';
 import { confirmAction } from './dialogs.js';
@@ -7,7 +8,7 @@ import { openProjectSearch } from './search-tabs-client.js';
 import { ENGINES, searchURL, buildSearchQuery } from './engines.js';
 import { parseSeeds, parseQueries, generateTuples, combinationCount } from './tuples.js';
 
-export function initSeedsUI({ draft = {}, onChange = () => {}, getProjectId = () => null, onOpeningChange = () => {} } = {}) {
+export function initSeedsUI({ minimumSeeds = DEFAULT_SETTINGS.minimumSeeds, draft = {}, onChange = () => {}, getProjectId = () => null, onOpeningChange = () => {} } = {}) {
   const el = id => document.getElementById(id), PAGE_SIZE = 100;
   // Add future advanced controls here: validation names, project draft keys,
   // restoration, busy state, and change handling share the same registry.
@@ -43,7 +44,8 @@ export function initSeedsUI({ draft = {}, onChange = () => {}, getProjectId = ()
     for (const id of ['seeds', 'tuple-length', 'tuple-count', ...filterControls.map(field => field.id)]) el(id).disabled = busy();
     el('tuples').disabled = false;
     el('save-site-defaults').disabled = busy() || savingDefaults;
-    el('generate-tuples').disabled = busy() || parseSeeds(el('seeds').value).length < 5;
+    const tupleLength = Number(el('tuple-length').value);
+    el('generate-tuples').disabled = busy() || !Number.isInteger(tupleLength) || tupleLength < 1 || tupleLength > 10 || parseSeeds(el('seeds').value).length < Math.max(minimumSeeds, tupleLength);
     el('prepare-queries').disabled = busy() || !el('tuples').value.trim();
     const plan = queryPlan(prepared, engineID(), tabState), button = el('open-all-queries');
     button.disabled = busy() || pendingOpens > 0 || !tabStateReady || filterPending || !filtersValid || !plan.missing.length;
@@ -57,16 +59,16 @@ export function initSeedsUI({ draft = {}, onChange = () => {}, getProjectId = ()
     const count = parseSeeds(el('seeds').value).length, maximum = Math.min(10, count);
     const length = el('tuple-length'), requested = el('tuple-count');
     length.max = String(maximum);
-    if (clamp && count >= 5 && Number(length.value) > maximum) length.value = String(maximum);
+    if (clamp && count >= minimumSeeds && Number(length.value) > maximum) length.value = String(maximum);
     const k = Number(length.value), total = Number.isInteger(k) && k >= 1 && k <= maximum ? combinationCount(count, k) : 0n;
     requested.max = total.toString();
-    if (clamp && count >= 5 && total > 0n && /^\d+$/.test(requested.value) && BigInt(requested.value) > total) requested.value = total.toString();
+    if (clamp && count >= minimumSeeds && total > 0n && /^\d+$/.test(requested.value) && BigInt(requested.value) > total) requested.value = total.toString();
     el('tuple-length-hint').textContent = maximum ? `Choose 1–${maximum} seeds per tuple (up to 10).` : 'Add seeds to choose a tuple length (up to 10).';
     el('tuple-count-hint').textContent = `Maximum: ${total.toLocaleString()} unique tuples with these settings.`;
     el('seeds-counter').textContent = `${count.toLocaleString()} seed${count === 1 ? '' : 's'}`;
     const tuples = parseQueries(el('tuples').value).length;
     el('tuples-counter').textContent = `${tuples.toLocaleString()} tuple${tuples === 1 ? '' : 's'}`;
-    el('seed-status').textContent = `${count.toLocaleString()} distinct seed${count === 1 ? '' : 's'}.${count < 5 ? ' At least 5 are required to generate tuples.' : ''}`;
+    el('seed-status').textContent = `${count.toLocaleString()} distinct seed${count === 1 ? '' : 's'}.${count < Math.max(minimumSeeds, k) ? ` At least ${Math.max(minimumSeeds, k)} are required to generate tuples.` : ''}`;
     el('tuple-warning').textContent = Number(requested.value) > 500 ? 'Large tuple lists may take longer to generate and review, and consume substantial browser storage. Generation can be stopped.' : '';
     controls();
   }
@@ -194,7 +196,7 @@ export function initSeedsUI({ draft = {}, onChange = () => {}, getProjectId = ()
     el('tuple-status').textContent = 'Generating unique tuples…';
     try {
       const result = await generateTuples(el('seeds').value, Number(el('tuple-length').value), Number(el('tuple-count').value), {
-        signal: controller.signal,
+        minimumSeeds, signal: controller.signal,
         onProgress: (done, total) => { el('tuple-status').textContent = `Generated ${done.toLocaleString()} of ${total.toLocaleString()} tuples…`; }
       });
       if (destroyed) return;
@@ -289,5 +291,5 @@ export function initSeedsUI({ draft = {}, onChange = () => {}, getProjectId = ()
     }
   });
   restore(draft);
-  return { restore, updateTabState, isBusy: () => busy() || pendingOpens > 0 || savingDefaults || filterPending, destroy() { destroyed = true; clearTimeout(filterTimer); stopped = true; controller?.abort(); } };
+  return { restore, updateTabState, setMinimumSeeds(value) { minimumSeeds = value; seedCount(); }, isBusy: () => busy() || pendingOpens > 0 || savingDefaults || filterPending, destroy() { destroyed = true; clearTimeout(filterTimer); stopped = true; controller?.abort(); } };
 }

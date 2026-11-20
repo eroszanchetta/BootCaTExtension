@@ -1,3 +1,4 @@
+import { DEFAULT_SETTINGS } from './settings.js';
 // Language-independent seed handling: preserve case and spelling, collapse
 // whitespace, and accept phrases with or without surrounding double quotes.
 export function parseSeeds(text) {
@@ -46,9 +47,10 @@ export function combinationAt(n, k, rank) {
   }
   return indices;
 }
-export async function generateTuples(seedText, length, requested, { signal, random = randomBelow, onProgress = () => {}, yieldControl = () => new Promise(resolve => setTimeout(resolve, 0)) } = {}) {
+export async function generateTuples(seedText, length, requested, { minimumSeeds = DEFAULT_SETTINGS.minimumSeeds, signal, random = randomBelow, onProgress = () => {}, yieldControl = () => new Promise(resolve => setTimeout(resolve, 0)) } = {}) {
   const seeds = parseSeeds(seedText);
-  if (seeds.length < 5) throw new Error('Enter at least 5 distinct seeds, one per line. Blank and duplicate lines do not count.');
+  if (!Number.isSafeInteger(minimumSeeds) || minimumSeeds < 1) throw new Error('Minimum seeds must be a positive whole number.');
+  if (seeds.length < minimumSeeds) throw new Error(`Enter at least ${minimumSeeds} distinct seeds, one per line. Blank and duplicate lines do not count.`);
   if (!Number.isInteger(length) || length < 1 || length > 10) throw new Error('Tuple length must be a whole number from 1 to 10.');
   if (length > seeds.length) throw new Error(`Tuple length ${length} needs at least ${length} distinct seeds. You have ${seeds.length}.`);
   if (!Number.isSafeInteger(requested) || requested < 1) throw new Error('Enter a positive whole number of tuples.');

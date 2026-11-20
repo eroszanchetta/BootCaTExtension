@@ -2,6 +2,7 @@
 export const SETTINGS_KEY = 'bootcatSettings';
 const memoryWarning = 'Increasing this limit may use substantially more memory and browser storage, slow processing, or make the tab unresponsive.';
 export const SETTING_FIELDS = [
+  { key: 'minimumSeeds', label: 'Minimum number of distinct seeds', initial: 5, max: 1000000, help: 'Required for tuple generation only. You can enter your own tuples without seeds.', warning: 'More seeds will be required before tuple generation is enabled.' },
   { key: 'fileMiB', label: 'Maximum downloaded or imported file size', unit: 'MiB', initial: 50, max: 1024, help: 'Applies to downloads, PDF recovery and imported files. Extraction has separate limits.', warning: memoryWarning },
   { key: 'pdfPages', label: 'Maximum PDF pages for extraction', initial: 300, max: 100000, help: 'Larger PDFs are retained without extracting a partial text.', warning: 'Large PDFs may take much longer and use more memory. You may also need to increase the extraction timeout.' },
   { key: 'urlWarning', label: 'Warn above this many project URLs', initial: 500, max: 1000000, help: 'A warning only: larger URL lists are still allowed.', warning: 'Increasing this threshold delays the warning about large projects and browser storage use.' },
