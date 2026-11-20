@@ -29,10 +29,10 @@ initWorkspaceSections();
 const ext = getExtensionAPI(), VERSION = initVersionBadge();
 const ui = Object.fromEntries(['urls', 'start', 'stop', 'export', 'status', 'progress', 'results', 'problem-results', 'attention-section', 'attention-count', 'project-language', 'recheck-language', 'language-status', 'corpus-status', 'extractor', 'urls-warning', 'storage-status', 'saved-status', 'engine', 'import-document-picker', 'document-import-status', 'export-status'].map(id => [id, document.getElementById(id)]));
 let currentSettings = DEFAULT_SETTINGS;
-async function loadSettings() { currentSettings = await readSettings(ext.storage.local); warnURLs(); updateLimitHints(); return currentSettings; }
+async function loadSettings() { currentSettings = await readSettings(ext.storage.local); warnURLs(); updateLimitHints(); seedsUI?.setMinimumSeeds?.(currentSettings.minimumSeeds); return currentSettings; }
 function updateLimitHints() {
   const hint = document.getElementById('download-limit-hint');
-  hint.textContent = `Keep this tab open. Public pages only; login cookies are not sent. Up to ${currentSettings.fileMiB} MiB per file. Completed pages are saved in this browser; interrupted downloads can be resumed.`;
+  hint.textContent = `Keep this tab open while downloading. Maximum file size: ${currentSettings.fileMiB} MiB.`;
 }
 let portableBusy = false;
 let ready = false, running = false, downloading = false, importing = false, stopping = false, resetting = false, controller = null;
@@ -100,8 +100,7 @@ async function refreshExportState(saved) {
   renderExportGuidance();
 }
 function storageMessage() {
-  const bytes = entries.reduce((sum, entry) => sum + (entry.originalBytes || 0), 0);
-  ui['storage-status'].textContent = pendingWrites ? 'Saving changes…' : `Saved in this browser · ${(bytes / 1024 / 1024).toFixed(1)} MiB of originals. Save a .bootcat project before clearing browser data or uninstalling BootCaT.`;
+  ui['storage-status'].textContent = pendingWrites ? 'Saving changes…' : 'Changes saved in this browser.';
 }
 function report(error) {
   if (resetting) return;
@@ -124,12 +123,13 @@ function pendingURLs() {
 function updateControls() {
   projectUI.refreshControls?.();
   renderExportGuidance();
+  ui.progress.hidden = !isBatchActive();
   const batch = isBatchActive(), exclusive = running || remoteActivity.exclusive || portableBusy;
   const idle = ready && !exclusive && !batch && !importing && !hasDocumentWork();
   const pending = idle ? pendingURLs().length : 0;
   ui.start.disabled = !idle || !pending;
   const parsed = idle ? parseURLs(ui.urls.value) : null;
-  document.getElementById('download-readiness').textContent = !idle ? '' : parsed.errors.length ? parsed.errors[0] : pending ? `${pending.toLocaleString()} URL${pending === 1 ? '' : 's'} ready to download. Saved pages will be skipped.` : parsed.urls.length ? 'All listed URLs have been downloaded. Add new URLs to build more of your corpus.' : 'Add URLs in the URLs section to start building your corpus.';
+  document.getElementById('download-readiness').textContent = !idle ? '' : parsed.errors.length ? parsed.errors[0] : pending ? '' : parsed.urls.length ? 'All listed URLs have been downloaded. Add new URLs to build more of your corpus.' : 'Add URLs in the URLs section to start building your corpus.';
   ui.export.disabled = !ready || exclusive || batch || importing || hasDocumentWork() || exportSaved || !entries.length;
   ui.urls.disabled = ui.extractor.disabled = !ready || exclusive || batch;
   ui['project-language'].disabled = !ready || exclusive || batch || hasDocumentWork();
@@ -166,7 +166,7 @@ function updateCounts() {
   document.getElementById('included-count').textContent = `${listed.filter(entry => entry.doc.extraction.included).length.toLocaleString()} included`;
   const documents = entries.filter(entry => entry.doc?.extraction.status === 'ok');
   const included = documents.filter(entry => entry.doc.extraction.included);
-  ui['corpus-status'].textContent = `${included.length} of ${documents.length} extracted texts included · ${included.reduce((sum, entry) => sum + entry.doc.extraction.characters, 0).toLocaleString()} characters. Unchecked pages retain their originals.`;
+  ui['corpus-status'].textContent = included.length ? `${included.reduce((sum, entry) => sum + entry.doc.extraction.characters, 0).toLocaleString()} characters included.` : '';
   storageMessage(); renderExportGuidance();
   if (!isBatchActive() && /^(Finished|Stopped)\./.test(ui.status.textContent)) ui.status.textContent = completionMessage(ui.status.textContent.startsWith('Stopped'));
 }
@@ -191,7 +191,7 @@ document.getElementById('go-to-export').addEventListener('click', event => {
 });
 
 function completionMessage(stopped) {
-  return `${stopped ? 'Stopped' : 'Finished'}. ${entries.filter(item => item.doc).length} saved pages, ${entries.filter(item => item.record.outcome === 'error').length} download errors, ${entries.filter(item => item.doc?.extraction.status === 'failed').length} extraction failures. Changes are saved in this browser.`;
+  return stopped ? 'Stopped. You can resume downloads.' : 'Finished.';
 }
 function clearPreview() { textReview?.clear(); }
 async function preview(doc) { await textReview.open(doc.url); }
@@ -337,7 +337,7 @@ async function restore({ draft = true } = {}) {
   const selected = entries.find(entry => entry.url === previewURL)?.doc;
   if (previewURL && selected?.filename !== previewFilename) clearPreview();
   ui.progress.max = Math.max(1, state.batch.total); ui.progress.value = state.batch.processed;
-  ui.status.textContent = state.batch.state === 'running' ? 'Saved project restored. An interrupted download can be resumed with Resume downloads. Completed pages will be skipped.' : state.batch.lastStatus;
+  ui.status.textContent = state.batch.state === 'running' ? 'Saved project restored. An interrupted download can be resumed with Resume downloads. Completed pages will be skipped.' : state.batch.state === 'idle' ? '' : state.batch.lastStatus;
   await refreshExportState(saved);
   updateCounts(); warnURLs(); updateControls();
   projectTabsUI?.refresh();
@@ -412,7 +412,7 @@ async function work(task) {
   if (capturesPending && !resetting) { capturesPending = false; queueMicrotask(importSavedPages); }
   return executed;
 }
-ui.stop.addEventListener('click', () => { stopping = true; controller?.abort(); ui.stop.disabled = true; ui.status.textContent = 'Stopping… Completed pages are saved in this browser.'; });
+ui.stop.addEventListener('click', () => { stopping = true; controller?.abort(); ui.stop.disabled = true; ui.status.textContent = 'Stopping…'; });
 ui.start.addEventListener('click', async () => {
   if (!ready || running || downloading || resetting) return;
   downloading = true; updateControls(); let acquired = false;
@@ -440,7 +440,7 @@ ui.start.addEventListener('click', async () => {
           if (target.deletedVersion > queueRevision || (target.entry?.doc && ['downloaded', 'captured'].includes(target.entry.record.outcome) && !target.entry.record.processingIncomplete)) {
             if (target.entry) remember(target.entry, { keepPreview: true }); return;
           }
-          ui.status.textContent = `Downloading and extracting ${processed + 1} of ${urls.length} queued pages…`;
+          ui.status.textContent = `Downloading ${processed + 1} of ${urls.length}…`;
           const active = controller = new AbortController(); let timedOut = false, downloaded = false;
           const timer = setTimeout(() => { timedOut = true; active.abort(); }, settings.downloadSeconds * 1000);
           try {
@@ -674,8 +674,9 @@ const portableUI = initPortableUI({
     await restore();
     searchUI = initSearchUI({ onCollectionsChange: invalidateArchive, isRunning: () => running, seenCollectionIds: state.draft.seenCollections, getProjectId: () => projectId, onChange: patch => { queueDraft(patch); warnURLs(); } });
     if (state.draft.engine) ui.engine.value = state.draft.engine;
-    ready = true; seedsUI = initSeedsUI({ draft: state.draft, onChange: queueDraft, getProjectId: () => projectId, onOpeningChange: value => projectTabsUI?.setOpening(value) });
+    await loadSettings();
+    ready = true; seedsUI = initSeedsUI({ minimumSeeds: currentSettings.minimumSeeds, draft: state.draft, onChange: queueDraft, getProjectId: () => projectId, onOpeningChange: value => projectTabsUI?.setOpening(value) });
     projectTabsUI = initProjectTabsUI({ getProjectId: () => projectId, onState: value => seedsUI?.updateTabState(value) });
-    await loadSettings(); updateControls(); await refreshActivity(); await importSavedPages();
+    updateControls(); await refreshActivity(); await importSavedPages();
   } catch (error) { report(error); }
 })();

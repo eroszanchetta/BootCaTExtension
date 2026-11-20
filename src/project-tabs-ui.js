@@ -16,7 +16,7 @@ export function initProjectTabsUI({ getProjectId, onState = () => {} }) {
     el('project-tab-loading-hint').textContent = skip.hidden ? '' : 'Some tabs are taking a long time to load. Inspect or close them, or collect the loaded tabs and leave the others open.';
     el('stop-project-tabs').hidden = !batch?.running;
     el('stop-project-tabs').disabled = !!batch?.stopping;
-    if (!batch) { el('project-tab-status').textContent = 'Open queries using BootCaT to include their tabs here.'; return; }
+    if (!batch) { el('project-tab-status').textContent = ''; return; }
     const prefix = batch.interrupted ? 'Collection was interrupted. Saved results remain; click Collect again to continue. ' : batch.stopping ? 'Stopping… ' : batch.stopped ? 'Stopped. ' : batch.running ? 'Collecting… ' : 'Finished. ';
     el('project-tab-status').textContent = `${prefix}${batch.processed} of ${batch.total} tab${batch.total === 1 ? '' : 's'} processed. ${batch.saved} result page${batch.saved === 1 ? '' : 's'} saved; ${batch.closed} tab${batch.closed === 1 ? '' : 's'} closed; ${batch.leftOpen} left open; ${batch.skipped} skipped.`;
     if (collectingBatchId && batch.id === collectingBatchId && !batch.running) {

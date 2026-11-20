@@ -1,3 +1,4 @@
+import { DEFAULT_SETTINGS } from '../src/settings.js';
 import { queryKey, queryPlan } from '../src/query-lifecycle.js';
 import { SEARCH_FILE_TYPES, DEFAULT_EXCLUDED_SITES, normalizeSearchFilters } from '../src/search-filters.js';
 import { test } from 'node:test';
@@ -25,7 +26,7 @@ function fixture(options = {}) {
   const get = id => elements.get(id) || (elements.set(id, new Element()), elements.get(id));
   get('engine').value = 'google';
   const context = vm.createContext({
-    setTimeout, clearTimeout, queryKey, queryPlan, openWorkspaceSection() {}, combinationCount, SEARCH_FILE_TYPES, DEFAULT_EXCLUDED_SITES, normalizeSearchFilters,
+    DEFAULT_SETTINGS, setTimeout, clearTimeout, queryKey, queryPlan, openWorkspaceSection() {}, combinationCount, SEARCH_FILE_TYPES, DEFAULT_EXCLUDED_SITES, normalizeSearchFilters,
     document: { getElementById: get, createElement: () => new Element(), createElementNS: () => new Element() },
     confirmAction: async ({ message }) => { confirmations.push(message); return options.confirm ? options.confirm(message) : confirmed; },
     getExtensionAPI: () => ({ runtime: { sendMessage: async message => message.type === 'get-project-search-tabs' ? (options.stateReply ? options.stateReply(stateReply()) : stateReply()) : options.saveDefaults ? options.saveDefaults(message) : { ok: true } }, tabs: { create: async value => { if (options.open) await options.open(value, opened.length); opened.push(value); } } }),
@@ -315,3 +316,19 @@ test('failed tab-state checks never open a batch and a later authoritative refre
   fail = false; app.setState({ tabs: [], history: [] });
   await app.click('open-all-queries'); assert.equal(app.opened.length, 1);
 });
+
+ test('minimum seeds can change live without affecting manual tuples or the project draft', async () => {
+  const app = fixture({ draft: { seeds: 'a\nb', tupleLength: '2', tuples: 'manual query' } });
+  assert.equal(app.get('generate-tuples').disabled, true);
+  app.ui.setMinimumSeeds(2);
+  assert.equal(app.get('generate-tuples').disabled, false);
+  await app.click('generate-tuples');
+  assert.equal(app.get('tuples').value, 'a b');
+  app.ui.setMinimumSeeds(8);
+  assert.equal(app.get('generate-tuples').disabled, true);
+  assert.match(app.get('seed-status').textContent, /At least 8/);
+  assert.equal(app.get('prepare-queries').disabled, false);
+  assert.equal(app.draft.seeds, 'a\nb');
+  app.ui.setMinimumSeeds(1); app.input('tuple-length', '3');
+  assert.equal(app.get('generate-tuples').disabled, true);
+ });

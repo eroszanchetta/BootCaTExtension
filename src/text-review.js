@@ -34,7 +34,7 @@ export function initTextReview({ root = document, confirm, run, getProjectId, ge
     const doc = current.entry.doc, extraction = doc.extraction;
     el('preview-title').textContent = extraction.title || 'Document text';
     el('preview-source').href = doc.url; el('preview-source').textContent = doc.url;
-    const warnings = [...fileWarnings(extraction), languageMessage(extraction)].filter(Boolean);
+    const warnings = [...fileWarnings(extraction, { details: true }), languageMessage(extraction)].filter(Boolean);
     el('preview-meta').textContent = `${extraction.extractor || 'Unsupported format'} · ${extraction.characters.toLocaleString()} characters${extraction.pageCount ? ` · ${extraction.pageCount} pages` : ''}${doc.editedAt ? ' · Manually edited' : ''}${warnings.length ? ` · ${warnings.join(' ')}` : ''}`;
   }
   function clear() {

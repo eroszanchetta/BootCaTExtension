@@ -52,3 +52,10 @@ test('generation yields and aborts without returning partial replacement text', 
   }), { name: 'AbortError' });
   assert.equal(yielded, 1);
 });
+
+ test('configured minimum permits fewer seeds but still enforces tuple length and distinctness', async () => {
+  assert.equal((await generateTuples('a\nb', 2, 10, { minimumSeeds: 2 })).text, 'a b');
+  await assert.rejects(generateTuples('a\na', 1, 1, { minimumSeeds: 2 }), /at least 2 distinct/);
+  await assert.rejects(generateTuples('a\nb', 3, 1, { minimumSeeds: 1 }), /needs at least 3/);
+  await assert.rejects(generateTuples(seeds, 2, 1, { minimumSeeds: 6 }), /at least 6 distinct/);
+ });

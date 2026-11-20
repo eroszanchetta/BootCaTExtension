@@ -6,7 +6,7 @@ export { hasPDFSignature } from './document-formats.js';
 
 export const PDF_REVIEW_NOTICE = 'PDF reading order, columns, headers and line breaks may need review. OCR is not performed.';
 // Also hide the generic warning in projects saved by older versions.
-export const fileWarnings = extraction => extraction.warnings.filter(warning => warning !== PDF_REVIEW_NOTICE);
+export const fileWarnings = (extraction, { details = false } = {}) => extraction.warnings.flatMap(warning => warning === PDF_REVIEW_NOTICE ? (details ? ['Check PDF text layout before use. OCR is not performed.'] : []) : [warning]);
 function webURL(value) {
   const url = new URL(value);
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('Open an HTTP or HTTPS page without URL credentials first.');

@@ -1,8 +1,6 @@
 import { getExtensionAPI } from './extension-api.js';
-import { confirmAction } from './dialogs.js';
 const ext = getExtensionAPI();
 import { ENGINES } from "./engines.js";
-import { uniqueResults } from "./collection.js";
 import { parseURLs } from "./core.js";
 
 export async function readCollections() {
@@ -21,14 +19,12 @@ export function initSearchUI({ isRunning, seenCollectionIds = [], onChange = () 
     el("engine").append(option);
   }
   function render() {
-    const results = uniqueResults(collections);
     const unresolved = collections.reduce((sum, item) => sum + item.unresolved, 0);
-    status.textContent = `${results.length} unique URLs from ${collections.length} saved result pages.${unresolved ? ` ${unresolved} candidate links could not be resolved; consider another engine for those searches.` : ""}`;
-    el("clear-searches").disabled = !collections.length;
+    status.textContent = [unresolved ? `${unresolved} candidate links could not be resolved; consider another engine for those searches.` : '', isRunning() && (pending.size || pendingCollections.size) ? 'New URLs will be added after the current batch finishes.' : ''].filter(Boolean).join(' ');
   }
   function flush() {
     if (destroyed || (!pending.size && !pendingCollections.size)) return;
-    if (isRunning()) { status.textContent += ' New URLs will be added after the current batch finishes.'; return; }
+    if (isRunning()) { render(); return; }
     const input = el('urls');
     const current = parseURLs(input.value);
     const existing = new Set(current.urls);
@@ -36,7 +32,7 @@ export function initSearchUI({ isRunning, seenCollectionIds = [], onChange = () 
     // Preserve manual edits, including invalid lines which the downloader will flag.
     if (additions.length) input.value = input.value.trimEnd() + (input.value.trim() ? '\n' : '') + additions.join('\n');
     for (const id of pendingCollections) seenCollections.add(id);
-    pending.clear(); pendingCollections.clear();
+    pending.clear(); pendingCollections.clear(); render();
     onChange({ urls: input.value, seenCollections: [...seenCollections] });
   }
   function receive(saved, notify = false) {
@@ -52,13 +48,6 @@ export function initSearchUI({ isRunning, seenCollectionIds = [], onChange = () 
     render(); flush();
   }
   el('urls').addEventListener('input', flush);
-  el("clear-searches").addEventListener("click", async () => {
-    if (!await confirmAction({ title: 'Clear saved searches?', message: 'All saved search collections will be cleared from this project. The URL download list will stay as it is.', confirmLabel: 'Clear searches', destructive: true })) return;
-    try {
-      const reply = await ext.runtime.sendMessage({ type: "clear-collections", projectId: getProjectId() });
-      if (!reply?.ok) throw new Error(reply?.error || "Could not clear searches");
-    } catch (error) { status.textContent = error.message; }
-  });
   ext.storage.onChanged.addListener((changes, area) => {
     if (area === "local" && changes.collections) { changed = true; receive(changes.collections.newValue || [], true); }
   });
