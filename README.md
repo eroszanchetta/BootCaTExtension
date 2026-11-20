@@ -356,3 +356,9 @@ Inclusion updates retain their document row, keep the export prompt and readines
 The compact popup places its version title beside Sbafo, uses explicit page/URL action labels without repeated headings or descriptions, and hides floating-control preferences until a project is active. Welcome actions are New Project (initial focus), Open Project and Close BootCaT.
 
 Sections respond to new content: newly added unique URLs expand URLs, and newly stored documents (including failed extraction) expand Build Corpus. Popup/floating captures and changes arriving from another workspace use the same rules. These expansions do not scroll; initial project restoration, duplicates, text edits and inclusion changes do not reopen sections. Successful batch search collection retains its explicit navigation to URLs. Floating page capture uses a document-with-plus icon. Project replacement and closure dialogs use concise messages with Save Project first, Cancel and the relevant action.
+
+### Google search language
+
+Google query links and batch opening silently apply the project's language using the `lr` result-language parameter when a supported mapping exists. The visible query is unchanged. No country, region or interface-language parameters are added, and DuckDuckGo/Ecosia remain unchanged. No language detection and unsupported languages omit the parameter. Mandarin includes both simplified and traditional Chinese. Google language mappings follow the result-language options in [Google Advanced Search](https://www.google.com/advanced_search?hl=en).
+
+The effective Google language filter is part of tab ownership and query completion. Changing project language updates links and treats searches with a different effective filter separately. Saved result-page URLs preserve the filter for portable-project/history restoration; older URLs without it retain their unfiltered identity. Extraction-time language detection remains independent.

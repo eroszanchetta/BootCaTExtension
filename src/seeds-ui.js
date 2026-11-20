@@ -1,3 +1,4 @@
+import { searchLanguageFilter } from './search-language.js';
 import { DEFAULT_SETTINGS } from './settings.js';
 import { queryKey, queryPlan } from './query-lifecycle.js';
 import { getExtensionAPI } from './extension-api.js';
@@ -8,7 +9,7 @@ import { openProjectSearch } from './search-tabs-client.js';
 import { ENGINES, searchURL, buildSearchQuery } from './engines.js';
 import { parseSeeds, parseQueries, generateTuples, combinationCount } from './tuples.js';
 
-export function initSeedsUI({ minimumSeeds = DEFAULT_SETTINGS.minimumSeeds, draft = {}, onChange = () => {}, getProjectId = () => null, onOpeningChange = () => {} } = {}) {
+export function initSeedsUI({ minimumSeeds = DEFAULT_SETTINGS.minimumSeeds, draft = {}, onChange = () => {}, getProjectId = () => null, onOpeningChange = () => {}, getLanguage = () => 'none' } = {}) {
   const el = id => document.getElementById(id), PAGE_SIZE = 100;
   // Add future advanced controls here: validation names, project draft keys,
   // restoration, busy state, and change handling share the same registry.
@@ -27,6 +28,7 @@ export function initSeedsUI({ minimumSeeds = DEFAULT_SETTINGS.minimumSeeds, draf
   let tabStateReady = false;
   let tabState = { tabs: [], history: [] }, queryRows = [], filterTimer, filterPending = false, filtersValid = true;
   const engineID = () => el('engine').value || ENGINES[0].id;
+  const languageFilter = () => searchLanguageFilter(engineID(), getLanguage());
   const engineName = () => ENGINES.find(engine => engine.id === engineID())?.name || engineID();
   const busy = () => generating || opening || confirming;
   for (const format of [{ id: '', label: 'No restriction' }, ...SEARCH_FILE_TYPES]) {
@@ -47,7 +49,7 @@ export function initSeedsUI({ minimumSeeds = DEFAULT_SETTINGS.minimumSeeds, draf
     const tupleLength = Number(el('tuple-length').value);
     el('generate-tuples').disabled = busy() || !Number.isInteger(tupleLength) || tupleLength < 1 || tupleLength > 10 || parseSeeds(el('seeds').value).length < Math.max(minimumSeeds, tupleLength);
     el('prepare-queries').disabled = busy() || !el('tuples').value.trim();
-    const plan = queryPlan(prepared, engineID(), tabState), button = el('open-all-queries');
+    const plan = queryPlan(prepared, engineID(), tabState, languageFilter()), button = el('open-all-queries');
     button.disabled = busy() || pendingOpens > 0 || !tabStateReady || filterPending || !filtersValid || !plan.missing.length;
     button.textContent = opening ? 'Opening queries…' : prepared.length && !tabStateReady ? 'Checking query tabs…' : prepared.length && !plan.missing.length ? 'No queries to open' : plan.started ? `Run missing queries (${plan.missing.length.toLocaleString()})` : 'Run all queries';
     el('query-run-hint').textContent = !prepared.length ? '' : !tabStateReady ? 'Checking search tabs…' : !plan.missing.length ? (plan.open ? 'All queries are open or collected.' : 'All search results have been collected.') : plan.started ? '' : 'Queries already open or collected will be skipped.';
@@ -77,8 +79,8 @@ export function initSeedsUI({ minimumSeeds = DEFAULT_SETTINGS.minimumSeeds, draf
     tabState = value;
     if (authoritative) tabStateReady = value.ready !== false;
     for (const row of queryRows) {
-      const tabs = (value.tabs || []).filter(tab => queryKey(tab.engine, tab.query) === queryKey(row.engine, row.query));
-      const previous = (value.history || []).find(item => queryKey(item.engine, item.query) === queryKey(row.engine, row.query));
+      const tabs = (value.tabs || []).filter(tab => queryKey(tab.engine, tab.query, tab.languageFilter) === queryKey(row.engine, row.query, row.languageFilter));
+      const previous = (value.history || []).find(item => queryKey(item.engine, item.query, item.languageFilter) === queryKey(row.engine, row.query, row.languageFilter));
       const loading = tabs.filter(tab => tab.status === 'loading').length;
       const attention = tabs.filter(tab => tab.status === 'attention');
       const status = loading ? 'loading' : attention.length ? 'attention' : tabs.length ? (tabs.every(tab => tab.status === 'collected') ? 'collected' : 'loaded') : previous?.status || 'unopened';
@@ -103,7 +105,7 @@ export function initSeedsUI({ minimumSeeds = DEFAULT_SETTINGS.minimumSeeds, draf
       const disabled = filterPending || !filtersValid;
       row.link.setAttribute?.('aria-disabled', String(disabled));
       if (disabled) row.link.removeAttribute?.('href');
-      else row.link.href = searchURL(row.engine, row.query);
+      else row.link.href = searchURL(row.engine, row.query, row.languageFilter);
     }
   }
   function applyFilters({ persist = true } = {}) {
@@ -129,7 +131,7 @@ export function initSeedsUI({ minimumSeeds = DEFAULT_SETTINGS.minimumSeeds, draf
     const body = el('prepared-queries'), scroll = body.scrollTop; body.replaceChildren(); queryRows = []; body.start = page * PAGE_SIZE + 1;
     for (const query of prepared.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)) {
       const item = document.createElement('li'), link = document.createElement('a');
-      link.href = searchURL(engineID(), query); link.textContent = query; link.target = '_blank'; link.rel = 'noopener noreferrer';
+      link.href = searchURL(engineID(), query, languageFilter()); link.textContent = query; link.target = '_blank'; link.rel = 'noopener noreferrer';
       const open = async event => {
         if (event.type === 'auxclick' && event.button !== 1) return;
         if (event.type === 'click' && event.button > 0) return;
@@ -137,7 +139,7 @@ export function initSeedsUI({ minimumSeeds = DEFAULT_SETTINGS.minimumSeeds, draf
         if (destroyed || busy() || filterPending || !filtersValid) return;
         pendingOpens++; notifyOpening(); controls();
         try {
-          await openProjectSearch({ projectId: getProjectId(), engine: engineID(), query, active: !(event.button === 1 || event.ctrlKey || event.metaKey) });
+          await openProjectSearch({ projectId: getProjectId(), engine: engineID(), query, languageFilter: languageFilter(), active: !(event.button === 1 || event.ctrlKey || event.metaKey) });
           if (!destroyed) { await refreshQueryState(); el('query-status').textContent = ''; }
         } catch (error) { if (!destroyed) el('query-status').textContent = error.message; }
         finally { pendingOpens--; notifyOpening(); if (!destroyed) controls(); }
@@ -150,7 +152,7 @@ export function initSeedsUI({ minimumSeeds = DEFAULT_SETTINGS.minimumSeeds, draf
       for (const [key, value] of Object.entries({ viewBox: '0 0 24 24', width: '18', height: '18', fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' })) icon.setAttribute(key, value);
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttribute('d', 'M14 3h7v7M10 14 21 3M21 14v7H3V3h7'); icon.append(path); inspect.append(icon);
-      const row = { query, engine: engineID(), badge, inspect, link }; queryRows.push(row);
+      const row = { query, engine: engineID(), languageFilter: languageFilter(), badge, inspect, link }; queryRows.push(row);
       inspect.addEventListener('click', async () => {
         if (!row.tabId || destroyed) return;
         try {
@@ -253,8 +255,8 @@ export function initSeedsUI({ minimumSeeds = DEFAULT_SETTINGS.minimumSeeds, draf
   el('next-queries').addEventListener('click', () => { if ((page + 1) * PAGE_SIZE < prepared.length) { page++; render(); } });
   el('stop-query-tabs').addEventListener('click', () => { stopped = true; });
   el('open-all-queries').addEventListener('click', async () => {
-    if (busy() || pendingOpens || destroyed || !tabStateReady || filterPending || !filtersValid || !queryPlan(prepared, engineID(), tabState).missing.length) return;
-    const projectAtConfirmation = getProjectId(), engine = engineID();
+    if (busy() || pendingOpens || destroyed || !tabStateReady || filterPending || !filtersValid || !queryPlan(prepared, engineID(), tabState, languageFilter()).missing.length) return;
+    const projectAtConfirmation = getProjectId(), engine = engineID(), filter = languageFilter();
     confirming = true; controls();
     let opened = 0, skipped = 0, queries = [], startedOpening = false;
     try {
@@ -262,7 +264,7 @@ export function initSeedsUI({ minimumSeeds = DEFAULT_SETTINGS.minimumSeeds, draf
       // still guards every individual opening against other workspace windows.
       await refreshQueryState();
       if (destroyed || getProjectId() !== projectAtConfirmation) return;
-      const plan = queryPlan(prepared, engine, tabState); queries = plan.missing;
+      const plan = queryPlan(prepared, engine, tabState, filter); queries = plan.missing;
       if (!queries.length) return;
       const label = plan.started ? 'Run missing queries' : 'Run all queries';
       const approved = await confirmAction({ title: `${label}?`, message: `Open ${queries.length.toLocaleString()} ${plan.started ? 'missing, uncollected ' : ''}${queries.length === 1 ? 'query' : 'queries'} in new ${engineName()} tabs? Existing tabs and collected queries will be skipped. Search engines may refuse automated batch queries, block requests or show CAPTCHAs. Many tabs may slow your browser.`, confirmLabel: label });
@@ -270,7 +272,7 @@ export function initSeedsUI({ minimumSeeds = DEFAULT_SETTINGS.minimumSeeds, draf
       opening = startedOpening = true; confirming = false; stopped = false; notifyOpening(); controls();
       for (const query of queries) {
         if (stopped || destroyed || getProjectId() !== projectAtConfirmation) break;
-        const result = await openProjectSearch({ projectId: projectAtConfirmation, engine, query, active: false, onlyMissing: true });
+        const result = await openProjectSearch({ projectId: projectAtConfirmation, engine, query, languageFilter: filter, active: false, onlyMissing: true });
         if (result.opened === false) skipped++; else opened++;
         if (!destroyed) {
           if (Array.isArray(result.tabs)) updateTabState(result);
@@ -291,5 +293,5 @@ export function initSeedsUI({ minimumSeeds = DEFAULT_SETTINGS.minimumSeeds, draf
     }
   });
   restore(draft);
-  return { restore, updateTabState, setMinimumSeeds(value) { minimumSeeds = value; seedCount(); }, isBusy: () => busy() || pendingOpens > 0 || savingDefaults || filterPending, destroy() { destroyed = true; clearTimeout(filterTimer); stopped = true; controller?.abort(); } };
+  return { restore, updateTabState, refreshLanguage: render, setMinimumSeeds(value) { minimumSeeds = value; seedCount(); }, isBusy: () => busy() || pendingOpens > 0 || savingDefaults || filterPending, destroy() { destroyed = true; clearTimeout(filterTimer); stopped = true; controller?.abort(); } };
 }
