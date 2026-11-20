@@ -22,7 +22,18 @@ p { margin: 10px 0; font-size: 14px; }
 }
 
 .popup-switch { display: flex; align-items: center; gap: 9px; margin: 12px 0; cursor: pointer; }
-.popup-switch input { width: 18px; height: 18px; flex: 0 0 18px; margin: 0; padding: 0; accent-color: #007aa6; }
+.popup-switch input { appearance: none; box-sizing: border-box; position: relative; width: 38px; height: 22px; flex: 0 0 38px; margin: 0; padding: 0; border: 1px solid #617685; border-radius: 999px; background: #617685; cursor: pointer; }
+.popup-switch input::before { content: ''; display: block; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: white; }
+.popup-switch input:checked { background: #007aa6; border-color: #007aa6; }
+.popup-switch input:checked::before { left: 18px; }
+.popup-switch input:focus-visible { outline: 3px solid #12394e; outline-offset: 3px; }
+.popup-switch input:disabled { opacity: .55; cursor: wait; }
+@media (forced-colors: active) {
+  .popup-switch input { background: Canvas; border-color: ButtonText; }
+  .popup-switch input::before { background: ButtonText; }
+  .popup-switch input:checked { background: Highlight; border-color: Highlight; }
+  .popup-switch input:checked::before { background: HighlightText; }
+}
 .floating-preferences { margin-top: 18px; padding-top: 10px; border-top: 1px solid #c4d8e7; }
 .floating-preferences label[for] { font-size: 12px; margin: 10px 0 5px; }
 #floating-position { padding: 7px; font-size: 13px; }

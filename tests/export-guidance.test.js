@@ -1,7 +1,8 @@
+import * as storage from '../src/project-store.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { IDBFactory } from 'fake-indexeddb';
-import { workspace } from './helpers/workspace.js';
+import { workspace, waitFor } from './helpers/workspace.js';
 test('export guidance covers processing, partial success, navigation, inclusion changes and persisted export confirmation', async () => {
   globalThis.indexedDB = new IDBFactory();
   let started, release; const began = new Promise(resolve => { started = resolve; }), gate = new Promise(resolve => { release = resolve; });
@@ -44,4 +45,33 @@ test('failed export keeps the ready prompt and never announces a successful down
     assert.equal(app.get('export-guidance-issues').hidden, true);
     assert.equal(app.get('export-guidance-title').textContent, 'Your corpus is ready to export.'); assert.equal(app.downloads(), 0);
   } finally { delete globalThis.indexedDB; }
+});
+
+test('inclusion saves preserve the row and guidance while pending, and failures retain the saved selection', async () => {
+  globalThis.indexedDB = new IDBFactory();
+  let release, fail = false;
+  try {
+    const app = await workspace('stable-inclusion', { storage: { ...storage, setIncluded: async (...args) => {
+      await new Promise(resolve => { release = resolve; });
+      if (fail) throw new Error('Selection could not be saved');
+      return storage.setIncluded(...args);
+    } } });
+    await app.input('urls', 'https://example.org/one\nhttps://example.org/two'); await app.click('start');
+    const row = app.get('results').children[0], checkbox = row.children[0].children[0];
+    const readiness = app.get('download-readiness').textContent;
+    checkbox.checked = false; let saving = checkbox.handlers.change();
+    await waitFor(() => !!release);
+    assert.equal(app.get('export-guidance').hidden, false);
+    assert.equal(app.get('download-readiness').textContent, readiness);
+    assert.equal(row.children[2].children.at(-1).textContent, '');
+    release(); await saving;
+    assert.equal(app.get('results').children[0], row);
+    assert.equal(app.get('included-count').textContent, '1 included');
+    assert.equal(app.get('export-guidance').hidden, false);
+    fail = true; release = null; checkbox.checked = true; saving = checkbox.handlers.change();
+    await waitFor(() => !!release); release(); await saving;
+    assert.equal(checkbox.checked, false);
+    assert.equal(app.get('included-count').textContent, '1 included');
+    assert.match(app.get('status').textContent, /Selection could not be saved/);
+  } finally { release?.(); delete globalThis.indexedDB; }
 });
