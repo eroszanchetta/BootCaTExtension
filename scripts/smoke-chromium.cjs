@@ -471,8 +471,10 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     const search = await context.newPage();
     await search.goto('https://www.google.com/search?q=energy');
     const tabId = await worker.evaluate(async () => (await (globalThis.browser ?? chrome).tabs.query({})).find(tab => tab.url?.includes('www.google.com/search')).id);
+    await page.locator('#urls-section .workspace-panel').evaluate(panel => { panel.open = false; });
     const collection = await page.evaluate(tabId => (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'collect', tabId }), tabId);
     assert.equal(collection.ok, true); assert.equal(collection.count, 1);
+    await page.waitForFunction(() => document.querySelector('#urls-section .workspace-panel').open);
     await page.waitForFunction(() => document.querySelector('#urls').value.includes('https://corpus.test/article'));
     await page.waitForFunction(() => document.querySelector('#urls').value === 'https://corpus.test/article');
     assert.equal(await page.locator('#use-collected').count(), 0);
@@ -968,8 +970,10 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     await capturePopup.waitForFunction(() => !document.querySelector('#close-captured-tab').disabled && !document.querySelector('#close-collected-tab').disabled && document.querySelector('#controls-feedback').textContent === '');
     await capturePopup.selectOption('#floating-position', 'top-right');
     await capturePopup.waitForFunction(() => !document.querySelector('#floating-position').disabled);
+    await page.locator('#review-section .workspace-panel').evaluate(panel => { panel.open = false; });
     const sourceClosed = closeSource.waitForEvent('close'); await capturePopup.click('#save-page'); await capturePopup.close(); await sourceClosed;
     await page.waitForFunction(() => [...document.querySelectorAll('#results a')].some(link => link.href === 'https://corpus.test/floating-close'));
+    assert.equal(await page.locator('#review-section .workspace-panel').evaluate(panel => panel.open), true);
     const currentProject = await page.evaluate(async () => (await (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'get-project' })).project.id);
     const trackedCreated = context.waitForEvent('page');
     await page.evaluate(projectId => (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'open-project-search', projectId, engine: 'duckduckgo', query: 'collection-controls', active: false }), currentProject);

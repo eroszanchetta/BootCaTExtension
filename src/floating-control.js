@@ -10,7 +10,7 @@
   let documentURL = location.href;
   const paths = {
     collect: ['M5 4h14v4H5zM5 11h14M5 16h9M5 21h14', 'm16 15 3 3 3-3m-3-4v7'],
-    capture: ['M12 3v12m-5-5 5 5 5-5M4 15v6h16v-6'],
+    capture: ['M13 3H5v18h8M13 3l6 6v3M13 3v6h6M8 13h3M8 17h3', 'M18 15v6m-3-3h6'],
     workspace: ['M3 7a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v9H3Z'],
     hide: ['m6 6 12 12M18 6 6 18'],
     saved: ['m5 12 4 4L20 5'],
