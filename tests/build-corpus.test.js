@@ -1,3 +1,5 @@
+import * as storage from '../src/project-store.js';
+import { savePage } from '../src/page-store.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { IDBFactory } from 'fake-indexeddb';
@@ -49,5 +51,36 @@ test('closing is guarded during an active download and allowed after completion 
       release(); await batch;
       assert.equal(app.beforeUnload(), false);
     }
+  } finally { delete globalThis.indexedDB; }
+});
+
+test('new content reveals sections without scrolling; duplicates, edits and initial restoration do not', async () => {
+  globalThis.indexedDB = new IDBFactory();
+  const opened = [], onOpenSection = (...args) => opened.push(args);
+  try {
+    const app = await workspace('reveal-content', { onOpenSection, extractor: async () => ({ ...extracted(''), status: 'failed', included: false }) });
+    assert.equal(opened.length, 0);
+    await app.input('urls', 'https://example.org/one');
+    assert.deepEqual(opened, [['urls-section']]); opened.length = 0;
+    await app.input('urls', 'https://example.org/one#fragment\nhttps://example.org/one');
+    assert.equal(opened.length, 0);
+    await app.click('start');
+    assert.ok(opened.some(([id, options]) => id === 'review-section' && options === undefined), 'stored failed extraction reveals document recovery');
+    opened.length = 0;
+    const reopened = await workspace('reveal-content', { onOpenSection });
+    assert.equal(opened.length, 0, 'opening existing project does not reveal restored sections');
+    await savePage({ id: 'capture', url: 'https://example.org/captured', html: '<p>Captured page</p>' }, 'reveal-content');
+    await reopened.notify({ captureRevision: { newValue: 'capture' } });
+    assert.ok(opened.some(([id, options]) => id === 'review-section' && options === undefined)); opened.length = 0;
+    const checkbox = reopened.get('results').children[0].children[0].children[0];
+    checkbox.checked = false; await checkbox.handlers.change();
+    assert.equal(opened.length, 0);
+    await storage.saveDraft('reveal-content', { urls: 'https://example.org/remote' });
+    const url = 'https://example.org/remote', filename = 'pages/remote.html';
+    await storage.saveDocument('reveal-content', { url, filename, outcome: 'downloaded' }, { url, filename, textFilename: 'corpus/remote.txt', extraction: extracted('Remote document') }, new Uint8Array([1]));
+    await reopened.focus();
+    assert.ok(opened.some(([id, options]) => id === 'urls-section' && options === undefined));
+    assert.ok(opened.some(([id, options]) => id === 'review-section' && options === undefined)); opened.length = 0;
+    await reopened.focus(); assert.equal(opened.length, 0, 'unchanged refresh does not reopen manually collapsed panels');
   } finally { delete globalThis.indexedDB; }
 });

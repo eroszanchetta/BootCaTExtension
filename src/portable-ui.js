@@ -74,7 +74,7 @@ export function initPortableUI({ getProject, isBusy, isDirty, flush, exclusive, 
       available(); setBusy(true); status.textContent = 'Checking project file…';
       const snapshot = await openProjectArchive(file);
       if (identity() !== expected) throw new Error('The project changed. Open the file again.');
-      if (getProject() && !await confirmReplacement({ title: 'Open another project?', message: 'Opening this file replaces the current project in this browser. Save the current project first to keep all originals, texts and work. Your preferences will be kept.', confirmLabel: 'Open project' })) { status.textContent = 'Open cancelled. The current project is unchanged.'; return; }
+      if (getProject() && !await confirmReplacement({ title: 'Open another project?', message: 'Opening this project replaces the current one. Save the current project first if you want to keep it.', confirmLabel: 'Open project' })) { status.textContent = 'Open cancelled. The current project is unchanged.'; return; }
       await flush(); token = await stageProject(snapshot);
       const result = await exclusive(async () => {
         const reply = await ext.runtime.sendMessage({ type: 'open-portable-project', projectId: expected, token });

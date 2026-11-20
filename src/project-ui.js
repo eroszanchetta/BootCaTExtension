@@ -101,7 +101,7 @@ export function initProjectUI({ onReset, onRename, onSaveProject = async () => {
       saving++; dialog.close();
       let approved = false;
       try {
-        approved = await confirmReplacement({ title: 'Replace current project?', message: 'Creating a new project permanently deletes the current project’s seeds, tuples, searches, URLs, original files and extracted texts from this browser, and stops pending work. All data that you have not exported will be lost. Save your project first if you want to keep all of it. Your preferences will be kept.', confirmLabel: 'Create new project', destructive: true });
+        approved = await confirmReplacement({ title: 'Create a new project?', message: 'Creating a new project replaces the current one. Save the current project first if you want to keep it.', confirmLabel: 'Create new project', destructive: true });
       } catch (failure) { error.textContent = failure.message; }
       finally { saving--; }
       if (changingProject || project?.id !== targetId) return;
@@ -124,7 +124,7 @@ export function initProjectUI({ onReset, onRename, onSaveProject = async () => {
     if (!project || saving || changingProject) return;
     const closingId = project.id;
     let approved;
-    try { approved = await confirmReplacement({ title: 'Close project?', message: 'Stop pending work and permanently delete this project’s seeds, tuples, searches, tab tracking, URLs, original files and extracted texts from this browser. Save your project first if you want to keep it. Your saved preferences will be kept.', confirmLabel: 'Close project', destructive: true }); }
+    try { approved = await confirmReplacement({ title: 'Close project?', message: 'Closing removes the current project from BootCaT. Save it first if you want to reopen it later.', confirmLabel: 'Close project', destructive: true }); }
     catch (error) { status.textContent = error.message; return; }
     if (!approved || changingProject || project?.id !== closingId) return;
     saving++; controls();

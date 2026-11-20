@@ -105,8 +105,17 @@ function report(error) {
   ui.status.textContent = full ? 'Browser storage is full. Completed pages remain saved. Export your corpus and free space before continuing.' : `Could not complete the operation: ${error.message}`;
 }
 function warnURLs() { const count = parseURLs(ui.urls.value).urls.length; document.getElementById('urls-counter').textContent = `${count.toLocaleString()} URL${count === 1 ? '' : 's'}`; ui['urls-warning'].textContent = urlListWarning(count, currentSettings.urlWarning); }
+function revealAddedURLs(previous, next) {
+  if (!ready) return;
+  const existing = new Set(parseURLs(previous).urls);
+  if (parseURLs(next).urls.some(url => !existing.has(url))) openWorkspaceSection('urls-section');
+}
+function revealAddedDocument(previous, next) {
+  if (ready && !previous?.doc && next.doc) openWorkspaceSection('review-section');
+}
 function queueDraft(patch) {
   if (!ready || resetting) return writes;
+  if (Object.hasOwn(patch, 'urls')) revealAddedURLs(state.draft.urls, patch.urls);
   invalidateArchive(); Object.assign(state.draft, patch); pendingWrites++;
   if (Object.hasOwn(patch, 'urls')) updateControls();
   writes = writes.then(() => storage.saveDraft(projectId, patch)).then(() => { writeError = null; }, error => { writeError = error; report(error); }).finally(() => { pendingWrites--; renderExportGuidance(); });
@@ -324,6 +333,7 @@ ui['import-document-picker'].addEventListener('change', async () => {
 function remember(entry, { keepPreview = false, updateRow = true } = {}) {
   metadataRevision++;
   const index = entries.findIndex(item => item.url === entry.url);
+  revealAddedDocument(entries[index], entry);
   if (index < 0) entries.push(entry); else entries[index] = entry;
   if (previewURL === entry.url && !keepPreview && !textReview?.isDirty()) clearPreview(); if (updateRow) renderRow(entry); invalidateArchive(); updateCounts();
 }
@@ -334,6 +344,11 @@ function renderEntries() {
 async function restore({ draft = true } = {}) {
   if (resetting) return;
   const saved = await storage.loadWorkspace(projectId); if (resetting) return;
+  if (ready) {
+    revealAddedURLs(state.draft.urls, saved.draft.urls);
+    const previous = new Map(entries.map(entry => [entry.url, entry]));
+    for (const entry of saved.entries) revealAddedDocument(previous.get(entry.url), entry);
+  }
   revokeArchive(); state = saved; entries = saved.entries;
   if (draft) { ui.urls.value = saved.draft.urls; ui.extractor.value = saved.draft.extractor; if (saved.draft.engine) ui.engine.value = saved.draft.engine; seedsUI?.restore(saved.draft); }
   renderEntries();
@@ -357,12 +372,13 @@ async function refreshMetadata() {
     let changed = false;
     const previous = new Map(entries.map(entry => [entry.url, entry]));
     for (const entry of saved.entries) {
+      revealAddedDocument(previous.get(entry.url), entry);
       if (JSON.stringify(previous.get(entry.url)) !== JSON.stringify(entry)) { if (!inclusionJobs.has(entry.url)) renderRow(entry); changed = true; }
       previous.delete(entry.url);
     }
     for (const url of previous.keys()) { rows.get(url)?.remove(); rows.delete(url); controls.delete(url); changed = true; }
     entries = saved.entries; state.batch = saved.batch; state.deleteRevision = saved.deleteRevision;
-    if (!pendingWrites) { state.draft.urls = saved.draft.urls; ui.urls.value = saved.draft.urls; warnURLs(); }
+    if (!pendingWrites) { revealAddedURLs(state.draft.urls, saved.draft.urls); state.draft.urls = saved.draft.urls; ui.urls.value = saved.draft.urls; warnURLs(); }
     if (changed) invalidateArchive();
     updateCounts(); updateControls();
   } catch (error) { report(error); } finally { metadataRefreshing = false; }
@@ -680,10 +696,10 @@ const portableUI = initPortableUI({
     }
     await storage.ensureStoredProject(projectId);
     await restore();
+    await loadSettings(); ready = true;
     searchUI = initSearchUI({ onCollectionsChange: invalidateArchive, isRunning: () => running, seenCollectionIds: state.draft.seenCollections, getProjectId: () => projectId, onChange: patch => { queueDraft(patch); warnURLs(); } });
     if (state.draft.engine) ui.engine.value = state.draft.engine;
-    await loadSettings();
-    ready = true; seedsUI = initSeedsUI({ minimumSeeds: currentSettings.minimumSeeds, draft: state.draft, onChange: queueDraft, getProjectId: () => projectId, onOpeningChange: value => projectTabsUI?.setOpening(value) });
+    seedsUI = initSeedsUI({ minimumSeeds: currentSettings.minimumSeeds, draft: state.draft, onChange: queueDraft, getProjectId: () => projectId, onOpeningChange: value => projectTabsUI?.setOpening(value) });
     projectTabsUI = initProjectTabsUI({ getProjectId: () => projectId, onState: value => seedsUI?.updateTabState(value) });
     updateControls(); await refreshActivity(); await importSavedPages();
   } catch (error) { report(error); }
