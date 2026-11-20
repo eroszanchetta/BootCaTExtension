@@ -22,6 +22,7 @@ export function initProjectTabsUI({ getProjectId, onState = () => {} }) {
     if (collectingBatchId && batch.id === collectingBatchId && !batch.running) {
       collectingBatchId = null;
       if (!state.count && batch.total > 0 && batch.closed === batch.total && batch.saved === batch.total && batch.processed === batch.total && !batch.leftOpen && !batch.skipped && !batch.stopped && !batch.stopping && !batch.interrupted) {
+        openWorkspaceSection('review-section');
         openWorkspaceSection('urls-section', { scroll: true });
       }
     }

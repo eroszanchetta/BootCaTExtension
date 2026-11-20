@@ -27,12 +27,12 @@ import { DEFUDDLE_AVAILABLE } from './defuddle-loader.js';
 
 initWorkspaceSections();
 const ext = getExtensionAPI(), VERSION = initVersionBadge();
-const ui = Object.fromEntries(['urls', 'start', 'stop', 'export', 'status', 'progress', 'results', 'problem-results', 'attention-section', 'attention-count', 'project-language', 'recheck-language', 'language-status', 'corpus-status', 'extractor', 'urls-warning', 'storage-status', 'saved-status', 'engine', 'import-document-picker', 'document-import-status', 'export-status'].map(id => [id, document.getElementById(id)]));
+const ui = Object.fromEntries(['urls', 'start', 'stop', 'export', 'status', 'progress', 'results', 'problem-results', 'attention-section', 'attention-count', 'project-language', 'recheck-language', 'language-status', 'corpus-status', 'extractor', 'urls-warning', 'saved-status', 'engine', 'import-document-picker', 'document-import-status', 'export-status'].map(id => [id, document.getElementById(id)]));
 let currentSettings = DEFAULT_SETTINGS;
 async function loadSettings() { currentSettings = await readSettings(ext.storage.local); warnURLs(); updateLimitHints(); seedsUI?.setMinimumSeeds?.(currentSettings.minimumSeeds); return currentSettings; }
 function updateLimitHints() {
   const hint = document.getElementById('download-limit-hint');
-  hint.textContent = `Keep this tab open while downloading. Maximum file size: ${currentSettings.fileMiB} MiB.`;
+  hint.textContent = `Maximum file size: ${currentSettings.fileMiB} MiB.`;
 }
 let portableBusy = false;
 let ready = false, running = false, downloading = false, importing = false, stopping = false, resetting = false, controller = null;
@@ -99,9 +99,6 @@ async function refreshExportState(saved) {
   document.getElementById('export-label').textContent = exportSaved ? 'Corpus exported' : 'Export Corpus';
   renderExportGuidance();
 }
-function storageMessage() {
-  ui['storage-status'].textContent = pendingWrites ? 'Saving changes…' : 'Changes saved in this browser.';
-}
 function report(error) {
   if (resetting) return;
   const full = error?.name === 'QuotaExceededError' || /quota/i.test(error?.message || '');
@@ -110,9 +107,9 @@ function report(error) {
 function warnURLs() { const count = parseURLs(ui.urls.value).urls.length; document.getElementById('urls-counter').textContent = `${count.toLocaleString()} URL${count === 1 ? '' : 's'}`; ui['urls-warning'].textContent = urlListWarning(count, currentSettings.urlWarning); }
 function queueDraft(patch) {
   if (!ready || resetting) return writes;
-  invalidateArchive(); Object.assign(state.draft, patch); pendingWrites++; storageMessage();
+  invalidateArchive(); Object.assign(state.draft, patch); pendingWrites++;
   if (Object.hasOwn(patch, 'urls')) updateControls();
-  writes = writes.then(() => storage.saveDraft(projectId, patch)).then(() => { writeError = null; }, error => { writeError = error; report(error); }).finally(() => { pendingWrites--; if (!writeError) storageMessage(); renderExportGuidance(); });
+  writes = writes.then(() => storage.saveDraft(projectId, patch)).then(() => { writeError = null; }, error => { writeError = error; report(error); }).finally(() => { pendingWrites--; renderExportGuidance(); });
   return writes;
 }
 async function flushWrites() { await writes; if (writeError) throw writeError; }
@@ -129,7 +126,7 @@ function updateControls() {
   const pending = idle ? pendingURLs().length : 0;
   ui.start.disabled = !idle || !pending;
   const parsed = idle ? parseURLs(ui.urls.value) : null;
-  document.getElementById('download-readiness').textContent = !idle ? '' : parsed.errors.length ? parsed.errors[0] : pending ? '' : parsed.urls.length ? 'All listed URLs have been downloaded. Add new URLs to build more of your corpus.' : 'Add URLs in the URLs section to start building your corpus.';
+  document.getElementById('download-readiness').textContent = !idle ? '' : parsed.errors.length ? parsed.errors[0] : pending ? '' : parsed.urls.length ? 'All listed URLs have been downloaded. Add more URLs to download additional documents.' : 'Add URLs in the URLs section to start building your corpus.';
   ui.export.disabled = !ready || exclusive || batch || importing || hasDocumentWork() || exportSaved || !entries.length;
   ui.urls.disabled = ui.extractor.disabled = !ready || exclusive || batch;
   ui['project-language'].disabled = !ready || exclusive || batch || hasDocumentWork();
@@ -167,7 +164,7 @@ function updateCounts() {
   const documents = entries.filter(entry => entry.doc?.extraction.status === 'ok');
   const included = documents.filter(entry => entry.doc.extraction.included);
   ui['corpus-status'].textContent = included.length ? `${included.reduce((sum, entry) => sum + entry.doc.extraction.characters, 0).toLocaleString()} characters included.` : '';
-  storageMessage(); renderExportGuidance();
+  renderExportGuidance();
   if (!isBatchActive() && /^(Finished|Stopped)\./.test(ui.status.textContent)) ui.status.textContent = completionMessage(ui.status.textContent.startsWith('Stopped'));
 }
 function renderExportGuidance() {
@@ -665,7 +662,6 @@ const portableUI = initPortableUI({
         for (const control of document.getElementById(id).querySelectorAll('button, input, select, textarea')) control.disabled = true;
       }
       ui.status.textContent = 'No active project. Create a project to download and extract documents.';
-      ui['storage-status'].textContent = 'No project data is stored.';
       document.getElementById('collection-status').textContent = 'No active project.';
       document.getElementById('project-tab-count').textContent = 'No active project.';
       return;

@@ -223,7 +223,7 @@ export function initSeedsUI({ minimumSeeds = DEFAULT_SETTINGS.minimumSeeds, draf
     } catch (error) { applyFilters(); el('query-status').textContent = error.message; return; }
     el('query-status').textContent = prepared.length ? 'Queries are ready. Use the run button to open missing searches.' : 'Enter at least one tuple or query, one per line.';
     render();
-    if (prepared.length) { openWorkspaceSection('search-section'); el('query-list-heading').scrollIntoView?.({ block: 'nearest' }); }
+    if (prepared.length) openWorkspaceSection('search-section', { scroll: true });
   });
   el('engine').addEventListener('change', () => { applyFilters(); onChange({ preparedQueries: prepared }); });
   for (const { id, key, event } of filterControls) {

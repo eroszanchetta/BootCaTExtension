@@ -58,7 +58,7 @@ test('only the current fully successful collection jumps to URLs, once; partial,
       return elements.get(id);
     };
     const context = vm.createContext({ setTimeout, clearTimeout, SEARCH_TABS_KEY, getProjectId: () => 'p', document: { getElementById: get, createElement: () => ({}) },
-      openWorkspaceSection: (id, options) => jumps.push([id, options.scroll]),
+      openWorkspaceSection: (id, options = {}) => jumps.push([id, !!options.scroll]),
       getExtensionAPI: () => ({ storage: { onChanged: { addListener(fn) { changed = fn; } } }, runtime: { sendMessage: async () => reply } }) });
     vm.runInContext(source + '\nglobalThis.ui = initProjectTabsUI({getProjectId});', context);
     await new Promise(resolve => setImmediate(resolve)); assert.equal(jumps.length, 0, 'restoring a historical completion must not jump');
@@ -67,10 +67,10 @@ test('only the current fully successful collection jumps to URLs, once; partial,
     await get('collect-project-tabs').handlers.click();
     reply = { ok: true, count: scenario.count, batch: scenario.batch };
     changed({ [SEARCH_TABS_KEY]: {} }, 'session'); await new Promise(resolve => setImmediate(resolve));
-    assert.equal(jumps.length, scenario.jumps);
-    if (scenario.jumps) assert.deepEqual(jumps[0], ['urls-section', true]);
+    assert.equal(jumps.length, scenario.jumps * 2);
+    if (scenario.jumps) assert.deepEqual(jumps, [['review-section', false], ['urls-section', true]]);
     changed({ [SEARCH_TABS_KEY]: {} }, 'session'); await new Promise(resolve => setImmediate(resolve));
-    assert.equal(jumps.length, scenario.jumps, 'refresh must not repeat a jump');
+    assert.equal(jumps.length, scenario.jumps * 2, 'refresh must not repeat a jump');
   }
 });
 
