@@ -168,3 +168,9 @@ section { scroll-margin-top: 0; }
 .document-list-heading h3 { margin: 0; font-size: 1rem; }
 #included-count { color: #166534; background: #ecfdf3; }
 #download-readiness:empty { display: none; }
+
+.export-guidance { margin-top: 22px; padding: 18px 20px; border: 1px solid #a6d7b5; border-left: 4px solid #28753e; border-radius: 10px; background: #ecfdf3; color: #14532d; }
+.export-guidance p { margin: 0 0 8px; }
+.export-guidance .export-guidance-title { font-weight: 750; }
+.export-guidance a { display: inline-block; color: #14532d; font-weight: 700; text-underline-offset: 3px; }
+.export-guidance a:hover { text-decoration-thickness: 2px; }

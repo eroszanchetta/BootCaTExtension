@@ -87,6 +87,7 @@ function invalidateArchive() {
   exportSaved = false; ui['export-status'].classList.toggle('saved', false);
   document.getElementById('export-label').textContent = 'Export Corpus';
   ui.export.disabled = !ready || running || isBatchActive() || importing || hasDocumentWork() || remoteActivity.exclusive || exportSaved || !entries.length;
+  renderExportGuidance();
 }
 async function refreshExportState(saved) {
   const revision = exportRevision, id = projectId;
@@ -96,6 +97,7 @@ async function refreshExportState(saved) {
   ui['export-status'].textContent = exportSaved ? corpusSavedMessage(saved.corpusExport.filename) : 'Export your corpus as a ZIP file to your computer.';
   ui['export-status'].classList.toggle('saved', exportSaved);
   document.getElementById('export-label').textContent = exportSaved ? 'Corpus exported' : 'Export Corpus';
+  renderExportGuidance();
 }
 function storageMessage() {
   const bytes = entries.reduce((sum, entry) => sum + (entry.originalBytes || 0), 0);
@@ -111,7 +113,7 @@ function queueDraft(patch) {
   if (!ready || resetting) return writes;
   invalidateArchive(); Object.assign(state.draft, patch); pendingWrites++; storageMessage();
   if (Object.hasOwn(patch, 'urls')) updateControls();
-  writes = writes.then(() => storage.saveDraft(projectId, patch)).then(() => { writeError = null; }, error => { writeError = error; report(error); }).finally(() => { pendingWrites--; if (!writeError) storageMessage(); });
+  writes = writes.then(() => storage.saveDraft(projectId, patch)).then(() => { writeError = null; }, error => { writeError = error; report(error); }).finally(() => { pendingWrites--; if (!writeError) storageMessage(); renderExportGuidance(); });
   return writes;
 }
 async function flushWrites() { await writes; if (writeError) throw writeError; }
@@ -121,6 +123,7 @@ function pendingURLs() {
 }
 function updateControls() {
   projectUI.refreshControls?.();
+  renderExportGuidance();
   const batch = isBatchActive(), exclusive = running || remoteActivity.exclusive || portableBusy;
   const idle = ready && !exclusive && !batch && !importing && !hasDocumentWork();
   const pending = idle ? pendingURLs().length : 0;
@@ -164,9 +167,29 @@ function updateCounts() {
   const documents = entries.filter(entry => entry.doc?.extraction.status === 'ok');
   const included = documents.filter(entry => entry.doc.extraction.included);
   ui['corpus-status'].textContent = `${included.length} of ${documents.length} extracted texts included · ${included.reduce((sum, entry) => sum + entry.doc.extraction.characters, 0).toLocaleString()} characters. Unchecked pages retain their originals.`;
-  storageMessage();
+  storageMessage(); renderExportGuidance();
   if (!isBatchActive() && /^(Finished|Stopped)\./.test(ui.status.textContent)) ui.status.textContent = completionMessage(ui.status.textContent.startsWith('Stopped'));
 }
+function renderExportGuidance() {
+  const banner = document.getElementById('export-guidance');
+  const busy = !ready || resetting || running || isBatchActive() || importing || hasDocumentWork() || remoteActivity.exclusive || portableBusy || pendingWrites || capturesPending || writeError;
+  if (busy) { banner.hidden = true; return; }
+  const included = entries.filter(entry => !needsAttention(entry) && entry.doc.extraction.included).length;
+  banner.hidden = !included;
+  if (!included) return;
+  document.getElementById('export-guidance-title').textContent = exportSaved ? 'Your corpus download has started.' : 'Your corpus is ready to export.';
+  document.getElementById('export-guidance-detail').textContent = exportSaved ? 'Check your browser’s downloads for the corpus ZIP file.' : `${included.toLocaleString()} document${included === 1 ? ' is' : 's are'} included.`;
+  document.getElementById('export-guidance-issues').hidden = exportSaved || !entries.some(needsAttention);
+  document.getElementById('go-to-export').hidden = exportSaved;
+}
+document.getElementById('go-to-export').addEventListener('click', event => {
+  event.preventDefault();
+  if (document.getElementById('export-guidance').hidden || ui.export.disabled) return;
+  openWorkspaceSection('project-section');
+  ui.export.scrollIntoView({ block: 'center' });
+  ui.export.focus({ preventScroll: true });
+});
+
 function completionMessage(stopped) {
   return `${stopped ? 'Stopped' : 'Finished'}. ${entries.filter(item => item.doc).length} saved pages, ${entries.filter(item => item.record.outcome === 'error').length} download errors, ${entries.filter(item => item.doc?.extraction.status === 'failed').length} extraction failures. Changes are saved in this browser.`;
 }
@@ -535,7 +558,7 @@ ui['recheck-language'].addEventListener('click', () => work(async () => {
 ui.export.addEventListener('click', () => {
   if (ui.export.disabled) return;
   return work(async () => {
-    openWorkspaceSection('save-section', { scroll: true });
+    openWorkspaceSection('project-section', { scroll: true });
     if ((await listSavedPages()).length) { capturesPending = true; ui['export-status'].textContent = 'Captured pages are waiting to be processed. Save your corpus after recovery finishes.'; return; }
     await flushWrites();
     const saved = await storage.loadWorkspace(projectId), project = projectUI.snapshot();

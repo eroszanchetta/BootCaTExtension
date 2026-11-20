@@ -55,7 +55,7 @@ export async function workspace(projectId, options = {}) {
     initSearchUI: () => ({ flush() {}, destroy() {} }), readCollections: async () => [], projectFilename: name => name,
     initPortableUI: () => ({ save() {}, choose() {}, confirmReplacement: async () => confirm }),
     initVersionBadge: () => '2.0.0',
-    initWorkspaceSections() {}, openWorkspaceSection() {}, setProjectSectionState() {},
+    initWorkspaceSections() {}, openWorkspaceSection(...args) { options.onOpenSection?.(...args); }, setProjectSectionState() {},
     initSeedsUI: () => ({ restore() {}, isBusy: () => false, destroy() {} }),
     initProjectTabsUI: () => ({ refresh() {}, destroy() {} }),
     DEFUDDLE_AVAILABLE: true, storage: options.storage || storage, ...pages, parseURLs, filenameFor, FILE_LIMIT, urlListWarning, makeStoredZIP, makeMetadataWorkbook: options.makeMetadataWorkbook || makeMetadataWorkbook, createExportLayout, originalTextFilename, extractionMetadata, fileWarnings, readPDFFile, formatByMIME, readImportedDocument,

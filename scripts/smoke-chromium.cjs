@@ -468,6 +468,15 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
       assert.equal(await page.locator('#start').isDisabled(), true);
       assert.equal(await page.locator('#documents-count').innerText(), '1 document');
       assert.equal(await page.locator('#included-count').innerText(), '1 included');
+      await page.locator('#export-guidance').waitFor();
+      assert.equal(await page.locator('#export-guidance-title').innerText(), 'Your corpus is ready to export.');
+      assert.equal(await page.locator('#export-guidance-issues').isVisible(), false);
+      const projectPanel = page.locator('#project-section .workspace-panel');
+      if (await projectPanel.evaluate(panel => panel.open)) await page.locator('#project-section .workspace-panel > summary').click();
+      await page.locator('#go-to-export').click();
+      assert.equal(await projectPanel.evaluate(panel => panel.open), true);
+      assert.equal(await page.locator('#export').evaluate(button => button === document.activeElement), true);
+      await page.locator('nav a[href="#review-section"]').click();
       await search.goto('https://corpus.test/article');
       assert.equal((await page.evaluate(tabId => (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'get-page-corpus-state', tabId }), tabId)).saved, true, 'batch downloads count as already saved');
       assert.equal(await page.inputValue('#preview-text'), '');
@@ -586,6 +595,8 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     await (await documentsDownload).saveAs(join(root, 'documents.zip'));
     await checkCorpusReport(join(root, 'documents.zip'));
     await page.waitForFunction(() => document.querySelector('#export').textContent === 'Corpus exported');
+    await page.waitForFunction(() => !document.querySelector('#export-guidance').hidden && document.querySelector('#export-guidance-title').textContent === 'Your corpus download has started.');
+    assert.equal(await page.locator('#go-to-export').isVisible(), false);
     assert.equal(await page.locator('#export').isDisabled(), true);
     assert.match(await page.locator('#export-status').innerText(), /Corpus saved.*Downloads folder/);
     await page.reload(); await assertCollapsed(); await openPanels();
