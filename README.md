@@ -343,3 +343,6 @@ Save Project prepares an independent native download Blob before handing the arc
 ## Build Corpus interface
 
 Build Corpus replaces the Download section and menu label. Download URLs, Stop and the progress/status controls are grouped in that section. Download URLs is disabled when no listed URLs remain to download; new URLs reactivate it, while saved originals (including failed extractions) are skipped and failed downloads remain retryable. Interrupted batches retain Resume downloads. Corpus documents has separate visible-document and included-document counters; unchecked usable texts remain in the document count, and issue rows have their own counter. The header logo and menu share the main workspace's width and responsive padding.
+
+
+After processing finishes, Build Corpus shows a green export-ready prompt when at least one document is included. It reports the included count, notes documents needing attention, and links directly to Export Corpus in Project. The link expands Project, scrolls to Export Corpus and focuses its button. Active processing or zero included documents hides the prompt. Export changes it to a browser-download confirmation; subsequent project edits restore the ready prompt.
