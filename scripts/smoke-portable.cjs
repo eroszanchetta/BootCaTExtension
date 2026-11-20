@@ -19,7 +19,8 @@ const assert = require('node:assert/strict');
   try {
     for (const engine of [chromium, firefox]) {
       const browser = await engine.launch({ headless: true }); browsers.push(browser);
-      const page = await browser.newPage(); await page.goto(`http://127.0.0.1:${server.address().port}/about.html`); pages.push(page);
+      const context = await browser.newContext({ acceptDownloads: true });
+      const page = await context.newPage(); await page.goto(`http://127.0.0.1:${server.address().port}/about.html`); pages.push(page);
     }
     for (const [producer, receiver, forceZIP64] of [[0, 1, false], [1, 0, true]]) {
       const bytes = await pages[producer].evaluate(async forceZIP64 => {
