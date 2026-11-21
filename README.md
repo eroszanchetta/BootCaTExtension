@@ -1,19 +1,28 @@
 # BootCaT extension
 
-A local corpus-building extension with one shared JavaScript/HTML/CSS codebase and separate Chromium and Firefox builds. Search collection, downloads, Readability, Defuddle, ZIP export, your popup wording, blue palette and logo are shared.
+A local corpus-building extension with one shared JavaScript/HTML/CSS codebase and separate Chromium and Firefox builds. Search collection, downloads, Readability, Defuddle, portable projects, text review, corpus export, settings and branding are shared.
+
+## Version 2.1 release preparation
+
+The release version is **2.1.0**, displayed as **BootCaT · 2.1**. Store publication is a separate step; this repository does not assert approval or availability of 2.1 in either store.
+
+- [Release notes and store update text](docs/RELEASE-NOTES-2.1.md)
+- [Release checklist, final-package tests and artifact verification](docs/RELEASE-CHECKLIST-2.1.md)
+- [Chrome submission guide](docs/CHROME-SUBMISSION.md) and [listing draft](docs/CHROME-LISTING.md)
+- [Mozilla submission guide](docs/MOZILLA-SUBMISSION.md) and [listing draft](docs/MOZILLA-LISTING.md)
 
 ## Updating from the original repository layout
 
-Before switching your installed extension, save pending download ZIPs and export saved searches. The generated folder is a different extension path in Chrome, so it can create a new extension identity with separate local storage. Keep the old instance until you have saved the data you need. Firefox and Chromium always have separate extension storage. Use Save Project to download a complete .bootcat file, then Open Project in the other installation. Browser profiles remain independent; projects are not automatically synchronized.
+Before switching an existing development installation, save the current project as a .bootcat file if available, or export its corpus and retain any other data supported by that version. The generated folder is a different extension path in Chrome, so it can create a new extension identity with separate local storage. Keep the old instance until you have saved the data you need. Firefox and Chromium always have separate extension storage. Use Save Project to download a complete .bootcat file, then Open Project in the other installation. Browser profiles remain independent; projects are not automatically synchronized.
 
 After merging the structural change, pull it in VS Code, then build from the repository root:
 
 ```sh
-npm install
+npm ci
 npm run build
 ```
 
-The repository root no longer contains a loadable manifest. Edit `src/`, rebuild, and load the matching generated folder below. Do not edit `dist/`: the next build replaces it. Run `npm install` after pulling this update to install the pinned PDF.js dependency. Subsequent builds work offline; PDF.js, its worker, character maps, standard fonts and licences are copied into both extension packages. No CDN is used at runtime.
+The repository root no longer contains a loadable manifest. Edit `src/`, rebuild, and load the matching generated folder below. Do not edit `dist/`: the next build replaces it. Run `npm ci` after pulling this update to install the pinned PDF.js dependency. Subsequent builds work offline; PDF.js, its worker, character maps, standard fonts and licences are copied into both extension packages. No CDN is used at runtime.
 
 ## Optional language detection
 
@@ -21,9 +30,9 @@ Project creation requires an explicit choice of target language or **No language
 
 Franc 6.2.0 and its MIT-licensed model/utilities are bundled locally with pinned source URLs, hashes and licence files in `src/vendor/franc/`. No detector code, model, or corpus text is sent to a remote service. The bundled model supports 178 distinct language codes, with names shown in the selector. The detector is behind a replaceable adapter returning ISO 639-3 codes and common assessments; franc-specific scores remain diagnostic metadata rather than displayed accuracy percentages.
 
-After successful HTML, plain-text, PDF, DOCX or manual-capture extraction, enabled detection checks up to three 2,048-character samples across the document. Samples need at least 120 Unicode letters. A small winning margin (normalized by the candidate score range), an undetermined result or disagreement between samples produces **Language uncertain**. These initial beta heuristics are conservative and are not a guarantee of correctness or a full multilingual segmentation algorithm.
+After successful HTML, plain-text, PDF, DOCX or manual-capture extraction, enabled detection checks up to three 2,048-character samples across the document. Samples need at least 120 Unicode letters. A small winning margin (normalized by the candidate score range), an undetermined result or disagreement between samples produces **Language uncertain**. These heuristics are conservative and are not a guarantee of correctness or a full multilingual segmentation algorithm.
 
-Mismatches and uncertain results retain successful extraction and the original files, but start unchecked in **Documents needing attention**. Preview remains available. **Include anyway** records an explicit override, includes the text and returns the document to the main list. Users can subsequently uncheck it without losing that override. Extraction failures keep their own messages and do not receive a misleading language guess. Detector/version, target, assessment, bounded diagnostic samples, check time and override are retained in `extraction.json`; project settings are in `project.json`.
+Mismatches and uncertain results retain successful extraction and the original files, but start unchecked in **Documents with issues**. Preview remains available. **Include anyway** records an explicit override, includes the text and returns the document to the main list. Users can subsequently uncheck it without losing that override. Extraction failures keep their own messages and do not receive a misleading language guess. Detector/version, target, assessment, bounded diagnostic samples, check time and override are retained in `extraction.json`; project settings are in `project.json`.
 
 Language setting changes apply to newly extracted documents immediately. Existing rows keep their previous assessment until an explicit recheck; their messages identify the language they were checked against. Turning detection off and rechecking restores pre-check inclusion choices. Browser or storage failures during a recheck keep already committed results; no original/text Blobs are rewritten.
 
@@ -35,7 +44,7 @@ Choose seeds per tuple (default 3, up to the smaller of 10 and the distinct seed
 
 After editing the tuples, click **Create search queries**. Each nonblank line becomes a clickable search query; identical query lines are deduplicated. Preparing queries opens no tabs. Changing the selected engine updates the links without regenerating tuples. Editing the tuple text clears the prepared links until queries are created again. Individual links open a new results tab; use the toolbar's collection action as before.
 
-**Open all queries** asks for confirmation that search engines may refuse automated batch queries, block requests or show CAPTCHAs, and that many tabs may affect browser performance. It opens the approved queries in background tabs. **Stop opening tabs** stops the remaining requests without closing tabs already created. A failure reports how many tabs opened; individual links remain available. Longer query lists are displayed 100 at a time, with pagination, while Open all includes the entire prepared list. Custom queries can be entered directly into the editable tuples area.
+**Run all queries** confirms the number of search tabs and warns that the search engine may block requests or show CAPTCHAs. It opens the approved queries in background tabs. **Stop opening tabs** stops the remaining requests without closing tabs already created. A failure reports how many tabs opened; individual links remain available. Longer query lists are displayed 100 at a time, with pagination, while Run all includes the entire prepared list. Custom queries can be entered directly into the editable tuples area.
 
 Seeds, generation parameters, edited tuple text and prepared queries are part of the persistent project draft and `project.json` export. New project clears them. Old projects receive empty/default fields without a schema migration. There are no new dependencies or permissions; searches are sent to the selected engine only through explicit link clicks or the confirmed batch action.
 
@@ -53,9 +62,9 @@ Personal defaults live in the separate, versioned `userDefaults` storage record.
 
 ## Project search tabs
 
-Opening a prepared query or **Open all queries** registers the created tab ID, project, engine and query in browser-session storage. Normal, Ctrl/Cmd and middle clicks are supported. Browser context-menu opens, copied links, duplicated tabs and pre-existing search tabs are not adopted; collect those manually. Switching the selected engine does not change ownership of tabs already opened for the project.
+Opening a prepared query or **Run all queries** registers the created tab ID, project, engine and query in browser-session storage. Normal, Ctrl/Cmd and middle clicks are supported. Browser context-menu opens, copied links, duplicated tabs and pre-existing search tabs are not adopted; collect those manually. Switching the selected engine does not change ownership of tabs already opened for the project.
 
-**Add URLs and close search tabs** processes a snapshot of this project's tracked tabs across browser windows. It reads background result pages without activating them. A tab is closed only after its collection has been successfully stored, and after another check of its ownership, navigation revision, URL/query and loaded state. Other queries/pages are left open and lose tracking. Loading, discarded or inaccessible tabs remain open for retry. CAPTCHA/unsupported pages, storage errors, collection-capacity errors and partial results with unresolved links remain open, with outcomes in the details panel. **Stop collecting** stops remaining work and avoids closing the current page when possible; an already-dispatched browser close cannot be undone by the extension. New tabs opened during collection are included on the next run.
+**Add URLs and close search tabs** processes a snapshot of this project's tracked tabs across browser windows. It reads background result pages without activating them. A tab is closed only after its collection has been successfully stored, and after another check of its ownership, navigation revision, URL/query and loaded state. Other queries/pages are left open and lose tracking. Loading, discarded or inaccessible tabs remain open for retry. CAPTCHA/unsupported pages, storage errors, collection-capacity errors and partial results with unresolved links remain open, with outcomes in the collection status. **Stop collecting** stops remaining work and avoids closing the current page when possible; an already-dispatched browser close cannot be undone by the extension. New tabs opened during collection are included on the next run.
 
 Tab ownership survives background-worker suspension within the same browser session, but is cleared on browser restart and extension reload/update to avoid stale tab IDs. Restored search tabs can be collected manually. Interrupted batches never resume automatically; saved collections remain and the user can retry explicitly. Manually closing a tab removes its tracking. New project cancels old collection work and clears ownership without closing browser tabs. Tracking metadata is not included in corpus ZIPs; saved search provenance remains in the usual collections export.
 
@@ -138,7 +147,7 @@ Extension URLs are generated with `runtime.getURL()`. Workspace reuse checks tab
 npm run package
 ```
 
-Produces `dist/packages/bootcat-chromium-2.0.0.zip` and `dist/packages/bootcat-firefox-2.0.0.zip`, each with its manifest at the ZIP root. Individual commands: `npm run package:chromium` and `npm run package:firefox`. Packages exclude development fixtures.
+Produces `dist/packages/bootcat-chromium-2.1.0.zip` and `dist/packages/bootcat-firefox-2.1.0.zip`, each with its manifest at the ZIP root. Individual commands: `npm run package:chromium` and `npm run package:firefox`. Packages exclude development fixtures.
 
 These are unsigned packages for review/upload, not store-published releases. Normal Firefox distribution requires Mozilla signing, whether listed on AMO or self-distributed. The Firefox development manifest includes a stable extension ID; its AMO data-collection/transmission declarations must be assessed and added before a first store submission. In particular, user-initiated searches send queries to the selected engine, even though corpus content is processed locally. No submission, signing or publication is performed by these build commands.
 
@@ -163,7 +172,7 @@ After loading a generated extension, open the workspace and replace `downloader.
 The automated Chromium smoke test uses the pinned Playwright development dependency. Install its browser when needed:
 
 ```sh
-npm install
+npm ci
 npx playwright install chromium
 npm run test:browser
 ```
@@ -174,7 +183,7 @@ The smoke test builds into a temporary folder/profile and routes all web request
 
 ## PDF.js security updates
 
-The PDF.js dependency is pinned to **6.5.438**, above the 6.2.108 fix for [GHSA-hq66-cqwq-w95j](https://github.com/advisories/GHSA-hq66-cqwq-w95j). After pulling this upgrade, run `npm install`, `npm test`, `npm run build` and `npm audit`, then reload the extension. Rebuilding is required: updating node_modules alone does not replace the installed extension's copied PDF assets.
+The PDF.js dependency is pinned to **6.5.438**, above the 6.2.108 fix for [GHSA-hq66-cqwq-w95j](https://github.com/advisories/GHSA-hq66-cqwq-w95j). After pulling this upgrade, run `npm ci`, `npm test`, `npm run build` and `npm audit`, then reload the extension. Rebuilding is required: updating node_modules alone does not replace the installed extension's copied PDF assets.
 
 Package generation and runtime loading share a single expected version in `src/pdfjs-version.js`. The build rejects a mismatched installed dependency, and extraction refuses a stale/mismatched PDF module before parsing bytes. The build packages only the parser and worker modules, not the PDF viewer or scripting sandbox. The extension retains its restrictive CSP; no PDF viewer scripting manager is instantiated. `enableScripting` is a viewer setting, not a `getDocument` option, so it is not passed to the parser as a purported workaround.
 
@@ -197,7 +206,7 @@ The toolbar's **Add this page to corpus** action also supports HTTP(S) PDF tabs.
 
 Every failed download offers the same guidance: open the URL, complete any CAPTCHA or sign-in, then either use **Add this page to corpus** in the popup or download the file manually and click **Import downloaded file** beside the failed URL. BootCaT does not infer recovery format from URL extensions, filenames or response MIME hints. The file chooser has no format filter, so extensionless and misleadingly named downloads can be selected. BootCaT identifies supported documents from their contents, then runs the matching extractor. Unsupported files, HTML sign-in pages and malformed archives report an import error and leave the failed row intact.
 
-A successful download whose text extraction failed retains its original and extraction message, without offering recovery. Size-limit failures also omit import because it cannot bypass the 50 MiB file limit. Local PDF and DOCX documents up to 50 MiB are supported. Progress/errors appear beside the button and in a dedicated status area. The file input remains attached while the native chooser is open, including when the window regains focus. BootCaT cannot verify that a local file belongs to the chosen URL, so check before selecting it. Imported originals and extracted text replace that failed row and persist/export through the existing pipeline. The source is recorded as `local-file`; no local filesystem path is stored. Format detection and validation share the registry in `src/document-formats.js` for future supported formats. The general PDF/OCR notice appears once above the review list, while document-specific warnings remain on their own rows.
+A successful download whose text extraction failed retains its original and extraction message, without offering recovery. Size-limit failures also omit import because it cannot bypass the 50 MiB file limit. Local PDF and DOCX documents up to 50 MiB are supported. Progress/errors appear beside the button and in a dedicated status area. The file input remains attached while the native chooser is open, including when the window regains focus. BootCaT cannot verify that a local file belongs to the chosen URL, so check before selecting it. Imported originals and extracted text replace that failed row and persist/export through the existing pipeline. The source is recorded as `local-file`; no local filesystem path is stored. Format detection and validation share the registry in `src/document-formats.js` for future supported formats. PDF layout/OCR advice appears in the document review dialog; document-specific warnings remain available with the affected document.
 
 ## Persistent project storage
 
@@ -211,7 +220,7 @@ ZIP export reads stored files one at a time for CRC calculation and assembles na
 
 ## Projects and review
 
-When no project is active, the startup chooser offers **Open Project**, **New Project** and **Close BootCaT**. Cancelling creation returns to this chooser. The Project section opens after creation/opening and on workspace load; other sections start collapsed. Its name is read-only until **Rename** opens a dialog. Project actions appear as New Project, Open Project, Save Project and Close Project, followed by Export Corpus. The former Save section and navigation item are removed.
+When no project is active, the startup chooser offers **New Project** (initial focus), **Open Project** and **Close BootCaT**. Cancelling creation returns to this chooser. The Project section opens after creation/opening and on workspace load; other sections start collapsed. Its name is read-only until **Rename** opens a dialog. Project actions appear as New Project, Open Project, Save Project and Close Project, followed by Export Corpus. The former Save section and navigation item are removed.
 
 BootCaT keeps one active project in browser storage. **Save Project** downloads a complete `.bootcat` ZIP snapshot. **Open Project** validates that file before replacing the active project. The replacement/close prompts offer Save Project first, Continue and Cancel. Files are ordinary downloads: each save may create a new copy, and opening a file does not link subsequent saves to that original file.
 
@@ -219,7 +228,7 @@ BootCaT keeps one active project in browser storage. **Save Project** downloads 
 
 **Add URLs from this tab to corpus** adds collected URLs to the download list automatically and opens a background workspace if needed. New URLs wait until an active batch finishes, and duplicates are skipped. Existing manual edits are preserved. There is no hard URL-count limit. Lists above the configured threshold (500 URLs by default) display a performance/storage warning; larger lists are still allowed without confirmation. Search collection metadata retains its separate provider-neutral limits.
 
-Review separates documents with usable text from **Documents needing attention**: download errors, extraction failures, unsupported formats and textless/scanned PDFs. Successful recoveries return to the main list. The attention block disappears when all problems have been recovered or deleted. Unchecking Include keeps usable documents in the main list. **Export Corpus** is in Project; originals and corpus-output behavior remain unchanged.
+Review separates documents with usable text from **Documents with issues**: download errors, extraction failures, unsupported formats and textless/scanned PDFs. Successful recoveries return to the main list. The attention block disappears when all problems have been recovered or deleted. Unchecking Include keeps usable documents in the main list. **Export Corpus** is in Project; originals and corpus-output behavior remain unchanged.
 
 **Preview text** stays blank until a Preview text button is clicked. The selected document row is highlighted in either list; selecting another preview moves the highlight, and deleting the selected document clears it. The section heading remains fixed and the selected page is identified below it.
 
@@ -229,7 +238,7 @@ On detected search results pages, only the collection action is shown; corpus ca
 
 ## Save a page already open in the browser
 
-In **Review and export**, each URL opens in a new tab. Failed downloads display instructions for opening the page, completing any CAPTCHA or sign-in, and saving it through the toolbar; the original error appears at the end in parentheses and remains in download metadata. If a download fails because of a CAPTCHA, open that link and complete the challenge yourself. Click the BootCaT toolbar icon → **Add this page to corpus**. The action and its explanatory text are replaced by a green **Page already added to corpus** message. Save errors leave the button enabled for retry.
+In **Build Corpus**, each URL opens in a new tab. Failed downloads display instructions for opening the page, completing any CAPTCHA or sign-in, and saving it through the toolbar; the original error appears at the end in parentheses and remains in download metadata. If a download fails because of a CAPTCHA, open that link and complete the challenge yourself. Click the BootCaT toolbar icon → **Add this page to corpus**. The action and its explanatory text are replaced by a green **Page already added to corpus** message. Save errors leave the button enabled for retry.
 
 The snapshot is added to the review list automatically, using the selected Readability or Defuddle extractor without another network request. If the workspace is closed, it opens in a background tab. If downloads are running, the snapshot waits until the batch finishes. A snapshot matching an existing URL (or a successful download's final redirect URL) replaces its review row and corpus text. Earlier raw files and attempt metadata remain in the ZIP; metadata identifies browser captures and their capture times. If navigation changes the URL, the snapshot is added as a separate document.
 
@@ -260,7 +269,7 @@ Collection waits until all tracked tabs finish loading and batch opening finishe
 
 ## Workspace dialogs and logs
 
-Running all queries, deleting a document and clearing saved searches use a shared styled confirmation dialog with action-specific buttons, Cancel as the initial focus and Escape to cancel. The browser controls its own leave-page warning and file picker. The collapsible **Log** section at the bottom contains project tab collection details, saved-result review and search JSON export; its top navigation link appears before Help. Log starts collapsed on reopening the workspace and creating a project.
+Running queries and deleting a document use a shared styled confirmation dialog with action-specific buttons, Cancel as the initial focus and Escape to cancel. The browser controls its own leave-page warning and file picker. Collection progress and errors appear in Search; saved search provenance remains part of the project and exports. There is no separate Log section or Clear searches action.
 
 ## Corpus files and metadata export
 
@@ -272,13 +281,13 @@ Every corpus ZIP also contains UTF-8 `url_list.txt`, `seeds.txt` and `tuples.txt
 
 ## Release version
 
-`package.json` → `version` is the single release-version setting. This release is `2.0.0`, displayed as **BootCaT · 2.0** in both badges. Browser manifests and ZIP package filenames take the version from `package.json` during build. Badges and exported JSON read it from the installed manifest at runtime. Storage schema and third-party library versions are independent.
+`package.json` → `version` is the single release-version setting. Version 2.1 uses `2.1.0`, displayed as **BootCaT · 2.1** in both badges. Browser manifests and ZIP package filenames take the version from `package.json` during build. Badges and exported JSON read it from the installed manifest at runtime. Storage schema and third-party library versions are independent.
 
 For the next release, run `npm version 2.1.1 --no-git-tag-version` (substitute the intended version). This updates `package.json` and the npm-managed lockfile together without creating a Git tag or commit. Then run `npm run build` and reload the installed extension. Use three numeric components without a prerelease suffix. Do not edit generated files in `dist/` or add version fields to browser manifest templates.
 
 ## Contextual popup
 
-**Open BootCaT** is always the prominent full-width action. Until project setup is confirmed, the popup asks the user to create a project and hides both collection/capture actions. Named projects show a smaller collection button on supported search pages or a smaller capture button on eligible ordinary pages. Completed actions show only their confirmation; unrelated headings and hints are hidden. Unsupported tabs show a short explanation. Busy actions stay visible and disabled as **Collecting…** or **Saving…**; operation failures restore the action for retry. Project changes hide old actions and reload the popup, and action messages carry the current project ID.
+**Open BootCaT** is always the prominent full-width action. Until project setup is confirmed, the popup asks the user to create a project and hides both collection/capture actions. Named projects show a smaller collection button on supported search pages or a smaller capture button on eligible ordinary pages. Completed actions show their confirmation while retaining the relevant Close tab after success switch; unrelated headings and hints are hidden. Unsupported tabs show a short explanation. Busy actions stay visible and disabled as **Collecting…** or **Saving…**; operation failures restore the action for retry. Project changes hide old actions and reload the popup, and action messages carry the current project ID.
 
 Popup typography and spacing are explicit across browsers. Both the root and body have an explicit preferred width with a shrinking maximum. Firefox measures the body for toolbar-popup sizing, so constraining the root alone is insufficient. Horizontal overflow is prevented. Long messages or smaller panels retain vertical scrolling. `npm run test:popup` checks the real popup document at normal and constrained sizes, including intrinsic body-width probes, in Chromium and Firefox, using extension-API fixtures. These layout checks do not install the Firefox add-on or exercise the browser-owned toolbar panel; visually check the actual toolbar popup when testing a release.
 
@@ -363,4 +372,4 @@ Google query links and batch opening silently apply the project's language using
 
 The effective Google language filter is part of tab ownership and query completion. Changing project language updates links and treats searches with a different effective filter separately. Saved result-page URLs preserve the filter for portable-project/history restoration; older URLs without it retain their unfiltered identity. Extraction-time language detection remains independent.
 
-Close tab after success remains visible for the current page type when the popup reopens on an already-added page or collected results tab. Changing this preference affects future actions and does not repeat an action or close the current tab. Delete-document and query-run confirmations use concise action messages; the standing search-engine/CAPTCHA warning remains beside the query controls.
+Close tab after success remains visible for the current page type when the popup reopens on an already-added page or collected results tab. Changing this preference affects future actions and does not repeat an action or close the current tab. Delete-document and query-run confirmations use concise action messages. Query-run confirmation also warns that the search engine may block requests or show CAPTCHAs; the standing warning remains beside the query controls.
