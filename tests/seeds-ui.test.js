@@ -68,7 +68,7 @@ test('batch opening confirms the engine and tab count and opens only the approve
   const app = fixture({ draft: { tuples: 'first\nsecond', preparedQueries: ['first', 'second'] } });
   app.setConfirmed(false); await app.click('open-all-queries'); assert.equal(app.opened.length, 0);
   app.setConfirmed(true); await app.click('open-all-queries'); assert.equal(app.opened.length, 2);
-  assert.ok(app.confirmations.every(message => message === 'Open 2 Google search tabs?'));
+  assert.ok(app.confirmations.every(message => message === 'Open 2 Google search tabs? The search engine may block requests or show CAPTCHAs.'));
   assert.deepEqual(app.opened.map(value => [new URL(value.url).searchParams.get('q'), value.active]), [['first', false], ['second', false]]);
 });
 

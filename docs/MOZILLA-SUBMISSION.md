@@ -1,6 +1,6 @@
-# Mozilla Add-ons submission — BootCaT 2.0.1
+# Mozilla Add-ons submission — BootCaT 2.1.0
 
-Prepared 14 November 2026. This is a submission checklist, not a claim of approval.
+Updated 21 November 2026 for the 2.1 update. This is a submission checklist, not a claim of approval.
 
 ## Build the upload files
 
@@ -15,9 +15,9 @@ npm run lint:firefox
 
 `npm run package` builds both browser extensions and the corresponding source ZIP:
 
-- `dist/packages/bootcat-firefox-2.0.1.zip`: Firefox extension to upload to AMO.
-- `dist/packages/bootcat-source-2.0.1.zip`: source archive to supply to reviewers.
-- `dist/packages/bootcat-chromium-2.0.1.zip`: separate Chrome package; do not upload it to AMO.
+- `dist/packages/bootcat-firefox-2.1.0.zip`: Firefox extension to upload to AMO.
+- `dist/packages/bootcat-source-2.1.0.zip`: source archive to supply to reviewers.
+- `dist/packages/bootcat-chromium-2.1.0.zip`: separate Chrome package; do not upload it to AMO.
 
 Version numbers follow package.json. Do not upload the GitHub repository ZIP as the extension.
 The source package has an explicit allowlist and excludes node_modules, dist, browser profiles
@@ -45,13 +45,13 @@ and Git data. It contains sources, tests, pinned dependency lockfile, licences a
    the repository and release tag. An AMO source upload is for reviewers and does not by itself
    make source available to users. Put that public source link in the listing.
 9. Review the final listing, disclosures and permissions before submitting for review.
-10. Once 2.0.1 is accepted, disable the old 2.0.0 version if it is still available. That
-    package still declares Android support. Disable only the old version, not the entire
-    BootCaT listing. Keep the same add-on ID for the new upload.
+10. Confirm that 2.1.0 has not already been used for this listing. Do not submit the same
+    version number again, create another listing, or change the existing add-on ID.
+    Review any older-version availability decisions separately after acceptance; this guide
+    does not automatically disable existing versions or declare store approval.
 
 No extension signing credentials or account passwords belong in this repository.
 The publisher must complete the developer agreement and account-specific declarations.
-If this first public version is intended for beta testing, consider AMO's experimental flag.
 
 ## Listing data disclosures
 
@@ -84,17 +84,17 @@ A minimal test:
 2. Choose New Project, name it and select No language detection. Project starts expanded; other sections start collapsed.
 3. Expand Seeds & Tuples, enter five seeds (e.g. renewable energy, solar, wind, storage,
    electricity), generate a few tuples and create search queries. Select DuckDuckGo.
-4. Open an individual query or use Open all queries after its warning. Wait for loading
-   badges, then collect results and close project search tabs. The URLs section opens.
+4. Open an individual query or use **Run all queries** after confirming the tab count and CAPTCHA warning. Wait for loading
+   badges, then **Add URLs and close search tabs**. URLs and Build Corpus expand, with navigation to URLs.
 5. Alternatively paste https://www.iana.org/help/example-domains into URLs. Download URLs.
-   Review extracted text with Preview text, then Export Corpus. The ZIP includes text files,
+   Review extracted text with Preview text, then **Export Corpus** in Project. The ZIP includes text files,
    original documents, Report.xlsx, url_list.txt, seeds.txt and tuples.txt.
-6. Visit an ordinary HTML page and use Add page to corpus from the popup. Reopen the popup:
-   it should report Page already added to corpus.
+6. Visit an ordinary HTML page and use **Add this page to corpus** from the popup. Reopen the popup:
+   it should report Page already added to corpus and retain Close tab after success.
 7. Test PDF/DOCX by downloading a publicly accessible file, or import a locally downloaded
    file for a failed row. Scanned PDFs without a text layer need attention; OCR is absent.
 8. Optionally select a project language and recheck texts; mismatches/uncertain detection
-   move to Documents needing attention. Deleting a document asks for confirmation.
+   move to Documents with issues. Deleting a document asks for confirmation.
 
 Broad HTTP/HTTPS host access is needed because users can supply arbitrary document URLs
 and collect/capture pages from arbitrary sites. activeTab and scripting read relevant page
@@ -104,9 +104,25 @@ No remote executable code is loaded. PDF.js, its worker, character maps and font
 PDF JavaScript and WebAssembly execution are disabled. Page scripts are not executed during
 HTML extraction. Imported files are processed locally without server upload.
 
+## Version 2.1 release materials
+
+Use [RELEASE-NOTES-2.1.md](RELEASE-NOTES-2.1.md) for version notes and
+[RELEASE-CHECKLIST-2.1.md](RELEASE-CHECKLIST-2.1.md) for final-package and upgrade tests.
+Refresh Firefox screenshots of the Project section, Build Corpus/text review and popup.
+
+Additional reviewer checks: edit text in Preview text and test Cancel/Save; change
+limits in Settings; optionally enable floating controls in the popup; save a complete
+.bootcat project and open it in either supported desktop browser. Google alone receives a
+result-language preference for supported corpus languages; no country/region preference
+is added. Unsupported languages and No language detection add no filter.
+
 ## Reproducing the submitted package from source
 
-Unzip the source archive into a clean directory, use Node.js 24 and run:
+Unzip the source archive into a clean directory. Build with Node.js 24 LTS and npm using
+the included lockfile. The build is platform-independent JavaScript; Linux, macOS and
+Windows are supported for building. Automated browser validation uses Ubuntu in the
+Playwright v1.62.1-noble image with Node.js 24; the final manual OS/browser checks are
+recorded separately in the release checklist. Run:
 
 ```sh
 npm ci

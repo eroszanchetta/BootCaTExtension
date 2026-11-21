@@ -1,4 +1,4 @@
-# Mozilla listing draft
+# Mozilla listing draft — version 2.1
 
 Name: BootCaT — Bootstrap Corpora and Terms
 
@@ -10,9 +10,13 @@ BootCaT helps you create a text corpus from the web:
 
 - Turn seed words and phrases into randomized search queries.
 - Search with DuckDuckGo, Ecosia or Google, including file-type restrictions and excluded sites.
-- Collect results from project search tabs, then download the pages and documents you select.
+- Avoid duplicate query batches, collect URLs from project search tabs, then download the sources you select.
+- Save complete portable .bootcat projects and reopen them in Firefox or Chrome.
+- Adjust download/extraction limits and other preferences in Settings.
+- Use optional floating controls and persistent close-after-success switches.
 - Extract corpus text from HTML, PDF and DOCX locally, using Readability or Defuddle for HTML.
-- Optionally check document language and review documents that need attention.
+- Review, edit or exclude extracted text in a large dialog, and inspect documents with issues.
+- Optionally check document language; Google searches can follow the corpus language without an added regional preference.
 - Export original files, extracted texts, an Excel report and your seeds, tuples and URL list.
 
 Searches and downloads contact the selected search engines and source websites directly.
@@ -28,6 +32,11 @@ when a download fails. Scanned PDFs require OCR in another tool. PDF layout can 
 
 Free and open source under GPL-3.0-or-later; bundled libraries retain their own licences.
 Developed and independently published by Eros Zanchetta (University of Bologna).
+
+## Version notes
+
+Use the short store update text in [RELEASE-NOTES-2.1.md](RELEASE-NOTES-2.1.md).
+Update the existing listing; the displayed release is 2.1 and package version is 2.1.0.
 
 ## Complete before submission
 

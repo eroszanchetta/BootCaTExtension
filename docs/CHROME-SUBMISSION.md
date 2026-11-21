@@ -1,20 +1,18 @@
-# Chrome Web Store submission — BootCaT 2.0.1
+# Chrome Web Store submission — BootCaT 2.1.0
 
-Prepared 16 November 2026. This guide prepares a submission; it does not publish one.
-No changes to the installed extension's runtime or permissions are required by this guide.
+Updated 21 November 2026 for the 2.1 update. This guide prepares a submission; it does not publish one.
+Build and submit the browser-specific package from the tested release commit.
 
-## Register the publisher
+## Update the existing listing
 
-1. Open https://chrome.google.com/webstore/devconsole using the Google Account that should
-   own the extension. For personal publication, use an account you control independently
-   of the University. This account is separate from the public support email.
-2. Accept the developer agreement and pay the one-time registration fee shown in the dashboard.
-   The developer account's email cannot simply be changed later; choose it carefully.
-3. Enable Google Account 2-Step Verification, required for publishing/updating extensions.
-4. Set the publisher name to **Eros Zanchetta**. Add and verify **bootcat@dipintra.it** as the
-   public contact email. Complete any account/identity/status information Google requests
-   according to your actual circumstances; free software and personal publication do not
-   establish a particular legal/business status by themselves.
+Use the Google account that owns the current BootCaT listing. Keep its extension ID and
+publisher identity. Do not create another listing for 2.1. Confirm that 2.1.0 has not already
+been uploaded or published; a new upload must have a version greater than the store's
+current version. Confirm account access and 2-Step Verification before submission.
+
+Publisher: **Eros Zanchetta**. Public support email: **bootcat@dipintra.it**.
+Complete account-specific declarations in the developer dashboard using the publisher's
+actual circumstances. This guide does not complete those declarations or submit an update.
 
 ## Prepare the package and public policy
 
@@ -22,19 +20,21 @@ After pulling the current repository, use Node.js 24 LTS:
 
 ```sh
 npm ci
-npm run package:chromium
+npm test
+npm run package
 ```
 
 Outputs:
 
-- `dist/packages/bootcat-chromium-2.0.1.zip`: upload this to Chrome Web Store.
-- `dist/packages/bootcat-source-2.0.1.zip`: keep as the corresponding source release; supply
+- `dist/packages/bootcat-chromium-2.1.0.zip`: upload this to Chrome Web Store.
+- `dist/packages/bootcat-source-2.1.0.zip`: keep as the corresponding source release; supply
   it to reviewers if requested and make source available to users as required by the GPL.
 - `dist/packages/bootcat-privacy.html`: a standalone public privacy-policy page.
 
 Do not upload the Firefox ZIP or the source ZIP as the extension. Chrome normally receives
-one extension ZIP, unlike Mozilla's separate source-upload workflow. Keep the existing
-version, 2.0.1: the installed extension is unchanged by this submission preparation.
+one extension ZIP, unlike Mozilla's separate source-upload workflow. package.json and
+package-lock.json already specify 2.1.0; do not increment them unless that version has
+already been used in the store. Build all release artifacts from the same final commit.
 
 `npm run export:privacy` exports just the public policy without installing PDF.js.
 The exporter uses the privacy section in src/about.html, including the support address,
@@ -55,7 +55,8 @@ through a release/tag, an exact commit link, or the matching source ZIP.
 
 ## Upload and complete the listing
 
-1. Choose **Add new item** and upload the Chromium ZIP. Uploading creates a draft.
+1. Open the existing BootCaT item in the developer dashboard and upload the new Chromium ZIP.
+   Keep the existing listing and extension ID. Uploading prepares a draft update.
 2. Complete **Store listing** using CHROME-LISTING.md. Reuse accurate feature wording from
    the Mozilla listing, but use actual Chrome screenshots.
 3. Provide the existing 128×128 PNG icon (src/icons/icon-128.png) and at least one screenshot.
@@ -101,7 +102,7 @@ are downloaded from a server, and downloaded page scripts are not executed durin
 
 Retain local project settings, search collection records and user defaults, plus session-only
 tracking of search tabs opened for the project. Document bodies/text are held in local
-IndexedDB. The user can remove documents or clear the current project by creating a new one.
+IndexedDB. The user can remove documents, close the current project, or replace it with a new/opened project.
 There is no project synchronization or developer-operated storage server.
 
 ### Host permission justification — http://*/* and https://*/*
@@ -113,7 +114,7 @@ fixed domain allowlist would prevent the core arbitrary-source corpus-building w
 BootCaT does not collect unrelated browser history or continuously scrape unrelated tabs.
 Ordinary batch downloads omit credentials. Explicit PDF recovery may use the current website's
 browser session. HTTP is supported for user-selected public sources, not developer telemetry;
-search providers use HTTPS. Refer to the privacy policy for the exact network behaviour.
+search providers use HTTPS. Google searches may include the project's mapped result-language preference; no regional setting is added. Refer to the privacy policy for the exact network behaviour.
 
 Do not add tabs, downloads, cookies or history permissions just to match another extension's
 form. They are not declared by this release. Chrome will generate fields from the uploaded
@@ -161,13 +162,13 @@ Use desktop Chrome 120 or later. No BootCaT account or API key is required.
 1. Open the toolbar popup and click Open BootCaT. Choose New Project, name it and select No language detection.
 2. Expand Seeds & Tuples. Enter five seeds, generate a few tuples, and prepare searches.
    Use DuckDuckGo or Ecosia; Google may require its own login or CAPTCHA.
-3. Open project searches individually or with the warned Open all queries action. Wait for
-   loading badges, then collect results and close project search tabs. Only tabs opened for
+3. Open project searches individually or with **Run all queries** after confirming the tab count and CAPTCHA warning. Wait for
+   loading badges, then **Add URLs and close search tabs**. Only tabs opened for
    the current project are tracked for this batch action.
 4. Alternatively enter https://www.iana.org/help/example-domains into URLs and download it.
-   Review extracted text with Preview text, then Export Corpus. Export contains original
+   Review extracted text with **Preview text** (Edit, Save, Cancel), then **Export Corpus** in Project. Export contains original
    documents, texts, Report.xlsx and plain-text seeds/tuples/URL lists.
-5. Visit a normal HTML page and use Add page to corpus in the popup. Reopening the popup should
+5. Visit a normal HTML page and use Add this page to corpus in the popup. Reopening the popup should
    indicate that the page is already included in the current corpus.
 6. PDF/DOCX extraction works on public direct downloads, and failed-download rows support
    importing a locally downloaded file. OCR is absent. CAPTCHA solving is manual; BootCaT
@@ -178,6 +179,17 @@ analytics or developer backend is involved. For dependency/build provenance see
 MOZILLA-SUBMISSION.md and the bundled vendor notices. The same shared source is used by both
 browser packages, with separate manifests. Public source:
 https://github.com/eroszanchetta/BootCaTExtension.
+
+## Release materials and checks
+
+Use [RELEASE-NOTES-2.1.md](RELEASE-NOTES-2.1.md) for What is new and
+[RELEASE-CHECKLIST-2.1.md](RELEASE-CHECKLIST-2.1.md) for final-package/upgrade testing.
+Refresh actual Chrome screenshots of the Project section, Build Corpus/text review and popup.
+Verify the hosted privacy-policy page matches the newly generated public policy.
+
+Reviewer checks should also include Settings; Save Project/Open Project with a .bootcat file;
+and optional floating controls enabled from the popup. Their default is off. Files stay local,
+except for the explicit search/source requests described in the privacy policy.
 
 ## Official references
 
@@ -190,3 +202,5 @@ https://github.com/eroszanchetta/BootCaTExtension.
 - Listing images: https://developer.chrome.com/docs/webstore/images
 
 Portable project review: Save Project downloads a .bootcat ZIP containing all project records and source/text files. Open Project reads a user-selected local file, validates it, then atomically replaces the current project after confirmation. No archive content is executed or sent to a server. User preferences remain on the receiving browser.
+
+- Update an existing listing and deferred publication: https://developer.chrome.com/docs/webstore/update
