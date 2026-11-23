@@ -7,13 +7,13 @@ export function initProjectTabsUI({ getProjectId, onState = () => {} }) {
   let destroyed = false, revision = 0, state = { count: 0, batch: null };
   function render() {
     const batch = state.batch;
-    const loading = state.loading || 0, loaded = state.loaded ?? state.count;
-    el('project-tab-count').textContent = `${loaded} of ${state.count} project search tabs loaded.${opening ? ' Opening search tabs…' : loading ? ' Waiting for loading to finish.' : ''}`;
-    el('collect-project-tabs').disabled = opening || !!batch?.running || !state.count || loading > 0;
+    const loading = state.loading || 0, loaded = state.loaded ?? state.count, blocked = state.blocked || 0;
+    el('project-tab-count').textContent = `${loaded} of ${state.count} project search tabs loaded.${opening ? ' Opening search tabs…' : loading ? ' Waiting for loading to finish.' : ''}${blocked ? ` ${blocked} need attention.` : ''}`;
+    el('collect-project-tabs').disabled = opening || !!batch?.running || !loaded || loading > 0;
     const skip = el('collect-loaded-tabs');
     skip.hidden = !loading || !(state.tabs || []).some(tab => tab.slow);
     skip.disabled = opening || !!batch?.running || !loaded;
-    el('project-tab-loading-hint').textContent = skip.hidden ? '' : 'Some tabs are taking a long time to load. Inspect or close them, or collect the loaded tabs and leave the others open.';
+    el('project-tab-loading-hint').textContent = blocked ? (state.tabs || []).find(tab => tab.challenge)?.reason || 'Open blocked search tabs to complete the check or sign-in.' : skip.hidden ? '' : 'Still loading—open these tabs to check, or add URLs from the loaded tabs.';
     el('stop-project-tabs').hidden = !batch?.running;
     el('stop-project-tabs').disabled = !!batch?.stopping;
     if (!batch) { el('project-tab-status').textContent = ''; return; }
@@ -37,7 +37,7 @@ export function initProjectTabsUI({ getProjectId, onState = () => {} }) {
       if (!reply?.ok) throw new Error(reply?.error || 'Could not read project search tabs.');
       state = reply; render(); onState(state);
       clearTimeout(timer);
-      if (state.loading) timer = setTimeout(refresh, 1000);
+      if (state.loading || state.blocked) timer = setTimeout(refresh, state.blocked ? 2000 : 1000);
     } catch (error) { if (!destroyed && request === revision) { el('project-tab-status').textContent = error.message; onState({ ...state, ready: false }); } }
   }
   async function action(type, loadedOnly = false) {

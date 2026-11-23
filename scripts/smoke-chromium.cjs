@@ -112,7 +112,7 @@ const { execFileSync } = require('node:child_process');
 
     const openPanels = async () => page.locator('.workspace-panel').evaluateAll(panels => panels.forEach(panel => { panel.open = true; }));
     const assertCollapsed = async () => {
-      await page.waitForFunction(() => !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled);
+      await page.waitForFunction(() => !document.querySelector('#urls').disabled && !document.querySelector('#open-project').disabled);
       assert.deepEqual(await page.locator('.workspace-panel[open]').evaluateAll(panels => panels.map(panel => panel.closest('section').id)), ['project-section']);
       assert.equal(await page.locator('#more-search-options').getAttribute('open'), null);
     };
@@ -160,7 +160,7 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     await page.click('#project-choice-new');
     await page.selectOption('#project-dialog-language', 'none'); await page.fill('#project-dialog-name', 'First corpus'); await submitProject();
     await page.locator('#project-dialog[open]').waitFor({ state: 'hidden' });
-    await page.waitForFunction(() => document.querySelector('#project-name').value === 'First corpus' && !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled);
+    await page.waitForFunction(() => document.querySelector('#project-name').value === 'First corpus' && !document.querySelector('#urls').disabled && !document.querySelector('#open-project').disabled);
     await assertCollapsed();
     assert.equal(await page.locator('.workspace-panel').count(), 5);
     assert.equal(await page.locator('#export-metadata, #metadata-export-status').count(), 0);
@@ -215,7 +215,7 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     }
     async function waitForFinished() {
       try {
-        await page.waitForFunction(() => !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled && document.querySelector('#status').textContent.startsWith('Finished.'));
+        await page.waitForFunction(() => !document.querySelector('#urls').disabled && !document.querySelector('#open-project').disabled && document.querySelector('#status').textContent.startsWith('Finished.'));
       } catch (error) {
         console.error('Download wait state:', await page.evaluate(async () => ({ status: document.querySelector('#status').textContent, saved: document.querySelector('#saved-status').textContent, urls: document.querySelector('#urls').value, locks: await navigator.locks.query() })));
         throw error;
@@ -247,7 +247,7 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
         await page.click('#project-replace-continue');
         await page.locator('#project-replace-dialog[open]').waitFor({ state: 'hidden' });
       }
-      await page.waitForFunction(name => document.querySelector('#project-name').value === name && !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled, nextName);
+      await page.waitForFunction(name => document.querySelector('#project-name').value === name && !document.querySelector('#urls').disabled && !document.querySelector('#open-project').disabled, nextName);
     }
     await page.click('#open-settings');
     await page.waitForFunction(() => document.querySelector('#settings-dialog').open && !document.querySelector('#settings-save').disabled);
@@ -492,7 +492,7 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     for (const extractor of ['readability', 'defuddle']) {
       if (extractor === 'defuddle') {
         await clickConfirmed('#review-lists .delete-button');
-        await page.waitForFunction(() => !document.querySelector('#review-lists tbody tr') && !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled);
+        await page.waitForFunction(() => !document.querySelector('#review-lists tbody tr') && !document.querySelector('#urls').disabled && !document.querySelector('#open-project').disabled);
         await page.fill('#urls', 'https://corpus.test/article');
       }
       await page.selectOption('#extractor', extractor);
@@ -665,7 +665,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.equal(await page.locator('#export').isDisabled(), true);
     assert.match(await page.locator('#export-status').innerText(), /Corpus saved.*Downloads folder/);
     await page.reload(); await assertCollapsed(); await openPanels();
-    await page.waitForFunction(() => !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled);
+    await page.waitForFunction(() => !document.querySelector('#urls').disabled && !document.querySelector('#open-project').disabled);
     assert.equal(await page.locator('#export').isDisabled(), true);
     assert.match(await page.locator('#export-status').innerText(), /Corpus saved/);
     await page.locator('#results input[type="checkbox"]').first().uncheck();
@@ -756,7 +756,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     await page.waitForFunction(() => document.querySelector('#preview-text').value.includes('Renewable energy'));
     assert.ok((await page.inputValue('#preview-text')).includes('Renewable energy'));
     await page.reload(); await assertCollapsed(); await openPanels();
-    await page.waitForFunction(() => document.querySelectorAll('#review-lists tbody tr').length === 1 && !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled);
+    await page.waitForFunction(() => document.querySelectorAll('#review-lists tbody tr').length === 1 && !document.querySelector('#urls').disabled && !document.querySelector('#open-project').disabled);
     assert.equal(await page.inputValue('#preview-text'), '');
     await page.click('#review-lists .preview-button');
     await page.waitForFunction(() => document.querySelector('#preview-text').value.includes('Renewable energy'));
@@ -781,7 +781,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.equal(recoveredPDF.ok, true, JSON.stringify(recoveredPDF));
     const sessionRow = page.locator('#review-lists tbody tr').filter({ has: page.locator(`a[href="${pdfOrigin}/session-document"]`) });
     await sessionRow.locator('.preview-button').waitFor();
-    await page.waitForFunction(() => !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled);
+    await page.waitForFunction(() => !document.querySelector('#urls').disabled && !document.querySelector('#open-project').disabled);
     assert.match(await sessionRow.innerText(), /PDF saved using browser session/);
     assert.ok(!(await sessionRow.innerText()).includes('PDF reading order'));
     await sessionRow.locator('.preview-button').click();
@@ -801,7 +801,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     const largePDF = Buffer.from(pdfFixture({ paddingBytes: 15 * 1024 * 1024 }));
     await (await chooserEvent).setFiles({ name: 'downloaded.pdf', mimeType: 'application/pdf', buffer: largePDF });
     await localRow.locator('.preview-button').waitFor();
-    await page.waitForFunction(() => !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled);
+    await page.waitForFunction(() => !document.querySelector('#urls').disabled && !document.querySelector('#open-project').disabled);
     assert.match(await localRow.innerText(), /Imported PDF/);
     assert.equal(await page.locator('#review-lists tbody tr').count(), 2, 'recovery must replace failed rows');
     await page.fill('#urls', `${pdfOrigin}/session-document\n${pdfOrigin}/always-blocked.pdf\n${pdfOrigin}/always-blocked.docx`);
@@ -814,7 +814,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.equal(await page.locator('#import-document-picker').getAttribute('accept'), '');
     await (await wordChooser).setFiles({ name: 'downloaded.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', buffer: largeDOCX });
     await wordRow.locator('.preview-button').waitFor();
-    await page.waitForFunction(() => !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled);
+    await page.waitForFunction(() => !document.querySelector('#urls').disabled && !document.querySelector('#open-project').disabled);
     assert.match(await wordRow.innerText(), /Imported DOCX/);
     await wordRow.locator('.preview-button').click();
     await page.waitForFunction(() => document.querySelector('#preview-text').value.length > 3 * 1024 * 1024);
@@ -824,7 +824,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.ok((await readFile(recoveredPath)).includes(largePDF), 'ZIP must contain the complete imported PDF original');
     assert.ok((await readFile(recoveredPath)).includes(largeDOCX), 'ZIP must contain the complete imported DOCX original');
     await page.reload(); await assertCollapsed(); await openPanels();
-    await page.waitForFunction(() => document.querySelectorAll('#review-lists tbody tr').length === 3 && !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled);
+    await page.waitForFunction(() => document.querySelectorAll('#review-lists tbody tr').length === 3 && !document.querySelector('#urls').disabled && !document.querySelector('#open-project').disabled);
     assert.equal(await page.inputValue('#preview-text'), '');
     assert.match(await page.locator('#review-lists').innerText(), /Imported PDF/);
     assert.match(await page.locator('#review-lists').innerText(), /Imported DOCX/);
@@ -833,7 +833,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     await page.evaluate(() => (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'open-workspace' }));
     assert.equal(context.pages().filter(tab => tab.url().split('#')[0] === origin + '/downloader.html').length, 1);
     await page.reload(); await assertCollapsed(); await openPanels();
-    await page.waitForFunction(() => !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled);
+    await page.waitForFunction(() => !document.querySelector('#urls').disabled && !document.querySelector('#open-project').disabled);
     await page.waitForFunction(() => document.querySelector('#project-name').value === 'Energy corpus');
     await page.fill('#urls', 'https://corpus.test/keep-on-cancel');
     await page.click('#new-project');
@@ -860,7 +860,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.equal(await page.locator('#export').isDisabled(), true);
     assert.equal(await page.evaluate(async () => (await (await import('./page-store.js')).readSavedPages()).length), 0);
     await page.selectOption('#project-language', 'ita');
-    await page.waitForFunction(() => !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled);
+    await page.waitForFunction(() => !document.querySelector('#urls').disabled && !document.querySelector('#open-project').disabled);
     await page.fill('#urls', 'https://corpus.test/article'); await page.click('#start');
     await waitForFinished();
     assert.equal(await page.locator('#problem-results tr').count(), 1);
@@ -874,7 +874,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     await page.waitForFunction(() => document.querySelectorAll('#results tr').length === 1 && !document.querySelector('#recheck-language').disabled);
     assert.equal(await page.locator('#attention-section').isVisible(), false);
     await page.click('#recheck-language');
-    await page.waitForFunction(() => document.querySelector('#language-status').textContent.startsWith('1 of 1 saved texts rechecked') && !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled);
+    await page.waitForFunction(() => document.querySelector('#language-status').textContent.startsWith('1 of 1 saved texts rechecked') && !document.querySelector('#urls').disabled && !document.querySelector('#open-project').disabled);
     assert.equal(await page.locator('#results tr').count(), 1, 'manual override must survive recheck');
     const acceptedDownload = page.waitForEvent('download'); await closeTextReview(); await page.click('#export');
     const acceptedZIP = join(root, 'accepted-language.zip'); await (await acceptedDownload).saveAs(acceptedZIP);
@@ -882,7 +882,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
 
     await page.uncheck('#results input[type="checkbox"]');
     await page.selectOption('#project-language', 'none'); await page.click('#recheck-language');
-    await page.waitForFunction(() => document.querySelector('#language-status').textContent.startsWith('1 of 1 saved texts rechecked') && !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled);
+    await page.waitForFunction(() => document.querySelector('#language-status').textContent.startsWith('1 of 1 saved texts rechecked') && !document.querySelector('#urls').disabled && !document.querySelector('#open-project').disabled);
     assert.equal(await page.locator('#results input[type="checkbox"]').isChecked(), false, 'disabling detection must preserve manual exclusion');
     const languageDownload = page.waitForEvent('download'); await closeTextReview(); await page.click('#export');
     const languageZIP = join(root, 'language.zip'); await (await languageDownload).saveAs(languageZIP);
@@ -926,12 +926,12 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     await waitForSavedDraft();
     await page.locator('#more-search-options > summary').click();
     await page.reload(); await assertCollapsed(); await openPanels();
-    await page.waitForFunction(() => !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled && document.querySelectorAll('#prepared-queries a').length === 1);
+    await page.waitForFunction(() => !document.querySelector('#urls').disabled && !document.querySelector('#open-project').disabled && document.querySelectorAll('#prepared-queries a').length === 1);
     assert.equal(await page.inputValue('#search-site'), 'https://research.example.edu/path');
     assert.ok((await page.locator('#prepared-queries a').innerText()).includes('site:research.example.edu'));
     await page.click('#new-project'); await page.fill('#project-dialog-name', 'Saved defaults');
     await page.selectOption('#project-dialog-language', 'none'); await submitProject();
-    await page.waitForFunction(() => document.querySelector('#project-name').value === 'Saved defaults' && !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled);
+    await page.waitForFunction(() => document.querySelector('#project-name').value === 'Saved defaults' && !document.querySelector('#urls').disabled && !document.querySelector('#open-project').disabled);
     await assertCollapsed(); await openPanels();
     assert.equal(await page.inputValue('#excluded-sites'), 'youtube.com\nfacebook.com\nexample.org');
     assert.equal(await page.inputValue('#search-site'), '');
@@ -992,17 +992,25 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     await setCollectionControls({ floatingEnabled: true }); await floatingKeep.locator('[data-bootcat-floating-control]').waitFor();
     console.log('Floating controls, corner preference, popup switches, durable capture before closure and tracked collection closure passed.');
     // Save/open through the native picker and the real extension worker.
-    await page.waitForFunction(() => !document.querySelector('#save-project').disabled);
+    await page.waitForFunction(() => !document.querySelector('#open-project').disabled);
     const portableDownload = page.waitForEvent('download'); await page.click('#save-project');
     const portableFile = join(root, 'complete.bootcat'); await (await portableDownload).saveAs(portableFile);
     execFileSync('python3', ['-c', "import zipfile,json,sys; z=zipfile.ZipFile(sys.argv[1]); assert z.testzip() is None; p=json.loads(z.read('project.json')); assert p['format']=='BootCaTProject' and p['version']==1; assert any(n.startswith('originals/') for n in z.namelist())", portableFile]);
-    await page.waitForFunction(() => !document.querySelector('#save-project').disabled);
+    await page.waitForFunction(() => document.querySelector('#project-save-feedback').classList.contains('saved'));
+    assert.equal(await page.locator('#save-project').isDisabled(), true);
+    assert.match(await page.locator('#project-file-status').innerText(), /Project download started:.*\.bootcat/);
+    const retryDownload = page.waitForEvent('download'); await page.click('#project-download-again');
+    await (await retryDownload).saveAs(join(root, 'retry.bootcat'));
+    await page.waitForFunction(() => document.querySelector('#project-save-feedback').classList.contains('saved'));
+    await page.reload(); await assertCollapsed(); await openPanels();
+    await page.waitForFunction(() => document.querySelector('#project-save-feedback').classList.contains('saved') && document.querySelector('#save-project').disabled);
     const beforePortable = await page.evaluate(async () => (await (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'get-project' })).project.id);
     let projectChooser = page.waitForEvent('filechooser'); await page.click('#open-project');
     await (await projectChooser).setFiles({ name: 'damaged.bootcat', mimeType: 'application/zip', buffer: Buffer.from('damaged project') });
     await page.waitForFunction(() => document.querySelector('#project-file-status').textContent.startsWith('Could not open project'));
     assert.equal(await page.evaluate(async () => (await (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'get-project' })).project.id), beforePortable);
     await page.fill('#urls', 'https://corpus.test/unsaved-after-snapshot');
+    await page.waitForFunction(() => !document.querySelector('#save-project').disabled);
     projectChooser = page.waitForEvent('filechooser'); await page.click('#open-project'); await (await projectChooser).setFiles(portableFile);
     await page.locator('#project-replace-dialog[open]').waitFor(); await page.click('#project-replace-dialog button[value=cancel]');
     assert.equal(await page.inputValue('#urls'), 'https://corpus.test/unsaved-after-snapshot');
@@ -1012,7 +1020,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     const saveBeforeReplace = page.waitForEvent('download'); await page.click('#project-replace-save'); await (await saveBeforeReplace).saveAs(join(root, 'before-replacement.bootcat'));
     await page.waitForFunction(() => !document.querySelector('#project-replace-continue').disabled);
     await page.click('#project-replace-continue');
-    await page.waitForFunction(() => document.querySelector('#project-name').value === 'Saved defaults' && !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled);
+    await page.waitForFunction(() => document.querySelector('#project-name').value === 'Saved defaults' && !document.querySelector('#urls').disabled && !document.querySelector('#open-project').disabled);
     await assertCollapsed(); await openPanels();
     const afterPortable = await page.evaluate(async () => (await (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'get-project' })).project.id);
     assert.notEqual(afterPortable, beforePortable);
@@ -1026,12 +1034,12 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.match(await page.locator('#urls-warning').innerText(), /501 URLs/);
     assert.equal(await page.locator('#urls-counter').innerText(), '501 URLs');
     await page.reload(); await assertCollapsed(); await openPanels();
-    await page.waitForFunction(() => document.querySelector('#urls').value.split('\n').length === 501 && !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled);
+    await page.waitForFunction(() => document.querySelector('#urls').value.split('\n').length === 501 && !document.querySelector('#urls').disabled && !document.querySelector('#open-project').disabled);
     assert.match(await page.locator('#urls-warning').innerText(), /501 URLs/);
     assert.equal(await page.locator('#urls-counter').innerText(), '501 URLs');
     // Lifecycle closure propagates to other workspace windows and retains defaults.
     const secondWorkspace = await context.newPage(); await secondWorkspace.goto(origin + '/downloader.html');
-    await secondWorkspace.waitForFunction(() => !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled);
+    await secondWorkspace.waitForFunction(() => !document.querySelector('#urls').disabled && !document.querySelector('#open-project').disabled);
     await page.bringToFront();
     await clickConfirmed('#close-project', false);
     assert.equal(await page.inputValue('#project-name'), 'Saved defaults');
@@ -1057,12 +1065,12 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.equal(page.isClosed(), false, 'Close BootCaT closes only its own workspace');
     await page.bringToFront();
     const inactiveOpen = page.waitForEvent('filechooser'); await page.click('#project-choice-open'); await (await inactiveOpen).setFiles(portableFile);
-    await page.waitForFunction(() => document.querySelector('#project-name').value === 'Saved defaults' && !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled);
+    await page.waitForFunction(() => document.querySelector('#project-name').value === 'Saved defaults' && !document.querySelector('#urls').disabled && !document.querySelector('#open-project').disabled);
     await assertCollapsed(); await openPanels();
     await clickConfirmed('#close-project'); await page.locator('#project-choice-dialog[open]').waitFor();
     await page.click('#project-choice-new'); await page.fill('#project-dialog-name', 'After closing');
     await page.selectOption('#project-dialog-language', 'none'); await submitProject();
-    await page.waitForFunction(() => document.querySelector('#project-name').value === 'After closing' && !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled);
+    await page.waitForFunction(() => document.querySelector('#project-name').value === 'After closing' && !document.querySelector('#urls').disabled && !document.querySelector('#open-project').disabled);
     await assertCollapsed(); await openPanels(); await openSearchOptions();
     assert.equal(await page.inputValue('#excluded-sites'), 'youtube.com\nfacebook.com\nexample.org');
     assert.equal(await page.inputValue('#urls'), '');
@@ -1089,11 +1097,73 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     await page.selectOption('#project-language', 'none');
     await page.waitForFunction(() => !new URL(document.querySelector('#prepared-queries a').href).searchParams.has('lr'));
     await page.selectOption('#engine', 'duckduckgo'); await page.selectOption('#project-language', 'ita');
-    await page.waitForFunction(() => !document.querySelector('#urls').disabled && !document.querySelector('#save-project').disabled);
+    await page.waitForFunction(() => !document.querySelector('#urls').disabled && !document.querySelector('#open-project').disabled);
     assert.equal(new URL(await page.locator('#prepared-queries a').getAttribute('href')).searchParams.has('kl'), false);
     console.log('Google-only language URLs, language-specific collection history and live project-language changes passed.');
-    assert.deepEqual(errors, []);
-    console.log('Inactive state, initial cancellation, project closure across windows and preference retention passed.');
-    console.log('Workspace reuse, saved-search persistence and zero page errors passed.');
-  } finally { await context?.close(); if (pdfServer) await new Promise(resolve => pdfServer.close(resolve)); await rm(root, { recursive: true, force: true }); }
-})().catch(error => { console.error(error); process.exitCode = 1; });
+    // Unreadable Google links use identical guidance through popup and floating actions.
+    const googleMessage = 'BootCaT can’t read Google’s result links. Try signing in to Google and running the search again, or switch to a different search engine.';
+    await context.route('https://www.google.com/search**', route => route.fulfill({ contentType: 'text/html', body: '<div id="search">' + Array.from({ length: 8 }, (_, i) => `<a href="/url?opaque=${i}"><h3>Unreadable result</h3></a>`).join('') + '</div>' }));
+    await setCollectionControls({ floatingEnabled: true, closeCollectedTab: false });
+    const opaquePage = await context.newPage(); await opaquePage.goto('https://www.google.com/search?q=bootcat-opaque');
+    const opaquePopup = await popupFor(opaquePage); await opaquePopup.click('#collect');
+    await opaquePopup.waitForFunction(message => document.querySelector('#feedback').textContent === message, googleMessage); await opaquePopup.close();
+    await opaquePage.bringToFront(); const opaqueHost = opaquePage.locator('[data-bootcat-floating-control]'); await opaqueHost.waitFor();
+    const opaqueBox = await opaqueHost.boundingBox(); await opaquePage.mouse.click(opaqueBox.x + 20, opaqueBox.y + 20);
+    const accessibility = await context.newCDPSession(opaquePage);
+    let readableFeedback = false;
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const tree = await accessibility.send('Accessibility.getFullAXTree');
+      if (tree.nodes.some(node => node.name?.value === googleMessage)) { readableFeedback = true; break; }
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    assert.equal(readableFeedback, true, 'floating errors must show the same Google guidance');
+    await accessibility.detach(); await opaquePage.close();
+    // Real DOM challenge pages retain a pending resource, so browser status stays loading.
+    const releaseChallenges = [];
+    await context.route('https://bootcat-challenge.invalid/**', route => new Promise(resolve => { releaseChallenges.push(() => route.abort().catch(() => {}).finally(resolve)); }));
+    await context.route('https://www.ecosia.org/search**', async route => {
+      const headers = await route.request().allHeaders();
+      const ready = route.request().url().includes('challenge-good') || (headers.cookie || '').includes('bootcat_unlocked=1');
+      const body = ready ? '<title>Ecosia results</title><a data-test-id="result-link" href="https://corpus.test/challenge-result">Result</a>' : '<title>Just a moment...</title><form id="challenge-form">Verify you are human</form><img src="https://bootcat-challenge.invalid/pending"><script>setInterval(() => { if (document.cookie.includes("bootcat_unlocked=1")) location.reload(); }, 100)</script>';
+      return route.fulfill({ contentType: 'text/html', body });
+    });
+    await page.bringToFront(); await page.selectOption('#engine', 'ecosia');
+    await page.fill('#tuples', 'challenge-one\nchallenge-two\nchallenge-good'); await page.click('#prepare-queries');
+    await clickConfirmed('#open-all-queries');
+    await page.waitForFunction(async () => { const ext = globalThis.browser ?? chrome; const { project } = await ext.runtime.sendMessage({ type: 'get-project' }); const state = await ext.runtime.sendMessage({ type…16529 tokens truncated…ing || textReview?.isOpen() || hasDocumentWork()) await refreshActivity();
+    else { await restore(); await refreshActivity(); }
+    await importSavedPages();
+  } catch (error) { report(error); } finally { refreshing = false; }
+});
+
+portableUI = initPortableUI({
+  getProject: () => projectUI.snapshot(),
+  isBusy: () => !ready && !!projectUI.snapshot() || running || isBatchActive() || importing || hasDocumentWork() || remoteActivity.exclusive || seedsUI?.isBusy(),
+  isDirty: () => textReview?.isDirty(), flush: flushWrites,
+  exclusive: task => coordinator.exclusive(task),
+  onBusy: value => { portableBusy = value; updateControls(); if (!value && capturesPending) queueMicrotask(importSavedPages); }, version: VERSION, onStateChange: updateControls
+});
+
+(async () => {
+  try {
+    await projectUI.ready; projectId = projectUI.snapshot()?.id;
+    if (!projectId) {
+      setProjectSectionState(false); ui.export.disabled = true;
+      for (const id of ['seeds-section', 'search-section', 'urls-section', 'review-section']) {
+        for (const control of document.getElementById(id).querySelectorAll('button, input, select, textarea')) control.disabled = true;
+      }
+      ui.status.textContent = 'No active project. Create a project to download and extract documents.';
+      document.getElementById('collection-status').textContent = 'No active project.';
+      document.getElementById('project-tab-count').textContent = 'No active project.';
+      return;
+    }
+    await storage.ensureStoredProject(projectId);
+    await restore();
+    await loadSettings(); ready = true;
+    searchUI = initSearchUI({ onCollectionsChange: invalidateArchive, isRunning: () => running, seenCollectionIds: state.draft.seenCollections, getProjectId: () => projectId, onChange: patch => { queueDraft(patch); warnURLs(); } });
+    if (state.draft.engine) ui.engine.value = state.draft.engine;
+    seedsUI = initSeedsUI({ minimumSeeds: currentSettings.minimumSeeds, draft: state.draft, onChange: queueDraft, getLanguage: () => projectUI.snapshot()?.language || 'none', getProjectId: () => projectId, onOpeningChange: value => projectTabsUI?.setOpening(value) });
+    projectTabsUI = initProjectTabsUI({ getProjectId: () => projectId, onState: value => seedsUI?.updateTabState(value) });
+    updateControls(); await refreshActivity(); await importSavedPages();
+  } catch (error) { report(error); }
+})();

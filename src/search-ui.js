@@ -1,3 +1,4 @@
+import { collectionLinkWarning } from './search-feedback.js';
 import { getExtensionAPI } from './extension-api.js';
 const ext = getExtensionAPI();
 import { ENGINES } from "./engines.js";
@@ -20,7 +21,7 @@ export function initSearchUI({ isRunning, seenCollectionIds = [], onChange = () 
   }
   function render() {
     const unresolved = collections.reduce((sum, item) => sum + item.unresolved, 0);
-    status.textContent = [unresolved ? `${unresolved} candidate links could not be resolved; consider another engine for those searches.` : '', isRunning() && (pending.size || pendingCollections.size) ? 'New URLs will be added after the current batch finishes.' : ''].filter(Boolean).join(' ');
+    status.textContent = [unresolved ? collectionLinkWarning(collections.find(item => item.unresolved && item.unreadableGoogle) || collections.find(item => item.unresolved)) : '', isRunning() && (pending.size || pendingCollections.size) ? 'New URLs will be added after the current batch finishes.' : ''].filter(Boolean).join(' ');
   }
   function flush() {
     if (destroyed || (!pending.size && !pendingCollections.size)) return;

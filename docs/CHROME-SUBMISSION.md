@@ -204,3 +204,5 @@ except for the explicit search/source requests described in the privacy policy.
 Portable project review: Save Project downloads a .bootcat ZIP containing all project records and source/text files. Open Project reads a user-selected local file, validates it, then atomically replaces the current project after confirmation. No archive content is executed or sent to a server. User preferences remain on the receiving browser.
 
 - Update an existing listing and deferred publication: https://developer.chrome.com/docs/webstore/update
+
+Search-status checks inspect only tracked project result tabs for verification-page evidence and usable results. They do not collect/save results, click challenges, reload pages or inspect unrelated tabs. Recovery in one tab prompts independent checks of blocked siblings for the same engine. Unreadable Google links provide sign-in-or-switch-engine guidance. Save Project feedback identifies a download request, not verified filesystem completion; Download again permits retry without changing the project.

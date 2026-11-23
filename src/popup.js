@@ -1,3 +1,4 @@
+import { collectionLinkWarning } from './search-feedback.js';
 import { COLLECTION_CONTROLS_KEY, DEFAULT_COLLECTION_CONTROLS, collectionControlsFromRecord } from './collection-preferences.js';
 import { getExtensionAPI } from './extension-api.js';
 import { initVersionBadge } from './version.js';
@@ -66,7 +67,7 @@ function render() {
     } else {
       el('collect-action').hidden = false; collect.disabled = collecting || !preferencesLoaded || savingPreferences.size > 0;
       el('page-info').textContent = `${engine.name}${engine.experimental ? ' (experimental)' : ''} web results detected.`;
-      message(feedback, collectionError || (alreadyCollected && unresolved ? `${unresolved} candidate links could not be resolved. The tab stays open; review the page and collect again.` : collectionWarning));
+      message(feedback, collectionError || (alreadyCollected && unresolved ? collectionWarning || 'Some links could not be added. Open the search tab to review them.' : collectionWarning));
     }
   } else if (pageState === 'checking' && !savingPage) {
     message(status, 'Checking whether this page is already in the corpus…');
@@ -98,7 +99,7 @@ async function refreshPageState() {
 function updateCollectionState(collections) {
   const saved = engine && collections.find(item => item.engine === engine.id && item.pageURL === activeTab?.url);
   alreadyCollected = !!saved; unresolved = saved?.unresolved || 0;
-  if (!collecting) collectionError = '';
+  if (!collecting) { collectionError = ''; collectionWarning = collectionLinkWarning(saved); }
   render();
 }
 ext.storage.onChanged.addListener((changes, area) => {
@@ -150,7 +151,7 @@ collect.addEventListener('click', async () => {
     const result = await ext.runtime.sendMessage({ type: 'collect', projectId, tabId: activeTab.id });
     if (reloading || project.id !== projectId) return;
     if (!result?.ok) throw new Error(result?.error || 'Collection failed. Try again.');
-    alreadyCollected = true; unresolved = result.unresolved || 0; collectionWarning = result.closeWarning || result.workspaceWarning || '';
+    alreadyCollected = true; unresolved = result.unresolved || 0; collectionWarning = result.closeWarning || result.workspaceWarning || result.linkWarning || '';
   } catch (error) { if (!reloading && project.id === projectId) collectionError = error.message; }
   finally { collecting = false; render(); }
 });
@@ -162,7 +163,7 @@ savePage.addEventListener('click', async () => {
     const result = await ext.runtime.sendMessage({ type: 'save-page', projectId, tabId: activeTab.id });
     if (reloading || project.id !== projectId) return;
     if (!result?.ok) throw new Error(result?.error || 'Could not save this page. Try again.');
-    pageState = 'saved'; pageWarning = result.closeWarning || result.workspaceWarning || '';
+    pageState = 'saved'; pageWarning = result.closeWarning || result.workspaceWarning || result.linkWarning || '';
   } catch (error) {
     if (!reloading && project.id === projectId) { pageState = 'available'; pageError = error.message; }
   } finally { savingPage = false; render(); }
