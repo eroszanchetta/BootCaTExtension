@@ -1,3 +1,4 @@
+import { collectionFailure, collectionLinkWarning, GOOGLE_LINK_MESSAGE } from '../src/search-feedback.js';
 import { IDBFactory } from 'fake-indexeddb';
 import { loadWorkspace } from '../src/project-store.js';
 import { savePage, readSavedPages } from '../src/page-store.js';
@@ -9,7 +10,7 @@ import { addCollection, uniqueResults } from '../src/collection.js';
 
 // Synthetic DOM API fixtures test URL handling and isolated-world execution.
 // They do NOT validate selectors against current live engine layouts.
-function extract(engine, href, links) {
+function extract(engine, href, links, page = {}) {
   const anchors = links.map(link => ({
     getClientRects: () => link.hidden ? [] : [{}],
     closest: () => link.ad ? {} : null,
@@ -17,7 +18,7 @@ function extract(engine, href, links) {
     querySelector: () => ({ textContent: link.title || 'Title' }),
     textContent: link.title || 'Title'
   }));
-  const context = vm.createContext({ URL, location: { href }, document: { querySelectorAll: () => anchors } });
+  const context = vm.createContext({ URL, location: { href }, document: { title: page.title || '', querySelector: selector => (selector.startsWith('#challenge-form') ? page.challengeForm : page.challengeResource) ? {} : null, querySelectorAll: () => anchors } });
   // No module closure is available, just as with scripting.executeScript.
   return JSON.parse(JSON.stringify(vm.runInContext(`(${extractResults.toString()})(${JSON.stringify(ENGINES.find(e => e.id === engine))})`, context)));
 }
@@ -109,7 +110,7 @@ for (const namespace of ['chrome', 'browser']) test(`${namespace}: background se
     assert.match(wrongAction.error, /Use Add URLs from this tab to corpus/);
     const failed = await request({ type: 'collect', tabId: 3 });
     assert.equal(failed.ok, false);
-    assert.match(failed.error, /No usable results/);
+    assert.match(failed.error, /No search results could be collected/);
     assert.equal(collections.length, 2);
     await request({ type: 'clear-collections', projectId: initial.project.id });
     assert.equal(collections.length, 0);
@@ -153,4 +154,21 @@ for (const namespace of ['chrome', 'browser']) test(`${namespace}: background se
 
 
   } finally { delete globalThis[namespace]; delete globalThis.indexedDB; }
+});
+
+test('opaque Google destinations use friendly guidance and preserve readable partial results', () => {
+  const result = extract('google', 'https://www.google.com/search?q=energy', [{ href: '/url?opaque=secret' }, { href: '/url?another=secret' }]);
+  assert.equal(result.unreadableGoogle, 2); assert.equal(result.results.length, 0);
+  assert.equal(collectionFailure(result), GOOGLE_LINK_MESSAGE);
+  assert.ok(!GOOGLE_LINK_MESSAGE.includes('DuckDuckGo')); assert.ok(!GOOGLE_LINK_MESSAGE.includes('Ecosia'));
+  const partial = extract('google', 'https://www.google.com/search?q=energy', [{ href: '/url?opaque=secret' }, { href: 'https://example.org/readable' }]);
+  assert.equal(partial.results.length, 1); assert.match(collectionLinkWarning(partial), /Some Google result links/);
+});
+test('challenge detection requires page evidence and never mistakes a result page with a widget for a challenge', () => {
+  const url = 'https://www.ecosia.org/search?q=energy';
+  assert.equal(extract('ecosia', url, [], { title: 'Just a moment...', challengeResource: true }).challenge, true);
+  assert.equal(extract('ecosia', url, [], { title: 'Localized challenge', challengeForm: true }).challenge, true);
+  assert.equal(extract('ecosia', url, [], { title: 'Just a moment...' }).challenge, undefined);
+  const results = extract('ecosia', url, [{ href: 'https://example.org/' }], { title: 'Just a moment...', challengeResource: true, challengeForm: true });
+  assert.equal(results.challenge, undefined); assert.equal(results.results.length, 1);
 });

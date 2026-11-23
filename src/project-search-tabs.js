@@ -1,6 +1,7 @@
+import { challengeMessage } from './search-feedback.js';
 import { searchLanguageFilter, languageFilterFromURL } from './search-language.js';
 import { normalizeQuery, queryKey, queryPlan } from './query-lifecycle.js';
-import { adapterForURL, searchURL } from './engines.js';
+import { adapterForURL, searchURL, extractResults } from './engines.js';
 export const SEARCH_TABS_KEY = 'projectSearchTabs';
 export const SLOW_TAB_MS = 30_000;
 const empty = () => ({ tabs: [], history: [], batch: null });
@@ -17,6 +18,7 @@ function rememberClosed(data, record) {
 function updateLoading(record, tab) {
   record.unloaded = !!tab.discarded;
   if (tab.discarded) { record.status = 'attention'; record.reason = 'Tab was unloaded by the browser. Open it to reload, then retry.'; return; }
+  if (record.challenge) { record.status = 'attention'; return; }
   if (tab.status !== 'complete') {
     if (record.status !== 'loading') record.loadingSince = Date.now();
     record.status = 'loading'; record.reason = '';
@@ -38,11 +40,11 @@ function isProviderGate(record, value) {
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return false;
     const google = /^(?:(?:consent|accounts)\.)?google\.[a-z]{2,3}(\.[a-z]{2})?$/.test(host);
     const provider = record.engine === 'google' ? google : record.engine === 'duckduckgo' ? /^(html\.)?duckduckgo\.com$/.test(host) : record.engine === 'ecosia' && host === 'ecosia.org';
-    return !!provider && (/^\/(sorry|captcha|challenge|consent|anomaly)(\/|\.|$)/i.test(url.pathname) || (record.engine === 'google' && /^(consent|accounts)\./.test(host)));
+    return !!provider && (/^\/cdn-cgi\/challenge-platform(\/|$)/i.test(url.pathname) || /^\/(sorry|captcha|challenge|consent|anomaly)(\/|\.|$)/i.test(url.pathname) || (record.engine === 'google' && /^(consent|accounts)\./.test(host)));
   } catch { return false; }
 }
 export function createProjectSearchTabs({ ext, serialize, assertProject, collectPage }) {
-  const workerToken = crypto.randomUUID(), navigation = new Map();
+  const workerToken = crypto.randomUUID(), navigation = new Map(), probes = new Map();
   let known = new Set(), activeBatch = null;
   async function read() {
     if (!ext.storage.session) throw new Error('This browser does not support safe session tab tracking.');
@@ -55,11 +57,13 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
     await ext.storage.session.set({ [SEARCH_TABS_KEY]: data });
     known = new Set(data.tabs.map(record => record.tabId));
     for (const id of navigation.keys()) if (!known.has(id)) navigation.delete(id);
+    const tokens = new Set(data.tabs.map(record => record.token));
+    for (const token of probes.keys()) if (!tokens.has(token)) probes.delete(token);
   }
   // Caller already holds the background write queue, including project reset.
   async function resetInQueue() {
     if (activeBatch) activeBatch.stopped = true;
-    activeBatch = null;
+    activeBatch = null; probes.clear();
     await write(empty());
   }
   async function restoreCollected(data, projectId) {
@@ -104,16 +108,50 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
   function status(data, projectId) {
     const batch = data.batch?.projectId === projectId ? data.batch : null;
     const tabs = data.tabs.filter(record => record.projectId === projectId).map(record => ({
-      tabId: record.tabId, engine: record.engine, query: record.query, ...(record.languageFilter ? { languageFilter: record.languageFilter } : {}), status: record.status || 'loading', reason: record.reason || '', unloaded: !!record.unloaded,
+      tabId: record.tabId, engine: record.engine, query: record.query, ...(record.languageFilter ? { languageFilter: record.languageFilter } : {}), status: record.status || 'loading', reason: record.reason || '', ...(record.challenge ? { challenge: true } : {}), unloaded: !!record.unloaded,
       slow: record.status === 'loading' && Date.now() - record.loadingSince >= SLOW_TAB_MS
     }));
-    return { revision: data.revision || 0, count: tabs.length, loaded: tabs.filter(tab => tab.status !== 'loading' && !tab.unloaded).length,
+    return { revision: data.revision || 0, count: tabs.length, loaded: tabs.filter(tab => tab.status !== 'loading' && !tab.unloaded && !tab.challenge).length, blocked: tabs.filter(tab => tab.challenge).length,
       loading: tabs.filter(tab => tab.status === 'loading').length, tabs,
       history: (data.history || []).filter(item => item.projectId === projectId), batch };
   }
+  async function inspectRecord(record, tab, force = false) {
+    const url = tab.pendingUrl || tab.url;
+    if (isProviderGate(record, url)) {
+      record.challenge = 'redirect'; record.status = 'attention';
+      record.reason = 'Open this tab to complete the challenge, consent or sign-in, then retry collection.';
+      return false;
+    }
+    let recovered = false;
+    if (record.challenge === 'redirect' && tab.status === 'complete' && matchesProjectSearch(record, url)) {
+      delete record.challenge; record.status = 'loaded'; record.reason = ''; recovered = true;
+    }
+    if (!ext.scripting?.executeScript || tab.discarded || !matchesProjectSearch(record, url)) return recovered;
+    const signature = `${record.revision}:${tab.status}:${tab.title || ''}`, previous = probes.get(record.token);
+    const suspected = /just a moment|attention required|verify.*human|checking.*browser|security verification/i.test(tab.title || '');
+    if (tab.status !== 'complete' && !record.challenge && !suspected && Date.now() - record.loadingSince < SLOW_TAB_MS) return recovered;
+    if (!force && previous?.signature === signature && (!record.challenge && !suspected || Date.now() < previous.next)) return recovered;
+    probes.set(record.token, { signature, next: Date.now() + 2000 });
+    const epoch = navigation.get(record.tabId) || 0; let timeout;
+    try {
+      const reply = await Promise.race([
+        ext.scripting.executeScript({ target: { tabId: record.tabId }, injectImmediately: true, func: extractResults, args: [adapterForURL(url)] }),
+        new Promise(resolve => { timeout = setTimeout(() => resolve(null), 1200); })
+      ]);
+      const result = reply?.[0]?.result;
+      if (!result || !result.pageURL || canonical(result.pageURL) !== canonical(url) || epoch !== (navigation.get(record.tabId) || 0)) return false;
+      if (result.challenge) {
+        record.challenge = 'verification'; record.status = 'attention'; record.reason = challengeMessage(record.engine); recovered = false;
+      } else if (record.challenge && result.results?.length) {
+        delete record.challenge; record.status = tab.status === 'complete' ? 'loaded' : 'loading'; record.loadingSince ||= Date.now(); record.reason = ''; return true;
+      }
+    } catch { /* Missing permissions or a still-loading document remain inspectable. */ }
+    finally { clearTimeout(timeout); }
+    return recovered;
+  }
   // Reconcile only our own tab IDs, including events missed while the worker slept.
   async function reconcile(data, projectId) {
-    const before = JSON.stringify(data);
+    const before = JSON.stringify(data), recovered = new Set();
     for (const record of data.tabs.filter(item => item.projectId === projectId)) {
       let tab;
       try { tab = await ext.tabs.get(record.tabId); }
@@ -124,9 +162,12 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
         data.tabs = data.tabs.filter(item => item !== record); continue;
       }
       updateLoading(record, tab);
-      if (record.status !== 'loading' && url && isProviderGate(record, url)) {
-        record.status = 'attention'; record.reason = 'Complete the challenge, consent or sign-in in this tab, then retry collection.';
-      }
+      if (await inspectRecord(record, tab)) recovered.add(record.engine);
+    }
+    // Solving one provider challenge can unlock its other tabs in the same session.
+    // Recheck each blocked tab; never infer that a sibling is ready or collect it here.
+    for (const record of data.tabs.filter(item => item.projectId === projectId && item.challenge && recovered.has(item.engine))) {
+      try { await inspectRecord(record, await ext.tabs.get(record.tabId), true); } catch {}
     }
     if (JSON.stringify(data) !== before) await write(data);
   }
@@ -153,7 +194,7 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
   ext.tabs.onReplaced?.addListener((addedId, removedId) => { forget(removedId).catch(() => {}); });
   ext.tabs.onUpdated?.addListener((tabId, change, tab) => {
     if (!known.has(tabId)) return;
-    if (!change.url && !change.status && change.discarded === undefined) return;
+    if (!change.url && !change.status && change.title === undefined && change.discarded === undefined) return;
     // Invalidate synchronously too: a navigation may arrive while tabs.get is
     // pending immediately before a close. Ignore content of untracked tabs.
     if (change.url || change.status === 'loading') navigation.set(tabId, (navigation.get(tabId) || 0) + 1);
@@ -170,6 +211,7 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
         }
         updateLoading(record, { ...tab, ...(change.status ? { status: change.status } : {}), ...(change.discarded !== undefined ? { discarded: change.discarded } : {}) });
       }
+      await reconcile(data, record.projectId);
       await write(data);
     }).catch(() => {});
   });
@@ -189,6 +231,7 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
         data.tabs = data.tabs.filter(item => item !== record); await write(data);
         return { outcome: 'skipped', reason: 'Tab moved to another page or query; left open.' };
       }
+      if (record.challenge) return { outcome: 'skipped', reason: record.reason };
       if (tab.discarded || tab.status !== 'complete') return { outcome: 'skipped', reason: 'Tab is loading or unloaded; open it and retry collection.' };
       return { record: { ...record }, url: canonical(tab.url), navigation: navigation.get(record.tabId) || 0 };
     });
@@ -202,7 +245,7 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
       try { tab = await ext.tabs.get(record.tabId); }
       catch { data.tabs = data.tabs.filter(item => item !== record); await write(data); return { reason: 'Results saved; tab was already closed.' }; }
       if (run.stopped) return { reason: 'Results saved; stopped before closing the tab.' };
-      if (tab.status !== 'complete' || tab.discarded || !matchesProjectSearch(record, tab.pendingUrl || tab.url) || canonical(tab.url) !== saved.url || (navigation.get(record.tabId) || 0) !== saved.navigation) {
+      if (record.challenge || tab.status !== 'complete' || tab.discarded || !matchesProjectSearch(record, tab.pendingUrl || tab.url) || canonical(tab.url) !== saved.url || (navigation.get(record.tabId) || 0) !== saved.navigation) {
         return { reason: 'Results saved, but the tab navigated or started loading; left open.' };
       }
       await ext.tabs.remove(record.tabId);
@@ -230,7 +273,7 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
             const result = await collectPage(record.tabId, run.projectId, snap); saved = true; complete = !result?.unresolved;
             if (run.stopped) { outcome = 'saved'; reason = 'Results saved; stopped before closing the tab.'; }
             else {
-              if (result?.unresolved) { outcome = 'partial'; reason = 'Partial results saved. Some links could not be resolved; tab left open for inspection.'; }
+              if (result?.unresolved) { outcome = 'partial'; reason = result.linkWarning || 'Some links could not be added. Open the search tab to review them.'; }
               else { const closed = await closeSaved(run.projectId, snap, run); outcome = closed.closed ? 'closed' : 'saved'; reason = closed.reason; }
             }
           }

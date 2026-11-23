@@ -1,3 +1,4 @@
+import { collectionFailure, collectionLinkWarning } from './search-feedback.js';
 import { stageProject, readStagedProject, removeStagedProject } from './project-transfer.js';
 import { validateProjectSnapshot, restoredProjectSnapshot } from './portable-project.js';
 import { readCollectionControls, saveCollectionControls } from './collection-preferences.js';
@@ -88,7 +89,7 @@ async function collectPage(tabId, projectId, expected, expectedURL) {
   if (expectedURL && result?.pageURL && canonicalURL(result.pageURL) !== canonicalURL(expectedURL)) throw new Error('The tab changed during collection. Collect the current page again.');
   if (!result || result.error) throw new Error(result?.error || 'Could not read this results page.');
   if (expected && (!matchesProjectSearch(expected.record, result.pageURL) || new URL(result.pageURL).href.split('#')[0] !== expected.url)) throw new Error('The tab changed during collection; left open.');
-  if (!result.results.length) throw new Error(`No usable results found. ${result.unresolved ? `${result.unresolved} candidate links could not be resolved. ` : ''}The page may be a consent screen, CAPTCHA, or an unsupported layout. Try another engine or paste URLs in the workspace.`);
+  if (!result.results.length) throw new Error(collectionFailure(result));
   return serialize(async () => {
     await assertProject(projectId);
     const { collections = [] } = await ext.storage.local.get('collections');
@@ -96,7 +97,7 @@ async function collectPage(tabId, projectId, expected, expectedURL) {
     await ext.storage.local.set({ collections: addCollection(collections, collection, settings) });
     if (marker) await searchTabs.markCollectedInQueue(marker, result);
     const notice = await workspaceNotice();
-    return { count: result.results.length, unresolved: result.unresolved, engine: adapter.name, ...notice };
+    return { count: result.results.length, unresolved: result.unresolved, engine: adapter.name, linkWarning: collectionLinkWarning(result), ...notice };
   });
 }
 searchTabs = createProjectSearchTabs({ ext, serialize, assertProject, collectPage });

@@ -41,6 +41,11 @@ export function extractResults(adapter) {
   const expectedHost = adapter.id === "google" ? /^google\.[a-z]{2,3}(\.[a-z]{2})?$/.test(host)
     : adapter.id === "duckduckgo" ? /^(html\.)?duckduckgo\.com$/.test(host) : host === "ecosia.org";
   if (!expectedHost) return { error: "The tab changed. Open web search results and try again." };
+  const visibleResults = [...document.querySelectorAll(adapter.selectors.join(','))].filter(anchor => anchor.getClientRects().length && !anchor.closest('[hidden], [aria-hidden="true"], [data-text-ad], [data-ad], [data-testid*="ad-result"], [data-testid="ad"], [data-test-id="mainline-result-ad"], .result--ad, .result--advertisement, #tads, #bottomads'));
+  const challengeForm = document.querySelector?.('#challenge-form, #challenge-running, #cf-challenge-running, form[action*="/sorry/"]');
+  const challengeResource = document.querySelector?.('script[src*="/cdn-cgi/challenge-platform/"], iframe[src*="challenges.cloudflare.com"]');
+  const challengeTitle = /just a moment|attention required|verify.*human|checking.*browser|security verification/i.test(document.title || '');
+  let unreadableGoogle = 0;
   function owned(url) {
     const h = url.hostname;
     if (adapter.id === "google") return /(^|\.)google\.[a-z]{2,3}(\.[a-z]{2})?$/.test(h) || /(^|\.)(googleadservices\.com|googlesyndication\.com)$/.test(h);
@@ -57,8 +62,9 @@ export function extractResults(adapter) {
       if (adapter.id === "google" && url.pathname === "/url") target = url.searchParams.get("q") || url.searchParams.get("url");
       if (adapter.id === "duckduckgo" && url.pathname.startsWith("/l/")) target = url.searchParams.get("uddg");
       if (adapter.id === "ecosia" && ["/redirect", "/url"].includes(url.pathname)) target = url.searchParams.get("url");
-      if (!target) return null;
-      try { url = new URL(target); } catch { return null; }
+      if (!target) { if (adapter.id === 'google') unreadableGoogle++; return null; }
+      try { url = new URL(target); } catch { if (adapter.id === 'google') unreadableGoogle++; return null; }
+      if (adapter.id === 'google' && (owned(url) || !['http:', 'https:'].includes(url.protocol))) { unreadableGoogle++; return null; }
     }
     if (!["https:", "http:"].includes(url.protocol) || url.username || url.password || owned(url)) return null;
     url.hash = "";
@@ -67,7 +73,7 @@ export function extractResults(adapter) {
   const seen = new Set(), results = [];
   let unresolved = 0, candidates = 0;
   // A combined selector preserves DOM order and matches each anchor once.
-  for (const anchor of document.querySelectorAll(adapter.selectors.join(","))) {
+  for (const anchor of visibleResults) {
     if (!anchor.getClientRects().length || anchor.closest('[hidden], [aria-hidden="true"], [data-text-ad], [data-ad], [data-testid*="ad-result"], [data-testid="ad"], [data-test-id="mainline-result-ad"], .result--ad, .result--advertisement, #tads, #bottomads')) continue;
     candidates++;
     const url = destination(anchor.getAttribute("href"));
@@ -78,5 +84,6 @@ export function extractResults(adapter) {
     results.push({ url, title: (titleNode?.textContent || anchor.textContent || "").replace(/\s+/g, " ").trim().slice(0, 500), positionOnPage: candidates });
     if (results.length >= 200) break;
   }
-  return { engine: adapter.id, adapterVersion: 1, query: page.searchParams.get(adapter.queryParam) || "", pageURL: page.href, results, unresolved };
+  if (!results.length && (challengeForm || (challengeTitle && challengeResource))) return { engine: adapter.id, pageURL: page.href, results: [], unresolved: 0, challenge: true };
+  return { engine: adapter.id, adapterVersion: 1, query: page.searchParams.get(adapter.queryParam) || "", pageURL: page.href, results, unresolved, ...(unreadableGoogle ? { unreadableGoogle } : {}) };
 }

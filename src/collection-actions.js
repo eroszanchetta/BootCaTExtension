@@ -33,7 +33,7 @@ export function createCollectionActions({ ext, serialize, assertProject }) {
       try {
         const result = await Promise.resolve().then(() => task(tab));
         if (!closeAfterSuccess) return result;
-        if (result.unresolved) return { ...result, closed: false, closeWarning: 'Some search links could not be collected. The tab was left open for review.' };
+        if (result.unresolved) return { ...result, closed: false, closeWarning: result.linkWarning ? `${result.linkWarning} The tab was left open.` : 'Some search links could not be collected. The tab was left open for review.' };
         return { ...result, ...await closeSaved(snapshot) };
       } finally {
         watchers.get(tabId)?.delete(snapshot);

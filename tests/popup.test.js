@@ -1,3 +1,4 @@
+import { collectionLinkWarning } from '../src/search-feedback.js';
 import { COLLECTION_CONTROLS_KEY, DEFAULT_COLLECTION_CONTROLS, collectionControlsFromRecord } from '../src/collection-preferences.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -22,7 +23,7 @@ async function popup(state, url, fail = false) {
   let requests = 0, reloads = 0;
   const notify = changes => listeners.forEach(fn => fn(changes, 'local'));
   const context = vm.createContext({
-    COLLECTION_CONTROLS_KEY, DEFAULT_COLLECTION_CONTROLS, collectionControlsFromRecord,
+    collectionLinkWarning, COLLECTION_CONTROLS_KEY, DEFAULT_COLLECTION_CONTROLS, collectionControlsFromRecord,
     initVersionBadge: () => '2.0.0',
     document: { getElementById: get }, adapterForURL,
     window: { close() {}, location: { reload() { reloads++; } } },

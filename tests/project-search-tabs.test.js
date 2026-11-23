@@ -15,6 +15,7 @@ function fixture(options = {}) {
       get: async key => ({ [key]: structuredClone(session[key]) }),
       set: async data => { if (options.write) await options.write(data); Object.assign(session, structuredClone(data)); }
     } },
+    scripting: options.probe ? { executeScript: async ({ target, args, injectImmediately }) => { assert.equal(injectImmediately, true); return [{ result: await options.probe(target.tabId, args[0], tabs) }]; } } : undefined,
     tabs: {
       onRemoved: event(), onUpdated: event(), onReplaced: event(),
       update: async (id, patch) => { if (!tabs.has(id)) throw new Error('No tab'); Object.assign(tabs.get(id), patch); return { ...tabs.get(id) }; },
@@ -75,7 +76,7 @@ test('CAPTCHAs, partial results, failed saves, loading tabs and changed queries 
   assert.deepEqual(app.removed, [ids.good]); assert.equal(result.batch.saved, 2); assert.equal(result.batch.skipped, 0);
   assert.equal(result.batch.leftOpen, 3); assert.equal(result.count, 4);
   for (const query of ['captcha', 'partial', 'storage', 'loading', 'moved']) assert.ok(app.tabs.has(ids[query]));
-  assert.ok(result.tabs.some(tab => /Partial results saved/.test(tab.reason)));
+  assert.ok(result.tabs.some(tab => /Some links could not be added/.test(tab.reason)));
 });
 test('navigation during collection or while the final URL check is pending prevents closing', async () => {
   const app = fixture({ collect: async (id, _, { tabs, ext }) => {
@@ -322,4 +323,39 @@ test('Google tabs retain language ownership, reject stale requests and restore l
   const marker = await app.manager.collectionMarker('project', french.tabId, app.tabs.get(french.tabId).url);
   await app.serialize(() => app.manager.markCollectedInQueue(marker, { pageURL: marker.url, unresolved: 0 }));
   assert.equal((await app.state()).history.find(item => item.query === 'energy' && item.languageFilter === 'lang_fr').status, 'collected');
+});
+
+test('loading challenge pages stop blocking collection, and one recovered tab rechecks its blocked siblings', async () => {
+  const blocked = new Set(), probes = [];
+  const app = fixture({ probe: async (id, adapter, tabs) => {
+    probes.push(id); return { engine: adapter.id, pageURL: tabs.get(id).url, challenge: blocked.has(id), results: blocked.has(id) ? [] : [{ url: 'https://example.org/' }] };
+  } });
+  const open = query => app.manager.open({ projectId: 'project', engine: 'ecosia', query });
+  const first = await open('first'), second = await open('second'), good = await open('good');
+  for (const { tabId } of [first, second]) { blocked.add(tabId); Object.assign(app.tabs.get(tabId), { title: 'Just a moment...', status: 'loading' }); }
+  const initial = await app.state();
+  assert.equal(initial.blocked, 2); assert.equal(initial.loading, 0); assert.equal(initial.loaded, 1);
+  assert.match(initial.tabs.find(tab => tab.tabId === first.tabId).reason, /Ecosia is asking you/);
+  await app.manager.start('project'); await app.finish();
+  assert.deepEqual(app.removed, [good.tabId]); assert.ok(app.tabs.has(first.tabId)); assert.ok(app.tabs.has(second.tabId));
+  probes.length = 0; blocked.delete(first.tabId); blocked.delete(second.tabId);
+  Object.assign(app.tabs.get(first.tabId), { title: 'Results', status: 'complete' });
+  app.tabs.get(second.tabId).status = 'complete';
+  app.ext.tabs.onUpdated.emit(first.tabId, { title: 'Results' }, app.tabs.get(first.tabId));
+  const recovered = await app.state();
+  assert.equal(recovered.blocked, 0); assert.equal(recovered.loaded, 2);
+  assert.ok(probes.includes(second.tabId), 'a sibling is independently rechecked');
+  assert.equal(app.removed.length, 1, 'recovery must not collect or close tabs automatically');
+});
+test('a sibling that is still challenged stays blocked, while title-only slow pages remain loading', async () => {
+  const blocked = new Set();
+  const app = fixture({ probe: async (id, adapter, tabs) => ({ engine: adapter.id, pageURL: tabs.get(id).url, challenge: blocked.has(id), results: blocked.has(id) ? [] : [{ url: 'https://example.org/' }] }) });
+  const first = await app.open('first'), second = await app.open('second'), slow = await app.open('slow');
+  for (const { tabId } of [first, second]) { blocked.add(tabId); Object.assign(app.tabs.get(tabId), { title: 'Just a moment...', status: 'loading' }); }
+  Object.assign(app.tabs.get(slow.tabId), { title: 'Just a moment...', status: 'loading' });
+  await app.state(); blocked.delete(first.tabId); Object.assign(app.tabs.get(first.tabId), { title: 'Results', status: 'complete' });
+  app.ext.tabs.onUpdated.emit(first.tabId, { title: 'Results' }, app.tabs.get(first.tabId));
+  const state = await app.state(); assert.equal(state.blocked, 1); assert.equal(state.loading, 1);
+  assert.equal(state.tabs.find(tab => tab.tabId === second.tabId).challenge, true);
+  assert.equal(state.tabs.find(tab => tab.tabId === slow.tabId).challenge, undefined);
 });

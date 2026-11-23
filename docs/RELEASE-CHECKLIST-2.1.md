@@ -64,6 +64,8 @@ store review, record that gap and test it when a suitable signed/store build is 
 - [ ] Download representative HTML, plain-text, PDF and DOCX sources; check extraction failures and manual recovery without discarding completed documents.
 - [ ] Review/edit text, cancel an edit, save an edit, toggle inclusion and export the intended corpus. Check counters and retained originals.
 - [ ] Save a project containing downloaded documents in Firefox, reopen it in Chrome, save again and reopen in Firefox. Check text, edits, inclusion and originals at each step.
+- [ ] Verify Save Project feedback, disabled state for an unchanged project, Download again and reactivation after edits or new captures. Check the actual downloaded file; feedback confirms initiation only.
+- [ ] Check unreadable Google link guidance in the popup and floating control, partial collections, a verification page that remains loading, and independent recovery of blocked sibling tabs. Never assume all tabs recovered merely because one did.
 - [ ] Test Settings and a supported Google corpus-language filter; verify normal behavior with No language detection.
 - [ ] Check existing-project/settings retention on upgrade from the currently published version, and restore a saved backup. Record any differences rather than claiming untested compatibility.
 

@@ -1,3 +1,4 @@
+import { collectionLinkWarning } from '../src/search-feedback.js';
 import { COLLECTION_CONTROLS_KEY, DEFAULT_COLLECTION_CONTROLS, collectionControlsFromRecord } from '../src/collection-preferences.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -49,7 +50,7 @@ for (const success of [true, false]) test(`popup ${success ? 'keeps save disable
     return elements.get(id);
   };
   const context = vm.createContext({
-    COLLECTION_CONTROLS_KEY, DEFAULT_COLLECTION_CONTROLS, collectionControlsFromRecord,
+    collectionLinkWarning, COLLECTION_CONTROLS_KEY, DEFAULT_COLLECTION_CONTROLS, collectionControlsFromRecord,
     initVersionBadge: () => '2.0.0',
     document: { getElementById: get }, window: { close() {} },
     adapterForURL: () => null,

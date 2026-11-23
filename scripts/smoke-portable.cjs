@@ -70,7 +70,7 @@ const assert = require('node:assert/strict');
         const project = (await s.storedProjectState()).project;
         return { ok: true, token: await stageProject(await s.snapshotStoredProject(project)) };
       }));
-      await page.setContent('<button id="save-project">Save Project</button><input id="project-file-picker" type="file" hidden><p id="project-file-status"></p>');
+      await page.setContent('<button id="save-project">Save Project</button><input id="project-file-picker" type="file" hidden><div id="project-save-feedback"><p id="project-file-status"></p><button id="project-download-again" hidden>Download again</button></div>');
       await page.evaluate(async project => {
         globalThis.chrome = { runtime: { sendMessage: message => {
           if (message.type !== 'prepare-project-save') throw new Error('Unexpected request');
@@ -85,7 +85,8 @@ const assert = require('node:assert/strict');
       assert.equal(await download.failure(), null, `${name}: download must complete, not leave a .part file`);
       assert.ok(download.suggestedFilename().endsWith('.bootcat'));
       const path = join(downloads, `${name}.bootcat`); await download.saveAs(path);
-      await page.waitForFunction(() => !document.querySelector('#save-project').disabled);
+      await page.waitForFunction(() => document.querySelector('#project-save-feedback').classList.contains('saved'));
+      assert.equal(await page.locator('#save-project').isDisabled(), true);
       const { openProjectArchive } = await import('../src/portable-project.js');
       const archive = await openProjectArchive(new Blob([await readFile(path)]));
       const original = archive.stores.files.find(record => record.name === 'pages/large.bin').blob;

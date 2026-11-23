@@ -1,18 +1,53 @@
+import { projectFingerprint } from './project-save-state.js';
+import { snapshotStoredProject } from './project-store.js';
 import { prepareDownloadBlob } from './download-blob.js';
 import { makeProjectArchive, openProjectArchive } from './portable-project.js';
 import { stageProject, readStagedProject, removeStagedProject } from './project-transfer.js';
 import { projectFilename } from './project-ui.js';
 import { getExtensionAPI } from './extension-api.js';
-export function initPortableUI({ getProject, isBusy, isDirty, flush, exclusive, onBusy, version }) {
+export function initPortableUI({ getProject, isBusy, isDirty, flush, exclusive, onBusy, version, onStateChange = () => {} }) {
   const ext = getExtensionAPI(), el = id => document.getElementById(id);
   const picker = el('project-file-picker'), status = el('project-file-status');
-  let busy = false, choosingId;
+  let busy = false, choosingId, receipt = null, saved = false, refreshRevision = 0, saveError = false;
+  const feedback = el('project-save-feedback'), retry = el('project-download-again');
   const identity = () => getProject()?.id ?? null;
   function available() {
     if (isDirty()) throw new Error('Save or cancel the current text edit before saving or changing projects.');
     if (isBusy()) throw new Error('Stop or wait for active processing before saving or changing projects.');
   }
-  function setBusy(value) { busy = value; onBusy(value); }
+  function present() {
+    feedback.classList.toggle('saved', saved && !busy && !saveError);
+    retry.hidden = !saved; retry.disabled = busy || isBusy() || isDirty();
+    el('save-project').disabled = busy || isBusy() || !getProject() || saved;
+    onStateChange();
+  }
+  function setBusy(value) { busy = value; onBusy(value); present(); }
+  async function refresh() {
+    const revision = ++refreshRevision, project = getProject();
+    if (busy) return;
+    try {
+      const area = ext.storage?.local;
+      receipt = (await area?.get('projectSaveReceipt'))?.projectSaveReceipt || receipt;
+      if (project && receipt?.projectId === project.id && (isBusy() || isDirty())) return;
+      let matches = false;
+      if (project && receipt?.projectId === project.id && !isBusy() && !isDirty()) {
+        const snapshot = await snapshotStoredProject(project);
+        const collections = (await area?.get('collections'))?.collections;
+        if (collections) snapshot.stores.meta = snapshot.stores.meta.map(record => record.key === 'searches' ? { key: 'searches', collections } : record);
+        matches = await projectFingerprint(snapshot) === receipt.fingerprint;
+      }
+      if (revision !== refreshRevision || busy || identity() !== (project?.id ?? null)) return;
+      saved = matches && !saveError;
+      if (saved) status.textContent = `Project download started: ${receipt.filename}. Check your browser’s downloads for the file.`;
+      else if (receipt?.projectId === project?.id && !saveError) status.textContent = 'Project changed. Save Project to download an updated file.';
+      present();
+    } catch {
+      if (revision === refreshRevision && !busy) { saved = false; present(); }
+    }
+  }
+  retry.addEventListener('click', () => save({ again: true }).catch(() => {}));
+  ext.storage?.onChanged?.addListener((changes, area) => { if (area === 'local' && (changes.projectSaveReceipt || changes.collections || changes.captureRevision || changes.workspaceRevision || changes.project)) refresh(); });
+  refresh();
   async function download(blob, filename) {
     status.textContent = 'Preparing project download…';
     const independent = await prepareDownloadBlob(blob);
@@ -20,10 +55,10 @@ export function initPortableUI({ getProject, isBusy, isDirty, flush, exclusive, 
     link.href = url; link.download = filename; document.body.append(link); link.click(); link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
-  async function save({ nested = false } = {}) {
-    if (busy && !nested) return false;
+  async function save({ nested = false, again = false } = {}) {
+    if ((busy && !nested) || (saved && !again && !nested)) return false;
     available(); const project = getProject(); if (!project) throw new Error('Open or create a project first.');
-    const previousBusy = busy; setBusy(true); status.textContent = 'Preparing complete project…';
+    const previousBusy = busy; saveError = false; ++refreshRevision; setBusy(true); status.textContent = 'Preparing complete project…';
     let token;
     try {
       await flush();
@@ -33,15 +68,19 @@ export function initPortableUI({ getProject, isBusy, isDirty, flush, exclusive, 
         if (!reply?.ok) throw new Error(reply?.error || 'Could not prepare the project.');
         token = reply.token; const snapshot = await readStagedProject(token);
         if (!snapshot) throw new Error('The project snapshot is no longer available. Try again.');
+        const fingerprint = await projectFingerprint(snapshot);
         const archive = await makeProjectArchive(snapshot, { appVersion: version });
         if (identity() !== project.id) throw new Error('The project changed. Save it again.');
         const filename = `${projectFilename(project.name)}.bootcat`;
-        await download(archive, filename); status.textContent = `Download started: ${filename}. Keep this file to reopen the complete project.`;
+        await download(archive, filename);
+        receipt = { projectId: project.id, fingerprint, filename }; saved = true;
+        await ext.storage?.local?.set({ projectSaveReceipt: receipt });
+        status.textContent = `Project download started: ${filename}. Check your browser’s downloads for the file.`;
         return true;
       });
       if (!result) throw new Error('Another BootCaT window is processing this project. Wait for it to finish.');
       return true;
-    } catch (error) { status.textContent = `Could not save project: ${error.message}`; throw error; }
+    } catch (error) { saved = false; saveError = true; status.textContent = `Could not save project: ${error.message}`; throw error; }
     finally { if (token) await removeStagedProject(token).catch(() => {}); setBusy(previousBusy); }
   }
   async function confirmReplacement({ title, message, confirmLabel = 'Continue' }) {
@@ -52,7 +91,7 @@ export function initPortableUI({ getProject, isBusy, isDirty, flush, exclusive, 
     note.textContent = ''; proceed.textContent = confirmLabel; saveButton.disabled = false;
     const saveFirst = async () => {
       saveButton.disabled = proceed.disabled = true;
-      try { await save({ nested: true }); note.textContent = 'Project download started. Check that you have the file before continuing.'; }
+      try { await save({ nested: true, again: true }); note.textContent = 'Project download started. Check that you have the file before continuing.'; }
       catch (error) { note.textContent = error.message; }
       finally { saveButton.disabled = proceed.disabled = false; }
     };
@@ -85,9 +124,10 @@ export function initPortableUI({ getProject, isBusy, isDirty, flush, exclusive, 
       });
       if (!result) throw new Error('Another BootCaT window is processing this project. Wait for it to finish.');
     } catch (error) {
+      saveError = true; saved = false;
       status.textContent = `Could not open project: ${error.message}`;
       el('project-choice-error').textContent = status.textContent;
     } finally { if (token) await removeStagedProject(token).catch(() => {}); setBusy(false); picker.value = ''; }
   });
-  return { save, choose, confirmReplacement };
+  return { save, choose, confirmReplacement, refresh, isSaved: () => saved };
 }

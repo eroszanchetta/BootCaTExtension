@@ -78,7 +78,7 @@
       const result = await send(current.action === 'collect' ? 'floating-collect' : 'floating-save-page');
       if (token !== generation) return;
       busy = false; flash = !result.unresolved;
-      note = result.closeWarning || result.workspaceWarning || (result.unresolved ? `${result.unresolved} links could not be collected. Review this page and try again.` : 'Saved in BootCaT');
+      note = result.closeWarning || result.workspaceWarning || result.linkWarning || (result.unresolved ? `${result.unresolved} links could not be collected. Review this page and try again.` : 'Saved in BootCaT');
       render(); clearTimeout(flashTimer);
       if (!result.closeWarning && !result.workspaceWarning && !result.unresolved) flashTimer = setTimeout(() => { flash = false; note = ''; refresh(); }, 1600);
     } catch (error) { if (token === generation) { busy = false; flash = false; note = error.message.slice(0, 400); render(); } }
