@@ -711,5 +711,7 @@ portableUI = initPortableUI({
 function reviewCollectedURLs() {
   openWorkspaceSection('review-section'); openWorkspaceSection('urls-section', { scroll: true });
 }
-ext.runtime?.onMessage?.addListener((message, sender) => { if (sender.id === ext.runtime.id && message.type === 'bootcat-review-urls') reviewCollectedURLs(); });
+ext.runtime?.onMessage?.addListener((message, sender) => {
+  if (sender.id === ext.runtime.id && message.type === 'bootcat-review-urls') ext.tabs.getCurrent().then(tab => { if (tab?.id === message.tabId) reviewCollectedURLs(); }).catch(() => {});
+});
 if (globalThis.location?.hash === '#urls-section') projectUI.ready.then(() => requestAnimationFrame(reviewCollectedURLs));

@@ -276,7 +276,7 @@ async function handle(message) {
     const tabs = await workspaceTabs();
     if (tabs.length) {
       await ext.tabs.update(tabs[0].id, { active: true });
-      if (message.section === 'urls-section') await ext.tabs.sendMessage(tabs[0].id, { type: 'bootcat-review-urls' }).catch(() => {});
+      if (message.section === 'urls-section') await ext.runtime.sendMessage({ type: 'bootcat-review-urls', tabId: tabs[0].id }).catch(() => {});
       await ext.windows.update(tabs[0].windowId, { focused: true });
     } else await ext.tabs.create({ url: message.section === 'urls-section' ? `${url}#urls-section` : url });
     return {};
@@ -297,7 +297,7 @@ async function handle(message) {
   throw new Error('Unknown request');
 }
 ext.runtime.onMessage.addListener((message, sender, respond) => {
-  if (sender.id !== ext.runtime.id) return;
+  if (sender.id !== ext.runtime.id || message?.type === 'bootcat-review-urls') return;
   const ownUI = sender.url?.startsWith(ext.runtime.getURL(''));
   const floatingTypes = new Set(['get-floating-state', 'floating-hide', 'floating-open-workspace', 'floating-review-urls', 'floating-collect', 'floating-save-page']);
   const content = !ownUI && sender.frameId === 0 && Number.isInteger(sender.tab?.id) && /^https?:\/\//.test(sender.url || '') && floatingTypes.has(message?.type);

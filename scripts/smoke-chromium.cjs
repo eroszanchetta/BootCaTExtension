@@ -1151,6 +1151,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     const partialPopup = await popupFor(partialPage); await partialPopup.click('#collect');
     await partialPopup.locator('#continue-collected').waitFor();
     assert.match(await partialPopup.locator('#feedback').innerText(), /1 URL added to your project/);
+    await page.locator('#urls-section .workspace-panel, #review-section .workspace-panel').evaluateAll(panels => panels.forEach(panel => { panel.open = false; }));
     const partialPopupClosed = partialPopup.waitForEvent('close'); await partialPopup.click('#continue-collected'); await partialPopupClosed;
     await page.waitForFunction(() => document.querySelector('#urls-section details').open && document.querySelector('#review-section details').open);
     assert.equal(partialPage.isClosed(), false);
