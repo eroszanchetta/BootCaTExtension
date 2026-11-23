@@ -1,3 +1,4 @@
+import { verifyPackagedPDFJS } from './pdfjs-store-build.mjs';
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { build, ROOT, TARGETS } from './build.mjs';
@@ -21,7 +22,9 @@ for (const name of target === 'all' ? TARGETS : [target]) {
   const source = await build(name);
   const manifest = JSON.parse(await readFile(join(source, 'manifest.json'), 'utf8'));
   const path = join(output, `bootcat-${name}-${manifest.version}.zip`);
-  await writeFile(path, new Uint8Array(await makeZIP(await filesIn(source)).arrayBuffer()));
+  const bytes = new Uint8Array(await makeZIP(await filesIn(source)).arrayBuffer());
+  await verifyPackagedPDFJS(bytes);
+  await writeFile(path, bytes);
   console.log(path);
 }
 console.log(await packageSource());

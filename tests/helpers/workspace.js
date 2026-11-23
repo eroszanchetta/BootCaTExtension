@@ -68,10 +68,13 @@ export async function workspace(projectId, options = {}) {
       return { bytes: new TextEncoder().encode('source'), contentType: 'text/html', finalURL: url, status: 200 };
     }
   });
-  const source = (await readFile(new URL('../../src/app.js', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
-  // The final expression is the workspace startup promise. Await the complete
-  // metadata/activity check and capture drain before simulating user actions.
-  await vm.runInContext(source, context);
+  let source = (await readFile(new URL('../../src/app.js', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
+  // Capture startup explicitly: app.js also registers review navigation after its
+  // startup IIFE, so the final script expression is no longer the ready promise.
+  const startup = '(async () => {\n  try {\n    await projectUI.ready;';
+  if (!source.includes(startup)) throw new Error('Workspace startup hook changed');
+  source = source.replace(startup, 'globalThis.workspaceStartup = ' + startup);
+  await vm.runInContext(source + '\nworkspaceStartup;', context);
   await waitFor(() => vm.runInContext(projectId ? 'ready' : "document.getElementById('status').textContent.startsWith('No active project')", context));
   await waitFor(() => !vm.runInContext('running || importing || documentJobs.size', context));
   return {

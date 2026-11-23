@@ -1,3 +1,4 @@
+import { assertPDFJSStoreBuild, PDFJS_STORE_SHA256, sha256 } from '../scripts/pdfjs-store-build.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
@@ -26,6 +27,11 @@ test('both builds contain identical shared files and separate valid manifests', 
     assert.deepEqual(pdfFiles.filter(path => path.endsWith('.mjs')).sort(), ['pdf.mjs', 'pdf.worker.mjs']);
     const pdfModule = await readFile(join(chromium, 'vendor/pdfjs/pdf.mjs'), 'utf8');
     assert.ok(pdfModule.includes('6.5.438'), 'bundled PDF library must be the patched pinned release');
+    for (const name of ['pdf.mjs', 'pdf.worker.mjs']) {
+      const source = await readFile(join(chromium, 'vendor/pdfjs', name), 'utf8');
+      assertPDFJSStoreBuild(source, name); assert.equal(sha256(source), PDFJS_STORE_SHA256[name]);
+    }
+    assert.match(await readFile(join(chromium, 'vendor/pdfjs/README-BootCaT.md'), 'utf8'), /2\.0\.1/);
     assert.equal(c.manifest_version, 3); assert.equal(f.manifest_version, 3);
     assert.deepEqual(c.background, { service_worker: 'background.js', type: 'module' });
     assert.deepEqual(f.background, { scripts: ['background.js'], type: 'module' });
