@@ -56,7 +56,7 @@ test('generate, edit and prepare tuples without opening tabs; engine changes upd
   assert.equal(app.get('tuples').value.split('\n').length, 10);
   assert.ok(app.get('tuples').value.includes('"solar power"'));
   app.input('tuples', '"custom phrase" energy\nstorage capacity\nstorage capacity'); await app.click('prepare-queries');
-  assert.equal(app.get('prepared-queries').children.length, 2); assert.equal(app.opened.length, 0);
+  assert.equal(app.get('queries-counter').textContent, '2 queries'); assert.equal(app.get('prepared-queries').children.length, 2); assert.equal(app.opened.length, 0);
   const link = app.get('prepared-queries').children[0].children[2];
   assert.equal(new URL(link.href).searchParams.get('q'), '"custom phrase" energy'); assert.equal(link.target, '_blank');
   app.get('engine').value = 'duckduckgo'; app.get('engine').handlers.change();
@@ -122,7 +122,7 @@ test('seed drafts, edited tuples, parameters and query lists persist and reset w
   await storage.saveDraft('seeds', draft); const loaded = (await storage.loadWorkspace('seeds')).draft;
   const app = fixture({ draft: loaded }); assert.equal(app.get('seeds').value, draft.seeds);
   assert.equal(app.get('tuple-length').value, '2'); assert.equal(app.get('tuple-count').value, '17');
-  assert.equal(app.get('tuples').value, draft.tuples); assert.equal(app.get('prepared-queries').children.length, 2);
+  assert.equal(app.get('tuples').value, draft.tuples); assert.equal(app.get('queries-counter').textContent, '2 queries'); assert.equal(app.get('prepared-queries').children.length, 2);
   await storage.resetStoredProject('new'); const reset = (await storage.loadWorkspace('new')).draft;
   assert.equal(reset.seeds, ''); assert.equal(reset.tuples, ''); assert.equal(reset.preparedQueries.length, 0);
   assert.equal(reset.tupleLength, '3'); assert.equal(reset.tupleCount, '10');

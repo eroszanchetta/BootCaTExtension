@@ -8,12 +8,13 @@ import { readSettings, readSettingsState, saveSettings } from './settings.js';
 import { resetProjectLocalState } from './project-local-state.js';
 import { readUserDefaults, saveUserDefaults } from './user-defaults.js';
 import { validateLanguage } from './language-detection.js';
-import { ensureStoredProject, resetStoredProject, closeStoredProject, storedProjectState, hasStoredPage, getDeletionVersion, snapshotStoredProject, replaceStoredProject } from './project-store.js';
+import { loadWorkspace, ensureStoredProject, resetStoredProject, closeStoredProject, storedProjectState, hasStoredPage, getDeletionVersion, snapshotStoredProject, replaceStoredProject } from './project-store.js';
 import { captureTabDocument } from './pdf-recovery.js';
 import { savePage, listSavedPages } from './page-store.js';
 import { getExtensionAPI } from './extension-api.js';
 const ext = getExtensionAPI();
 import { adapterForURL, extractResults } from "./engines.js";
+import { parseURLs } from './core.js';
 import { addCollection } from "./collection.js";
 import { createProjectSearchTabs, matchesProjectSearch } from './project-search-tabs.js';
 let searchTabs;
@@ -93,11 +94,15 @@ async function collectPage(tabId, projectId, expected, expectedURL) {
   return serialize(async () => {
     await assertProject(projectId);
     const { collections = [] } = await ext.storage.local.get('collections');
-    const collection = { ...result, id: crypto.randomUUID(), collectedAt: new Date().toISOString() };
+    const workspace = await loadWorkspace(projectId);
+    const known = new Set([...parseURLs(workspace.draft.urls || '').urls, ...collections.flatMap(item => item.results.map(result => result.url))]);
+    const added = result.results.filter(item => !known.has(item.url)).length;
+    const duplicates = result.results.length - added;
+    const collection = { ...result, added, duplicates, id: crypto.randomUUID(), collectedAt: new Date().toISOString() };
     await ext.storage.local.set({ collections: addCollection(collections, collection, settings) });
     if (marker) await searchTabs.markCollectedInQueue(marker, result);
     const notice = await workspaceNotice();
-    return { count: result.results.length, unresolved: result.unresolved, engine: adapter.name, linkWarning: collectionLinkWarning(result), ...notice };
+    return { count: result.results.length, added, duplicates, collectionId: collection.id, unresolved: result.unresolved, engine: adapter.name, linkWarning: collectionLinkWarning(result), ...notice };
   });
 }
 searchTabs = createProjectSearchTabs({ ext, serialize, assertProject, collectPage });
@@ -149,7 +154,7 @@ async function floatingState(tabId) {
     await assertProject(project.id);
     if (engine) {
       const { collections = [] } = await ext.storage.local.get('collections');
-      return collections.some(item => item.engine === engine.id && canonicalURL(item.pageURL) === canonicalURL(tab.url) && !item.unresolved);
+      return collections.some(item => item.engine === engine.id && canonicalURL(item.pageURL) === canonicalURL(tab.url) && (!item.unresolved || item.acceptedPartial));
     }
     return isSavedPage(project.id, tab.url);
   });
@@ -167,6 +172,10 @@ async function handleFloating(message, sender) {
     await floatingControls.sync(); return { preferences };
   }
   if (message.type === 'floating-open-workspace') return handle({ type: 'open-workspace' });
+  if (message.type === 'floating-review-urls') {
+    if (message.acceptPartial) await handle({ type: 'accept-collected-results', projectId: message.projectId, pageURL: tab.url });
+    return handle({ type: 'open-workspace', section: 'urls-section' });
+  }
   const action = message.type === 'floating-collect' ? 'collect' : message.type === 'floating-save-page' ? 'save-page' : null;
   if (!action || action !== state.action) throw new Error('This action is not available on this page.');
   return runPageAction({ type: action, projectId: state.projectId, tabId: tab.id });
@@ -253,13 +262,23 @@ async function handle(message) {
     finally { await resetProjectLocalState(ext.storage.local, null); }
     return { project: null };
   });
+  if (message.type === 'accept-collected-results') return serialize(async () => {
+    await assertProject(message.projectId);
+    const { collections = [] } = await ext.storage.local.get('collections');
+    const accepted = collections.filter(item => item.results.length && item.unresolved && !item.acceptedPartial && (!message.pageURL || item.pageURL === message.pageURL));
+    const ids = new Set(accepted.map(item => item.id));
+    await ext.storage.local.set({ collections: collections.map(item => ids.has(item.id) ? { ...item, acceptedPartial: true } : item) });
+    await searchTabs.acceptCollectedInQueue(message.projectId, accepted);
+    return {};
+  });
   if (message.type === "open-workspace") {
     const url = ext.runtime.getURL("downloader.html");
     const tabs = await workspaceTabs();
     if (tabs.length) {
       await ext.tabs.update(tabs[0].id, { active: true });
+      if (message.section === 'urls-section') await ext.tabs.sendMessage(tabs[0].id, { type: 'bootcat-review-urls' }).catch(() => {});
       await ext.windows.update(tabs[0].windowId, { focused: true });
-    } else await ext.tabs.create({ url });
+    } else await ext.tabs.create({ url: message.section === 'urls-section' ? `${url}#urls-section` : url });
     return {};
   }
   if (message.type === "clear-collections") return serialize(async () => {
@@ -280,7 +299,7 @@ async function handle(message) {
 ext.runtime.onMessage.addListener((message, sender, respond) => {
   if (sender.id !== ext.runtime.id) return;
   const ownUI = sender.url?.startsWith(ext.runtime.getURL(''));
-  const floatingTypes = new Set(['get-floating-state', 'floating-hide', 'floating-open-workspace', 'floating-collect', 'floating-save-page']);
+  const floatingTypes = new Set(['get-floating-state', 'floating-hide', 'floating-open-workspace', 'floating-review-urls', 'floating-collect', 'floating-save-page']);
   const content = !ownUI && sender.frameId === 0 && Number.isInteger(sender.tab?.id) && /^https?:\/\//.test(sender.url || '') && floatingTypes.has(message?.type);
   if (!ownUI && !content) return;
   (content ? handleFloating(message, sender) : handle(message)).then(data => respond({ ok: true, ...data }), error => respond({ ok: false, error: error.message }));

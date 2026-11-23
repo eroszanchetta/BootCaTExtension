@@ -63,7 +63,7 @@
       </div></details>
     </section>
     <section id="search-section" aria-labelledby="search-heading" tabindex="-1">
-      <details class="workspace-panel"><summary><h2 id="search-heading">Search</h2></summary><div class="panel-content">
+      <details class="workspace-panel"><summary><h2 id="search-heading">Search</h2><span id="queries-counter" class="section-counter">0 queries</span></summary><div class="panel-content">
       <label for="engine">Search engine</label>
       <select id="engine" disabled></select>
       <details id="more-search-options" class="options-panel" data-default-collapsed>
@@ -95,7 +95,7 @@
       <div class="actions"><button id="collect-project-tabs" type="button" disabled>Add URLs and close search tabs</button><button id="collect-loaded-tabs" type="button" class="secondary" hidden disabled>Add URLs and close loaded tabs</button><button id="stop-project-tabs" type="button" class="secondary" hidden>Stop collecting</button></div>
       <p id="project-tab-loading-hint" class="hint" role="status"></p>
       <p id="project-tab-status" role="status" aria-live="polite"></p>
-      <p id="collection-status" role="status" aria-live="polite"></p>
+      <p id="collection-status" role="status" aria-live="polite"></p><div id="collection-choices" class="actions" hidden><button id="continue-collected" type="button">Continue with collected URLs</button><button id="review-search-tabs" type="button" class="secondary">Review search tabs</button></div>
       <p class="hint">Only tabs opened by BootCaT for this project in this browser session are included.</p>
       </div></details>
     </section>
@@ -112,7 +112,7 @@
       </div></details>
     </section>
     <section id="review-section" aria-labelledby="results-heading" tabindex="-1">
-      <details class="workspace-panel"><summary><h2 id="results-heading">Build Corpus</h2></summary><div class="panel-content">
+      <details class="workspace-panel"><summary><h2 id="results-heading">Build Corpus</h2><span id="build-counter" class="section-counter">0 included</span></summary><div class="panel-content">
       <div class="actions"><button id="start" disabled>Download URLs</button><button id="stop" class="secondary" disabled>Stop</button></div>
       <p id="download-limit-hint" class="hint">Maximum file size: 50 MiB.</p>
       <p id="download-readiness" class="hint" role="status" aria-live="polite"></p>

@@ -73,7 +73,7 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
     const { collections = [] } = await ext.storage.local?.get('collections') || {};
     const history = new Map((data.history || []).map(item => [JSON.stringify([item.projectId, queryKey(item.engine, item.query, item.languageFilter)]), item]));
     for (const collection of collections) {
-      if (typeof collection.query !== 'string' || !collection.engine || collection.unresolved || !collection.results?.length) continue;
+      if (typeof collection.query !== 'string' || !collection.engine || (collection.unresolved && !collection.acceptedPartial) || !collection.results?.length) continue;
       const item = { projectId, engine: collection.engine, query: collection.query, ...(languageFilterFromURL(collection.engine, collection.pageURL) ? { languageFilter: languageFilterFromURL(collection.engine, collection.pageURL) } : {}), status: 'collected', reason: 'Results saved in this project.' };
       const key = JSON.stringify([projectId, queryKey(item.engine, item.query, item.languageFilter)]);
       // Browser storage may reorder object fields. Compare the actual completion
@@ -107,7 +107,7 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
   }
   function status(data, projectId) {
     const batch = data.batch?.projectId === projectId ? data.batch : null;
-    const tabs = data.tabs.filter(record => record.projectId === projectId).map(record => ({
+    const tabs = data.tabs.filter(record => record.projectId === projectId && !record.acceptedPartial).map(record => ({
       tabId: record.tabId, engine: record.engine, query: record.query, ...(record.languageFilter ? { languageFilter: record.languageFilter } : {}), status: record.status || 'loading', reason: record.reason || '', ...(record.challenge ? { challenge: true } : {}), unloaded: !!record.unloaded,
       slow: record.status === 'loading' && Date.now() - record.loadingSince >= SLOW_TAB_MS
     }));
@@ -207,6 +207,7 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
         data.tabs = data.tabs.filter(item => item !== record);
       } else {
         if (change.url || change.status === 'loading') {
+          delete record.acceptedPartial;
           record.revision++; record.status = 'loading'; record.loadingSince = Date.now(); record.reason = '';
         }
         updateLoading(record, { ...tab, ...(change.status ? { status: change.status } : {}), ...(change.discarded !== undefined ? { discarded: change.discarded } : {}) });
@@ -231,7 +232,7 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
         data.tabs = data.tabs.filter(item => item !== record); await write(data);
         return { outcome: 'skipped', reason: 'Tab moved to another page or query; left open.' };
       }
-      if (record.challenge) return { outcome: 'skipped', reason: record.reason };
+      if (record.challenge || record.acceptedPartial) return { outcome: 'skipped', reason: record.reason };
       if (tab.discarded || tab.status !== 'complete') return { outcome: 'skipped', reason: 'Tab is loading or unloaded; open it and retry collection.' };
       return { record: { ...record }, url: canonical(tab.url), navigation: navigation.get(record.tabId) || 0 };
     });
@@ -300,7 +301,7 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
       const state = status(data, projectId);
       if (state.loading && !loadedOnly) throw new Error('Wait for search tabs to finish loading, or close stuck tabs.');
       if (loadedOnly && state.loading && !state.tabs.some(tab => tab.slow)) throw new Error('Search tabs are still loading. Please wait.');
-      const records = data.tabs.filter(record => record.projectId === projectId && (!loadedOnly || (record.status !== 'loading' && !record.unloaded)));
+      const records = data.tabs.filter(record => record.projectId === projectId && !record.acceptedPartial && (!loadedOnly || (record.status !== 'loading' && !record.unloaded)));
       if (!records.length) throw new Error('No loaded project search tabs to collect.');
       const run = { id: crypto.randomUUID(), projectId, stopped: false };
       data.batch = { id: run.id, projectId, workerToken, running: true, total: records.length, processed: 0, saved: 0, closed: 0, skipped: 0, leftOpen: 0 };
@@ -360,5 +361,15 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
     remember(data, { projectId: marker.projectId, engine: marker.engine, query: marker.query, languageFilter: marker.languageFilter }, status, reason);
     await write(data);
   }
-  return { open, getState, start, stop, focus, collectionMarker, markCollectedInQueue, resetInQueue };
+  async function acceptCollectedInQueue(projectId, collections) {
+    const data = await read();
+    for (const collection of collections) {
+      for (const record of data.tabs.filter(item => item.projectId === projectId && item.engine === collection.engine && matchesProjectSearch(item, collection.pageURL))) {
+        record.acceptedPartial = true; record.status = 'collected'; record.reason = 'Collected URLs kept; remaining links skipped.';
+        remember(data, record, 'collected', record.reason);
+      }
+    }
+    await restoreCollected(data, projectId); await write(data);
+  }
+  return { open, getState, start, stop, focus, collectionMarker, markCollectedInQueue, acceptCollectedInQueue, resetInQueue };
 }

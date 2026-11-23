@@ -959,7 +959,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.equal(await floatingHost.evaluate(node => node.style.top), '16px'); assert.equal(await floatingHost.evaluate(node => node.style.right), '16px');
     await setCollectionControls({ floatingPosition: 'bottom-left' });
     await floatingSource.waitForFunction(() => document.querySelector('[data-bootcat-floating-control]')?.style.left === '16px' && document.querySelector('[data-bootcat-floating-control]')?.style.bottom === '16px');
-    let floatingBox = await floatingHost.boundingBox(); await floatingSource.mouse.click(floatingBox.x + 20, floatingBox.y + 20);
+    let floatingBox = await floatingHost.boundingBox(); await floatingSource.mouse.click(floatingBox.x + 55, floatingBox.y + 20);
     await page.waitForFunction(() => [...document.querySelectorAll('#results a')].some(link => link.href === 'https://corpus.test/floating-original'));
     assert.equal(floatingSource.isClosed(), false);
     assert.equal(await page.evaluate(async () => {
@@ -1118,7 +1118,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     const opaquePopup = await popupFor(opaquePage); await opaquePopup.click('#collect');
     await opaquePopup.waitForFunction(message => document.querySelector('#feedback').textContent === message, googleMessage); await opaquePopup.close();
     await opaquePage.bringToFront(); const opaqueHost = opaquePage.locator('[data-bootcat-floating-control]'); await opaqueHost.waitFor();
-    const opaqueBox = await opaqueHost.boundingBox(); await opaquePage.mouse.click(opaqueBox.x + 20, opaqueBox.y + 20);
+    const opaqueBox = await opaqueHost.boundingBox(); await opaquePage.mouse.click(opaqueBox.x + 55, opaqueBox.y + 20);
     const accessibility = await context.newCDPSession(opaquePage);
     let readableFeedback = false;
     for (let attempt = 0; attempt < 100; attempt++) {
@@ -1147,6 +1147,36 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.ok(blockedPages.every(tab => !tab.isClosed()), 'unlocking must not collect or close sibling tabs');
     const closedChallenges = blockedPages.map(tab => tab.waitForEvent('close')); await page.click('#collect-project-tabs'); await Promise.all(closedChallenges);
     console.log('Project download feedback/retry, shared Google guidance, loading challenge detection and sibling recovery passed.');
+    const partialPage = await context.newPage(); await partialPage.goto(pdfOrigin + '/search-fixture?q=partial');
+    const partialPopup = await popupFor(partialPage); await partialPopup.click('#collect');
+    await partialPopup.locator('#continue-collected').waitFor();
+    assert.match(await partialPopup.locator('#feedback').innerText(), /1 URL added to your project/);
+    const partialPopupClosed = partialPopup.waitForEvent('close'); await partialPopup.click('#continue-collected'); await partialPopupClosed;
+    await page.waitForFunction(() => document.querySelector('#urls-section details').open && document.querySelector('#review-section details').open);
+    assert.equal(partialPage.isClosed(), false);
+    const partialAccepted = await page.evaluate(async () => ((await (globalThis.browser ?? chrome).storage.local.get('collections')).collections).find(item => item.pageURL.includes('q=partial')));
+    assert.equal(partialAccepted.acceptedPartial, true);
+    const reopenedPartial = await popupFor(partialPage);
+    await reopenedPartial.locator('#review-urls').waitFor(); assert.equal(await reopenedPartial.locator('#collect').isDisabled(), true); await reopenedPartial.close();
+    const partialFloating = await context.newPage(); await partialFloating.goto(pdfOrigin + '/search-fixture?q=partial&case=floating');
+    const partialHost = partialFloating.locator('[data-bootcat-floating-control]'); await partialHost.waitFor();
+    const partialBox = await partialHost.boundingBox(); await partialFloating.mouse.click(partialBox.x + 55, partialBox.y + 20);
+    const partialAX = await context.newCDPSession(partialFloating);
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const tree = await partialAX.send('Accessibility.getFullAXTree');
+      if (tree.nodes.some(node => node.role?.value === 'button' && node.name?.value === 'Continue with collected URLs')) break;
+      if (attempt === 99) assert.fail('floating partial results must offer Continue');
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    await partialFloating.keyboard.press('Tab'); await partialFloating.keyboard.press('Tab'); await partialFloating.keyboard.press('Enter');
+    await page.waitForFunction(async () => (await (globalThis.browser ?? chrome).storage.local.get('collections')).collections.some(item => item.pageURL.includes('case=floating') && item.acceptedPartial));
+    assert.equal(partialFloating.isClosed(), false); await partialAX.detach();
+    assert.ok((await page.locator('#queries-counter').innerText()).includes('3 queries'));
+    assert.equal(await page.locator('#build-counter').innerText(), await page.locator('#included-count').innerText());
+    assert.equal(await page.locator('.brand img').evaluate(node => getComputedStyle(node).backgroundColor), 'rgba(0, 0, 0, 0)');
+    await partialPage.close(); await partialFloating.close();
+    console.log('Counted partial results, explicit acceptance, popup/floating review actions and persistent heading counters passed.');
+
     assert.deepEqual(errors, []);
     console.log('Inactive state, initial cancellation, project closure across windows and preference retention passed.');
     console.log('Workspace reuse, saved-search persistence and zero page errors passed.');

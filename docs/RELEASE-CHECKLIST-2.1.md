@@ -87,3 +87,8 @@ store review, record that gap and test it when a suitable signed/store build is 
 Official references: [Chrome updates](https://developer.chrome.com/docs/webstore/update),
 [Mozilla source submission](https://extensionworkshop.com/documentation/publish/source-code-submission/),
 [Playwright browser setup](https://playwright.dev/docs/browsers).
+
+- [ ] Collect a Google page containing a Google Books result: the book URL is included without an unreadable-link warning.
+- [ ] Collect partially readable results using the popup and floating control: new/duplicate counts are correct, Continue keeps the URLs, opens URLs and Build Corpus, and leaves the search tab open. Reopen the popup to verify the accepted state.
+- [ ] Verify a failed collection offers a return to the workspace, and a successful collection offers Review URLs in the popup and floating control.
+- [ ] Confirm the new Sbafo artwork appears in toolbar icons, workspace, popup and the leftmost floating button; heading counters remain visible when Search and Build Corpus are collapsed.

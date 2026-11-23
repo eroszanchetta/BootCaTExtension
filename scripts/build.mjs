@@ -1,3 +1,4 @@
+import { collectionSummary } from '../src/search-feedback.js';
 import { PDFJS_VERSION } from '../src/pdfjs-version.js';
 import { cp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
@@ -28,6 +29,15 @@ export async function build(target, { outputRoot = join(ROOT, 'dist'), includeTe
   // Only replace this known browser's generated folder, never the source tree.
   await rm(destination, { recursive: true, force: true });
   await cp(join(ROOT, 'src'), destination, { recursive: true });
+  // Embed the same local mascot in the isolated control: no page CSP exception,
+  // external resource, or web-accessible extension asset is required.
+  const mascotSVG = await readFile(join(ROOT, 'src/icons/BootCaT.svg'), 'utf8');
+  const mascot = { viewBox: mascotSVG.match(/viewBox="([^"]+)"/)[1], paths: [...mascotSVG.matchAll(/<path\b([^>]+)\/?\s*>/g)].map(match => Object.fromEntries([...match[1].matchAll(/(fill|d)="([^"]*)"/g)].map(attr => [attr[1], attr[2]]))) };
+  if (!mascot.paths.length || mascot.paths.some(path => !path.d || !path.fill)) throw new Error('Invalid Sbafo vector artwork.');
+  const controlPath = join(destination, 'floating-control.js');
+  const control = (await readFile(controlPath, 'utf8')).replace('const mascot = null;', `const mascot = ${JSON.stringify(mascot)};`).replace('const summarize = null;', `const summarize = ${collectionSummary.toString()};`);
+  await writeFile(controlPath, control);
+
   await cp(join(ROOT, 'LICENSE'), join(destination, 'LICENSE.txt'));
   await cp(join(ROOT, 'NOTICE'), join(destination, 'NOTICE.txt'));
   const pdfDestination = join(destination, 'vendor/pdfjs');

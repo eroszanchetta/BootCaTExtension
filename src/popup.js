@@ -1,4 +1,4 @@
-import { collectionLinkWarning } from './search-feedback.js';
+import { collectionLinkWarning, collectionSummary } from './search-feedback.js';
 import { COLLECTION_CONTROLS_KEY, DEFAULT_COLLECTION_CONTROLS, collectionControlsFromRecord } from './collection-preferences.js';
 import { getExtensionAPI } from './extension-api.js';
 import { initVersionBadge } from './version.js';
@@ -9,6 +9,7 @@ const el = id => document.getElementById(id);
 const collect = el('collect'), savePage = el('save-page');
 const feedback = el('feedback'), pageFeedback = el('page-feedback'), status = el('popup-status');
 let project, activeTab, engine, initialized = false, reloading = false;
+let collectedResult = null, acceptedPartial = false;
 let collecting = false, savingPage = false, alreadyCollected = false, unresolved = 0;
 let pageState = 'checking', pageRevision = 0, collectionRevision = 0, projectRevision = 0;
 let pageError = '', collectionError = '', generalError = '', pageWarning = '', collectionWarning = '';
@@ -53,6 +54,8 @@ function render() {
   collect.textContent = collecting ? 'Collecting…' : 'Add URLs from this tab to corpus';
   savePage.textContent = savingPage ? 'Saving…' : 'Add this page to corpus';
   message(feedback, ''); message(pageFeedback, '');
+  el('collection-choices').hidden = true;
+  for (const id of ['review-urls', 'continue-collected', 'review-search-tab', 'return-workspace']) el(id).hidden = true;
   if (reloading) { message(status, 'Project changed. Refreshing…'); return; }
   if (generalError) { message(status, generalError); return; }
   if (!initialized) { message(status, 'Checking project and current tab…'); return; }
@@ -62,12 +65,20 @@ function render() {
   el('close-collected-option').hidden = !engine;
   el('close-captured-option').hidden = !!engine;
   if (engine) {
-    if (alreadyCollected && !unresolved && !collecting) {
-      message(feedback, `URLs added${collectionWarning ? `. ${collectionWarning}` : ''}`, true);
+    const partial = alreadyCollected && unresolved && !acceptedPartial;
+    if (alreadyCollected && (!unresolved || acceptedPartial) && !collecting) {
+      message(feedback, [collectionSummary(collectedResult), collectionWarning].filter(Boolean).join(' '), true);
     } else {
       el('collect-action').hidden = false; collect.disabled = collecting || !preferencesLoaded || savingPreferences.size > 0;
       el('page-info').textContent = `${engine.name}${engine.experimental ? ' (experimental)' : ''} web results detected.`;
-      message(feedback, collectionError || (alreadyCollected && unresolved ? collectionWarning || 'Some links could not be added. Open the search tab to review them.' : collectionWarning));
+      message(feedback, [alreadyCollected ? collectionSummary(collectedResult) : '', collectionError || collectionWarning].filter(Boolean).join(' '));
+    }
+    if (!collecting && (alreadyCollected || collectionError)) {
+      el('collection-choices').hidden = false;
+      el('review-urls').hidden = !alreadyCollected || !!partial;
+      el('continue-collected').hidden = !partial;
+      el('review-search-tab').hidden = !partial && !collectionError;
+      el('return-workspace').hidden = !collectionError || alreadyCollected;
     }
   } else if (pageState === 'checking' && !savingPage) {
     message(status, 'Checking whether this page is already in the corpus…');
@@ -98,8 +109,8 @@ async function refreshPageState() {
 }
 function updateCollectionState(collections) {
   const saved = engine && collections.find(item => item.engine === engine.id && item.pageURL === activeTab?.url);
-  alreadyCollected = !!saved; unresolved = saved?.unresolved || 0;
-  if (!collecting) { collectionError = ''; collectionWarning = collectionLinkWarning(saved); }
+  alreadyCollected = !!saved; unresolved = saved?.unresolved || 0; collectedResult = saved; acceptedPartial = !!saved?.acceptedPartial;
+  if (!collecting) { collectionError = ''; collectionWarning = saved?.acceptedPartial ? '' : collectionLinkWarning(saved); }
   render();
 }
 ext.storage.onChanged.addListener((changes, area) => {
@@ -151,7 +162,7 @@ collect.addEventListener('click', async () => {
     const result = await ext.runtime.sendMessage({ type: 'collect', projectId, tabId: activeTab.id });
     if (reloading || project.id !== projectId) return;
     if (!result?.ok) throw new Error(result?.error || 'Collection failed. Try again.');
-    alreadyCollected = true; unresolved = result.unresolved || 0; collectionWarning = result.closeWarning || result.workspaceWarning || result.linkWarning || '';
+    alreadyCollected = true; collectedResult = result; acceptedPartial = false; unresolved = result.unresolved || 0; collectionWarning = result.closeWarning || result.workspaceWarning || result.linkWarning || '';
   } catch (error) { if (!reloading && project.id === projectId) collectionError = error.message; }
   finally { collecting = false; render(); }
 });
@@ -168,6 +179,24 @@ savePage.addEventListener('click', async () => {
     if (!reloading && project.id === projectId) { pageState = 'available'; pageError = error.message; }
   } finally { savingPage = false; render(); }
 });
+async function reviewURLs(acceptPartial = false) {
+  try {
+    if (acceptPartial) {
+      const accepted = await ext.runtime.sendMessage({ type: 'accept-collected-results', projectId: project.id, pageURL: activeTab.url });
+      if (!accepted?.ok) throw new Error(accepted?.error || 'Could not keep the collected URLs.');
+    }
+    const reply = await ext.runtime.sendMessage({ type: 'open-workspace', section: 'urls-section' });
+    if (!reply?.ok) throw new Error(reply?.error || 'Could not open BootCaT.');
+    window.close();
+  } catch (error) { collectionError = error.message; render(); }
+}
+el('review-urls').addEventListener('click', () => reviewURLs());
+el('continue-collected').addEventListener('click', () => reviewURLs(true));
+el('review-search-tab').addEventListener('click', async () => {
+  try { await ext.tabs.update(activeTab.id, { active: true }); window.close(); }
+  catch (error) { collectionError = error.message; render(); }
+});
+el('return-workspace').addEventListener('click', () => el('workspace').click());
 el('workspace').addEventListener('click', async () => {
   try {
     const result = await ext.runtime.sendMessage({ type: 'open-workspace' });

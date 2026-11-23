@@ -1,4 +1,5 @@
-import { collectionLinkWarning } from './search-feedback.js';
+import { openWorkspaceSection } from './workspace-sections.js';
+import { collectionLinkWarning, collectionSummary } from './search-feedback.js';
 import { getExtensionAPI } from './extension-api.js';
 const ext = getExtensionAPI();
 import { ENGINES } from "./engines.js";
@@ -20,8 +21,10 @@ export function initSearchUI({ isRunning, seenCollectionIds = [], onChange = () 
     el("engine").append(option);
   }
   function render() {
-    const unresolved = collections.reduce((sum, item) => sum + item.unresolved, 0);
-    status.textContent = [unresolved ? collectionLinkWarning(collections.find(item => item.unresolved && item.unreadableGoogle) || collections.find(item => item.unresolved)) : '', isRunning() && (pending.size || pendingCollections.size) ? 'New URLs will be added after the current batch finishes.' : ''].filter(Boolean).join(' ');
+    const partial = collections.filter(item => item.unresolved && !item.acceptedPartial);
+    const unresolved = partial.reduce((sum, item) => sum + item.unresolved, 0);
+    el('collection-choices').hidden = !partial.length;
+    status.textContent = [collections.length ? collectionSummary(collections.at(-1)) : '', unresolved ? collectionLinkWarning(partial.find(item => item.unreadableGoogle) || partial[0]) : '', isRunning() && (pending.size || pendingCollections.size) ? 'New URLs will be added after the current batch finishes.' : ''].filter(Boolean).join(' ');
   }
   function flush() {
     if (destroyed || (!pending.size && !pendingCollections.size)) return;
@@ -48,6 +51,22 @@ export function initSearchUI({ isRunning, seenCollectionIds = [], onChange = () 
     }
     render(); flush();
   }
+  el('continue-collected').addEventListener('click', async () => {
+    try {
+      const reply = await ext.runtime.sendMessage({ type: 'accept-collected-results', projectId: getProjectId() });
+      if (!reply?.ok) throw new Error(reply?.error || 'Could not keep the collected URLs.');
+      openWorkspaceSection('review-section'); openWorkspaceSection('urls-section', { scroll: true });
+    } catch (error) { status.textContent = error.message; }
+  });
+  el('review-search-tabs').addEventListener('click', async () => {
+    try {
+      const reply = await ext.runtime.sendMessage({ type: 'get-project-search-tabs', projectId: getProjectId() });
+      const tab = reply.tabs?.find(item => item.status === 'attention');
+      if (!tab) { status.textContent = 'Open the search tab to review its remaining links.'; return; }
+      const focused = await ext.runtime.sendMessage({ type: 'focus-project-search-tab', projectId: getProjectId(), tabId: tab.tabId });
+      if (!focused?.ok) throw new Error(focused?.error || 'Could not open the search tab.');
+    } catch (error) { status.textContent = error.message; }
+  });
   el('urls').addEventListener('input', flush);
   ext.storage.onChanged.addListener((changes, area) => {
     if (area === "local" && changes.collections) { changed = true; receive(changes.collections.newValue || [], true); }

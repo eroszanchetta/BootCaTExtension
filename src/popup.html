@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>BootCaT</title><link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="popup.css"></head>
-<body><main><div class="popup-brand"><img src="icons/icon-48.png" width="48" height="48" alt=""><span id="app-version" class="badge">BootCaT</span></div>
+<body><main><div class="popup-brand"><img src="icons/BootCaT.svg" width="48" height="48" alt=""><span id="app-version" class="badge">BootCaT</span></div>
 <button id="workspace" type="button">Open BootCaT</button>
 <p id="popup-status" class="hint" role="status" aria-live="polite">Checking project and current tab…</p>
 <div id="collect-action" class="popup-action" hidden>
@@ -8,6 +8,7 @@
 <button id="collect" type="button" class="secondary" disabled>Add URLs from this tab to corpus</button>
 </div>
 <p id="feedback" role="status" aria-live="polite" hidden></p>
+<div id="collection-choices" class="actions" hidden><button id="review-urls" type="button">Review URLs</button><button id="continue-collected" type="button">Continue with collected URLs</button><button id="review-search-tab" type="button" class="secondary">Review search tab</button><button id="return-workspace" type="button" class="secondary">Return to BootCaT</button></div>
 <label id="close-collected-option" class="popup-switch" hidden><input id="close-collected-tab" type="checkbox" role="switch">Close tab after success</label>
 <div id="capture-action" class="popup-action" hidden>
 <button id="save-page" type="button" class="secondary" disabled>Add this page to corpus</button>

@@ -104,7 +104,7 @@ const assert = require('node:assert/strict');
             assert.equal(await toggle.isChecked(), previousToggle);
           }
           if (scenario === 'saved') assert.equal(await page.locator('#page-feedback').innerText(), 'Page already added to corpus');
-          if (scenario === 'collected') assert.equal(await page.locator('#feedback').innerText(), 'URLs added');
+          if (scenario === 'collected') assert.equal(await page.locator('#feedback').innerText(), '0 URLs added to your project.');
           if (scenario === 'search' || scenario === 'page') {
             const action = page.locator(scenario === 'search' ? '#collect' : '#save-page');
             assert.ok((await action.boundingBox()).width < (await page.locator('#workspace').boundingBox()).width);
