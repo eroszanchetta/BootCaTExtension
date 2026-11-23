@@ -10,6 +10,7 @@ Use Node.js 24 LTS and npm, with an ordinary internet connection for npm install
 npm ci
 npm test
 npm run package
+node scripts/verify-release-package.mjs
 npm run lint:firefox
 ```
 
@@ -23,6 +24,8 @@ Version numbers follow package.json. Do not upload the GitHub repository ZIP as 
 The source package has an explicit allowlist and excludes node_modules, dist, browser profiles
 and Git data. It contains sources, tests, pinned dependency lockfile, licences and this guide.
 `npm run package:source` creates just the source archive without requiring installed PDF.js.
+
+PDF.js compatibility preparation is documented in [PDFJS-STORE-BUILD.md](PDFJS-STORE-BUILD.md). Both browser packages receive the same hash-guarded changes; no manual edits to node_modules or generated files are needed. The source ZIP includes the script, tests, upstream lockfile, notices and reproduction instructions.
 
 ## Submission steps
 

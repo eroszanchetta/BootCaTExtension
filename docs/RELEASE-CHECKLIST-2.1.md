@@ -20,6 +20,7 @@ npm ci
 npm audit --audit-level=high
 npm test
 npm run package
+node scripts/verify-release-package.mjs
 npm run lint:firefox
 npm run test:popup
 npm run test:browser
@@ -92,3 +93,11 @@ Official references: [Chrome updates](https://developer.chrome.com/docs/webstore
 - [ ] Collect partially readable results using the popup and floating control: new/duplicate counts are correct, Continue keeps the URLs, opens URLs and Build Corpus, and leaves the search tab open. Reopen the popup to verify the accepted state.
 - [ ] Verify a failed collection offers a return to the workspace, and a successful collection offers Review URLs in the popup and floating control.
 - [ ] Confirm the new Sbafo artwork appears in toolbar icons, workspace, popup and the leftmost floating button; heading counters remain visible when Search and Build Corpus are collapsed.
+
+## Chrome 2.0.1 Red Titanium replacement
+
+- [ ] Include the PDF.js readability fix and all prior 2.1 changes in the final merged commit. Keep 2.1.0 unless that version has already been used in a store.
+- [ ] Verify the exact release ZIP with `node scripts/verify-release-package.mjs dist/packages/bootcat-chromium-2.1.0.zip` and retain the printed PDF.js hashes with the release record.
+- [ ] Confirm PDF extraction works in both browsers, using the prepared local library and worker under the existing CSP; retain the full Chromium extension workflow results.
+- [ ] Submit to the existing Chrome item as the replacement for 2.0.1, including the explanation in CHROME-SUBMISSION.md. Check the notice/dashboard for any deadline or required appeal process.
+- [ ] Record the new review outcome before calling the policy issue resolved by the store. Build verification and test success do not establish store approval.

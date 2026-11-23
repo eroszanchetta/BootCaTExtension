@@ -8,13 +8,14 @@ const assert = require('node:assert/strict');
 (async () => {
   const temporary = await mkdtemp(join(require('node:os').tmpdir(), 'bootcat-popup-'));
   const { build } = await import('./build.mjs');
-  const root = await build('chromium', { outputRoot: temporary });
+  const root = await build('chromium', { outputRoot: temporary, includeTests: true });
   const server = createServer(async (request, response) => {
     const path = resolve(root, '.' + new URL(request.url, 'http://localhost').pathname);
     if (!path.startsWith(root + '/')) { response.writeHead(404); response.end(); return; }
     try {
       const body = await readFile(path);
-      response.setHeader('Content-Type', ({ '.js': 'text/javascript', '.css': 'text/css', '.html': 'text/html', '.png': 'image/png', '.svg': 'image/svg+xml' })[extname(path)] || 'application/octet-stream');
+      if (path.endsWith('/tests/browser-tests.html') || path.endsWith('/pdf.worker.mjs')) response.setHeader('Content-Security-Policy', "script-src 'self'; worker-src 'self'; object-src 'none'");
+      response.setHeader('Content-Type', ({ '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.html': 'text/html', '.png': 'image/png', '.svg': 'image/svg+xml' })[extname(path)] || 'application/octet-stream');
       response.end(body);
     } catch { response.writeHead(404); response.end(); }
   });
@@ -23,6 +24,11 @@ const assert = require('node:assert/strict');
     for (const [name, engine] of [['chromium', chromium], ['firefox', firefox]]) {
       const browser = await engine.launch({ headless: true });
       try {
+        const extraction = await browser.newPage(); const extractionErrors = []; extraction.on('pageerror', error => extractionErrors.push(error.message));
+        await extraction.goto(`http://127.0.0.1:${server.address().port}/tests/browser-tests.html`);
+        await extraction.waitForFunction(() => document.querySelector('#output').textContent.includes('/12 passed.'));
+        assert.match(await extraction.locator('#output').innerText(), /12\/12 passed\./); assert.deepEqual(extractionErrors, []);
+        await extraction.close(); console.log(`${name}: prepared local PDF library/worker and all extraction fixtures passed under script-src self.`);
         for (const scenario of ['setup', 'search', 'collected', 'page', 'saved', 'unsupported', 'error']) {
           const page = await browser.newPage({ viewport: { width: 360, height: 600 } });
           const errors = []; page.on('pageerror', error => errors.push(error.message));

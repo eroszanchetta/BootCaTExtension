@@ -1,3 +1,4 @@
+import { preparePDFJS } from './pdfjs-store-build.mjs';
 import { collectionSummary } from '../src/search-feedback.js';
 import { PDFJS_VERSION } from '../src/pdfjs-version.js';
 import { cp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
@@ -42,7 +43,11 @@ export async function build(target, { outputRoot = join(ROOT, 'dist'), includeTe
   await cp(join(ROOT, 'NOTICE'), join(destination, 'NOTICE.txt'));
   const pdfDestination = join(destination, 'vendor/pdfjs');
   await mkdir(pdfDestination, { recursive: true });
-  for (const name of ['pdf.mjs', 'pdf.worker.mjs']) await cp(join(pdfRoot, 'legacy/build', name), join(pdfDestination, name));
+  for (const name of ['pdf.mjs', 'pdf.worker.mjs']) {
+    const source = await readFile(join(pdfRoot, 'legacy/build', name), 'utf8');
+    await writeFile(join(pdfDestination, name), preparePDFJS(source, name));
+  }
+  await cp(join(ROOT, 'docs/PDFJS-STORE-BUILD.md'), join(pdfDestination, 'README-BootCaT.md'));
   for (const name of ['cmaps', 'standard_fonts', 'LICENSE']) await cp(join(pdfRoot, name), join(pdfDestination, name), { recursive: true });
   await writeFile(join(destination, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
   if (includeTests) {

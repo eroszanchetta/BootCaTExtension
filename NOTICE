@@ -11,6 +11,10 @@ Third-party software retains its own copyright and licence notices:
 - franc 6.2.0 and its bundled helpers: MIT; src/vendor/franc/LICENSE-*.
 - PDF.js (pdfjs-dist) 6.5.438: Apache-2.0; its LICENSE and the separate
   font/CMap notices are copied into vendor/pdfjs in each built extension.
+  Bundled compatibility code is modified by BootCaT to use native Object.create
+  and globalThis; obsolete IE/ActiveX and dynamic Function fallbacks are removed.
+  See vendor/pdfjs/README-BootCaT.md in built packages, or
+  docs/PDFJS-STORE-BUILD.md in the source distribution.
 
 See src/vendor/README.md and src/vendor/franc/sources.json for provenance.
 In built packages the corresponding paths start at vendor/, without src/.

@@ -1,6 +1,6 @@
 # Chrome Web Store submission — BootCaT 2.1.0
 
-Updated 21 November 2026 for the 2.1 update. This guide prepares a submission; it does not publish one.
+Updated 23 November 2026 for the 2.1 update. This guide prepares a submission; it does not publish one.
 Build and submit the browser-specific package from the tested release commit.
 
 ## Update the existing listing
@@ -22,6 +22,7 @@ After pulling the current repository, use Node.js 24 LTS:
 npm ci
 npm test
 npm run package
+node scripts/verify-release-package.mjs
 ```
 
 Outputs:
@@ -52,6 +53,22 @@ if any, need their own accurate disclosures; this exported page contains no trac
 The source repository is now public: https://github.com/eroszanchetta/BootCaTExtension.
 Use it in the listing and keep the source corresponding to each released version available
 through a release/tag, an exact commit link, or the matching source ZIP.
+
+## Replacement for the 2.0.1 code-readability violation
+
+The Red Titanium notice applies to **2.0.1**. Submit **2.1.0** as an update to the same existing item, **fpblhmfnjkhnijinpcemmnaplcmklbcb**, after merging the readability-fix PR and rebuilding from the tested final commit. Version 2.1 includes the current merged features and interface changes as well as this fix. This document does not establish the old listing's current availability or enforcement deadline; check the notice/dashboard for those details.
+
+The build removes obsolete core-js IE/ActiveX/iframe and dynamic Function fallbacks from both legacy PDF.js bundles. The code is removed, not renamed or encoded. See [PDFJS-STORE-BUILD.md](PDFJS-STORE-BUILD.md) for exact changes, input hashes and licence/provenance. Package creation verifies the actual serialized ZIP contents against the reviewed prepared-file hashes. The standalone verification command above can be repeated on the exact ZIP selected for upload:
+
+```
+node scripts/verify-release-package.mjs dist/packages/bootcat-chromium-2.1.0.zip
+```
+
+Suggested reviewer explanation (use in the dashboard's available reviewer/support field):
+
+> Version 2.1.0 replaces BootCaT 2.0.1 and addresses the Red Titanium code-readability notice. Both vendor/pdfjs/pdf.mjs and vendor/pdfjs/pdf.worker.mjs now use native Object.create and globalThis instead of obsolete core-js compatibility fallbacks. The script-tag/JavaScript-URL construction and dynamic Function fallback have been removed. The pinned PDF.js version, remaining compatibility support, CSP and local-only PDF extraction are retained. A reproducible, hash-guarded build script and regression tests document the changes; vendor/pdfjs/README-BootCaT.md provides provenance in the extension package. The corresponding source and reviewer documentation are included in the source release.
+
+If the store still rejects the replacement, use its review/support route with the exact new package version and the supplied offending paths. Do not assume an older rejection message refers to the new upload. An appeal is an alternative if required by the dashboard; it does not replace testing and submitting the corrected package.
 
 ## Upload and complete the listing
 
