@@ -1132,7 +1132,12 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     await clickConfirmed('#open-all-queries');
     await page.waitForFunction(async () => { const ext = globalThis.browser ?? chrome; const { project } = await ext.runtime.sendMessage({ type: 'get-project' }); const state = await ext.runtime.sendMessage({ type: 'get-project-search-tabs', projectId: project.id }); return state.blocked === 2 && state.loading === 0 && state.loaded === 1; });
     await page.click('#collect-project-tabs');
+    try {
     await page.waitForFunction(() => document.querySelector('#project-tab-count').textContent.startsWith('0 of 2') && document.querySelector('#stop-project-tabs').hidden);
+    } catch (error) {
+      console.log('Challenge batch diagnostics:', JSON.stringify(await page.evaluate(async () => { const ext = globalThis.browser ?? chrome; const { project } = await ext.runtime.sendMessage({ type: 'get-project' }); return { state: await ext.runtime.sendMessage({ type: 'get-project-search-tabs', projectId: project.id }), count: document.querySelector('#project-tab-count').textContent, status: document.querySelector('#project-tab-status').textContent }; })));
+      throw error;
+    }
     const blockedPages = context.pages().filter(tab => tab.url().includes('ecosia.org/search'));
     assert.equal(blockedPages.length, 2); assert.equal(await page.locator('#collect-project-tabs').isDisabled(), true);
     await blockedPages[0].evaluate(() => { document.cookie = 'bootcat_unlocked=1; Path=/'; });
