@@ -2,17 +2,19 @@
 // are fixtures; the browser-owned toolbar panel itself still needs manual checks.
 const { chromium, firefox } = require('playwright');
 const { createServer } = require('node:http');
-const { readFile } = require('node:fs/promises');
-const { resolve, extname } = require('node:path');
+const { readFile, mkdtemp, rm } = require('node:fs/promises');
+const { resolve, extname, join } = require('node:path');
 const assert = require('node:assert/strict');
 (async () => {
-  const root = resolve(__dirname, '../src');
+  const temporary = await mkdtemp(join(require('node:os').tmpdir(), 'bootcat-popup-'));
+  const { build } = await import('./build.mjs');
+  const root = await build('chromium', { outputRoot: temporary });
   const server = createServer(async (request, response) => {
     const path = resolve(root, '.' + new URL(request.url, 'http://localhost').pathname);
     if (!path.startsWith(root + '/')) { response.writeHead(404); response.end(); return; }
     try {
       const body = await readFile(path);
-      response.setHeader('Content-Type', ({ '.js': 'text/javascript', '.css': 'text/css', '.html': 'text/html', '.png': 'image/png' })[extname(path)] || 'application/octet-stream');
+      response.setHeader('Content-Type', ({ '.js': 'text/javascript', '.css': 'text/css', '.html': 'text/html', '.png': 'image/png', '.svg': 'image/svg+xml' })[extname(path)] || 'application/octet-stream');
       response.end(body);
     } catch { response.writeHead(404); response.end(); }
   });
@@ -157,15 +159,15 @@ const assert = require('node:assert/strict');
         await floating.setViewportSize({ width: 320, height: 600 });
         let box = await host.boundingBox(); await floating.mouse.move(box.x + 20, box.y + 20);
         assert.equal(await floating.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
-        await floating.mouse.click(box.x + 55, box.y + 20); await floating.waitForFunction(() => floatingFixture.workspace === 1);
+        await floating.mouse.click(box.x + 20, box.y + 20); await floating.waitForFunction(() => floatingFixture.workspace === 1);
         await floating.mouse.click(box.x + box.width - 20, box.y + 20); await host.waitFor({ state: 'hidden' });
         assert.equal(await floating.evaluate(() => floatingFixture.state.enabled), false);
         await floating.evaluate(() => { floatingFixture.state.enabled = true; floatingFixture.state.action = 'collect'; floatingFixture.partial = true; for (const listener of floatingFixture.listeners) listener({ type: 'bootcat-floating-refresh' }, { id: 'floating-fixture' }, () => {}); });
-        await host.waitFor(); box = await host.boundingBox(); await floating.mouse.click(box.x + 20, box.y + 20);
+        await host.waitFor(); box = await host.boundingBox(); await floating.mouse.click(box.x + 55, box.y + 20);
         await floating.waitForFunction(() => floatingFixture.actions === 1); assert.equal(await host.isVisible(), true, 'partial collection leaves controls available');
         await floating.evaluate(() => { floatingFixture.partial = false; });
-        await floating.mouse.click(box.x + 20, box.y + 20); await floating.waitForFunction(() => floatingFixture.actions === 2);
-        await host.waitFor({ state: 'hidden' });
+        await floating.mouse.click(box.x + 55, box.y + 20); await floating.waitForFunction(() => floatingFixture.actions === 2);
+        assert.equal(await host.isVisible(), true, 'successful collection retains Review URLs');
         await floating.evaluate(() => { floatingFixture.state.saved = false; floatingFixture.state.enabled = false; for (const listener of floatingFixture.listeners) listener({ type: 'bootcat-floating-refresh' }, { id: 'floating-fixture' }, () => {}); });
         assert.equal(await host.count(), 0);
         assert.deepEqual(floatingErrors, []); await floating.close();
@@ -381,5 +383,5 @@ const assert = require('node:assert/strict');
         console.log(`${name}: conditional popup actions, confirmations, advanced disclosure keyboard handling and responsive overflow passed.`);
       } finally { await browser.close(); }
     }
-  } finally { await new Promise(resolve => server.close(resolve)); }
+  } finally { await new Promise(resolve => server.close(resolve)); await rm(temporary, { recursive: true, force: true }); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
