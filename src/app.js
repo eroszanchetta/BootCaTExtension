@@ -34,7 +34,7 @@ function updateLimitHints() {
   const hint = document.getElementById('download-limit-hint');
   hint.textContent = `Maximum file size: ${currentSettings.fileMiB} MiB.`;
 }
-let portableBusy = false;
+let portableBusy = false, portableUI;
 let ready = false, running = false, downloading = false, importing = false, stopping = false, resetting = false, controller = null;
 let projectId, state, entries = [], searchUI, seedsUI, projectTabsUI, archiveURL = null, previewURL = null, previewFilename = null, textReview;
 let exportSaved = false, exportRevision = 0;
@@ -82,6 +82,7 @@ function revokeArchive() {
   if (archiveURL) { URL.revokeObjectURL(archiveURL); archiveURL = null; }
 }
 function invalidateArchive() {
+  portableUI?.refresh?.();
   exportRevision++; revokeArchive();
   if (exportSaved) ui['export-status'].textContent = 'Project changed. Export your corpus again to download an updated ZIP.';
   exportSaved = false; ui['export-status'].classList.toggle('saved', false);
@@ -118,7 +119,7 @@ function queueDraft(patch) {
   if (Object.hasOwn(patch, 'urls')) revealAddedURLs(state.draft.urls, patch.urls);
   invalidateArchive(); Object.assign(state.draft, patch); pendingWrites++;
   if (Object.hasOwn(patch, 'urls')) updateControls();
-  writes = writes.then(() => storage.saveDraft(projectId, patch)).then(() => { writeError = null; }, error => { writeError = error; report(error); }).finally(() => { pendingWrites--; renderExportGuidance(); });
+  writes = writes.then(() => storage.saveDraft(projectId, patch)).then(() => { writeError = null; }, error => { writeError = error; report(error); }).finally(() => { pendingWrites--; renderExportGuidance(); portableUI?.refresh?.(); });
   return writes;
 }
 async function flushWrites() { await writes; if (writeError) throw writeError; }
@@ -128,6 +129,7 @@ function pendingURLs() {
 }
 function updateControls() {
   projectUI.refreshControls?.();
+  if (portableUI?.isSaved?.()) document.getElementById('save-project').disabled = true;
   renderExportGuidance();
   ui.progress.hidden = !isBatchActive();
   const batch = isBatchActive(), exclusive = running || remoteActivity.exclusive || portableBusy;
@@ -358,7 +360,7 @@ async function restore({ draft = true } = {}) {
   ui.status.textContent = state.batch.state === 'running' ? 'Saved project restored. An interrupted download can be resumed with Resume downloads. Completed pages will be skipped.' : state.batch.state === 'idle' ? '' : state.batch.lastStatus;
   await refreshExportState(saved);
   updateCounts(); warnURLs(); updateControls();
-  projectTabsUI?.refresh();
+  projectTabsUI?.refresh(); portableUI?.refresh?.();
 }
 async function notifyWorkspace() {
   if (resetting || !ext.storage.local?.set) return;
@@ -380,7 +382,7 @@ async function refreshMetadata() {
     entries = saved.entries; state.batch = saved.batch; state.deleteRevision = saved.deleteRevision;
     if (!pendingWrites) { revealAddedURLs(state.draft.urls, saved.draft.urls); state.draft.urls = saved.draft.urls; ui.urls.value = saved.draft.urls; warnURLs(); }
     if (changed) invalidateArchive();
-    updateCounts(); updateControls();
+    updateCounts(); updateControls(); portableUI?.refresh?.();
   } catch (error) { report(error); } finally { metadataRefreshing = false; }
 }
 async function refreshActivity() {
@@ -673,12 +675,12 @@ window.addEventListener('focus', async () => {
   } catch (error) { report(error); } finally { refreshing = false; }
 });
 
-const portableUI = initPortableUI({
+portableUI = initPortableUI({
   getProject: () => projectUI.snapshot(),
   isBusy: () => !ready && !!projectUI.snapshot() || running || isBatchActive() || importing || hasDocumentWork() || remoteActivity.exclusive || seedsUI?.isBusy(),
   isDirty: () => textReview?.isDirty(), flush: flushWrites,
   exclusive: task => coordinator.exclusive(task),
-  onBusy: value => { portableBusy = value; updateControls(); if (!value && capturesPending) queueMicrotask(importSavedPages); }, version: VERSION
+  onBusy: value => { portableBusy = value; updateControls(); if (!value && capturesPending) queueMicrotask(importSavedPages); }, version: VERSION, onStateChange: updateControls
 });
 
 (async () => {
