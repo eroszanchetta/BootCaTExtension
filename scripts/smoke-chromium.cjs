@@ -1130,40 +1130,19 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     await page.bringToFront(); await page.selectOption('#engine', 'ecosia');
     await page.fill('#tuples', 'challenge-one\nchallenge-two\nchallenge-good'); await page.click('#prepare-queries');
     await clickConfirmed('#open-all-queries');
-    await page.waitForFunction(async () => { const ext = globalThis.browser ?? chrome; const { project } = await ext.runtime.sendMessage({ type: 'get-project' }); const state = await ext.runtime.sendMessage({ type…16529 tokens truncated…ing || textReview?.isOpen() || hasDocumentWork()) await refreshActivity();
-    else { await restore(); await refreshActivity(); }
-    await importSavedPages();
-  } catch (error) { report(error); } finally { refreshing = false; }
-});
-
-portableUI = initPortableUI({
-  getProject: () => projectUI.snapshot(),
-  isBusy: () => !ready && !!projectUI.snapshot() || running || isBatchActive() || importing || hasDocumentWork() || remoteActivity.exclusive || seedsUI?.isBusy(),
-  isDirty: () => textReview?.isDirty(), flush: flushWrites,
-  exclusive: task => coordinator.exclusive(task),
-  onBusy: value => { portableBusy = value; updateControls(); if (!value && capturesPending) queueMicrotask(importSavedPages); }, version: VERSION, onStateChange: updateControls
-});
-
-(async () => {
-  try {
-    await projectUI.ready; projectId = projectUI.snapshot()?.id;
-    if (!projectId) {
-      setProjectSectionState(false); ui.export.disabled = true;
-      for (const id of ['seeds-section', 'search-section', 'urls-section', 'review-section']) {
-        for (const control of document.getElementById(id).querySelectorAll('button, input, select, textarea')) control.disabled = true;
-      }
-      ui.status.textContent = 'No active project. Create a project to download and extract documents.';
-      document.getElementById('collection-status').textContent = 'No active project.';
-      document.getElementById('project-tab-count').textContent = 'No active project.';
-      return;
-    }
-    await storage.ensureStoredProject(projectId);
-    await restore();
-    await loadSettings(); ready = true;
-    searchUI = initSearchUI({ onCollectionsChange: invalidateArchive, isRunning: () => running, seenCollectionIds: state.draft.seenCollections, getProjectId: () => projectId, onChange: patch => { queueDraft(patch); warnURLs(); } });
-    if (state.draft.engine) ui.engine.value = state.draft.engine;
-    seedsUI = initSeedsUI({ minimumSeeds: currentSettings.minimumSeeds, draft: state.draft, onChange: queueDraft, getLanguage: () => projectUI.snapshot()?.language || 'none', getProjectId: () => projectId, onOpeningChange: value => projectTabsUI?.setOpening(value) });
-    projectTabsUI = initProjectTabsUI({ getProjectId: () => projectId, onState: value => seedsUI?.updateTabState(value) });
-    updateControls(); await refreshActivity(); await importSavedPages();
-  } catch (error) { report(error); }
-})();
+    await page.waitForFunction(async () => { const ext = globalThis.browser ?? chrome; const { project } = await ext.runtime.sendMessage({ type: 'get-project' }); const state = await ext.runtime.sendMessage({ type: 'get-project-search-tabs', projectId: project.id }); return state.blocked === 2 && state.loading === 0 && state.loaded === 1; });
+    await page.click('#collect-project-tabs');
+    await page.waitForFunction(() => document.querySelector('#project-tab-count').textContent.startsWith('0 of 2') && document.querySelector('#stop-project-tabs').hidden);
+    const blockedPages = context.pages().filter(tab => tab.url().includes('ecosia.org/search'));
+    assert.equal(blockedPages.length, 2); assert.equal(await page.locator('#collect-project-tabs').isDisabled(), true);
+    await blockedPages[0].evaluate(() => { document.cookie = 'bootcat_unlocked=1; Path=/'; });
+    await page.waitForFunction(async () => { const ext = globalThis.browser ?? chrome; const { project } = await ext.runtime.sendMessage({ type: 'get-project' }); const state = await ext.runtime.sendMessage({ type: 'get-project-search-tabs', projectId: project.id }); return state.blocked === 0 && state.loaded === 2; });
+    assert.ok(blockedPages.every(tab => !tab.isClosed()), 'unlocking must not collect or close sibling tabs');
+    await Promise.all(releaseChallenges.map(release => release()));
+    const closedChallenges = blockedPages.map(tab => tab.waitForEvent('close')); await page.click('#collect-project-tabs'); await Promise.all(closedChallenges);
+    console.log('Project download feedback/retry, shared Google guidance, loading challenge detection and sibling recovery passed.');
+    assert.deepEqual(errors, []);
+    console.log('Inactive state, initial cancellation, project closure across windows and preference retention passed.');
+    console.log('Workspace reuse, saved-search persistence and zero page errors passed.');
+  } finally { await context?.close(); if (pdfServer) await new Promise(resolve => pdfServer.close(resolve)); await rm(root, { recursive: true, force: true }); }
+})().catch(error => { console.error(error); process.exitCode = 1; });
