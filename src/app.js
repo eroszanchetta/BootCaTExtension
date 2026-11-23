@@ -171,9 +171,10 @@ function updateCounts() {
   ui['attention-count'].textContent = `${problems.toLocaleString()} document${problems === 1 ? '' : 's'}`;
   const listed = entries.filter(entry => !needsAttention(entry));
   document.getElementById('documents-count').textContent = `${listed.length.toLocaleString()} document${listed.length === 1 ? '' : 's'}`;
-  document.getElementById('included-count').textContent = `${listed.filter(entry => entry.doc.extraction.included).length.toLocaleString()} included`;
   const documents = entries.filter(entry => entry.doc?.extraction.status === 'ok');
   const included = documents.filter(entry => entry.doc.extraction.included);
+  document.getElementById('included-count').textContent = `${included.length.toLocaleString()} included`;
+  document.getElementById('build-counter').textContent = `${included.length.toLocaleString()} included`;
   ui['corpus-status'].textContent = included.length ? `${included.reduce((sum, entry) => sum + entry.doc.extraction.characters, 0).toLocaleString()} characters included.` : '';
   renderExportGuidance();
   if (!isBatchActive() && /^(Finished|Stopped)\./.test(ui.status.textContent)) ui.status.textContent = completionMessage(ui.status.textContent.startsWith('Stopped'));
@@ -706,3 +707,11 @@ portableUI = initPortableUI({
     updateControls(); await refreshActivity(); await importSavedPages();
   } catch (error) { report(error); }
 })();
+
+function reviewCollectedURLs() {
+  openWorkspaceSection('review-section'); openWorkspaceSection('urls-section', { scroll: true });
+}
+ext.runtime?.onMessage?.addListener((message, sender) => {
+  if (sender.id === ext.runtime.id && message.type === 'bootcat-review-urls') ext.tabs.getCurrent().then(tab => { if (tab?.id === message.tabId) reviewCollectedURLs(); }).catch(() => {});
+});
+if (globalThis.location?.hash === '#urls-section') projectUI.ready.then(() => requestAnimationFrame(reviewCollectedURLs));

@@ -46,9 +46,12 @@ test('both builds contain identical shared files and separate valid manifests', 
       for (const file of ['pdf.mjs', 'pdf.worker.mjs', 'LICENSE', 'cmaps/Adobe-Japan1-UCS2.bcmap', 'standard_fonts/LICENSE_FOXIT', 'standard_fonts/LICENSE_LIBERATION']) await readFile(join(dir, 'vendor/pdfjs', file));
       assert.match(manifests[0].content_security_policy.extension_pages, /worker-src 'self'/);
       for (const name of ['LICENSE', 'NOTICE']) assert.deepEqual(await readFile(join(dir, name + '.txt')), await readFile(join(ROOT, name)));
-      for (const path of source) assert.deepEqual(await readFile(join(dir, path)), await readFile(join(ROOT, 'src', path)), path);
+      for (const path of source.filter(path => path !== 'floating-control.js')) assert.deepEqual(await readFile(join(dir, path)), await readFile(join(ROOT, 'src', path)), path);
       for (const file of [c.action.default_popup, ...Object.values(c.icons), 'extension-api.js', 'vendor/Readability.js', 'vendor/Defuddle.js']) await readFile(join(dir, file));
     }
+    const floating = await readFile(join(chromium, 'floating-control.js'), 'utf8');
+    assert.ok(!floating.includes('const mascot = null;')); assert.ok(floating.includes('0 0 600 741'));
+    assert.deepEqual(await readFile(join(chromium, 'floating-control.js')), await readFile(join(firefox, 'floating-control.js')));
     for (const path of await list(join(chromium, 'vendor/pdfjs'))) assert.deepEqual(await readFile(join(chromium, 'vendor/pdfjs', path)), await readFile(join(firefox, 'vendor/pdfjs', path)), path);
     await build('chromium', { outputRoot, includeTests: true });
     await readFile(join(chromium, 'tests/browser-tests.html'));

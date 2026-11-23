@@ -52,21 +52,24 @@ export function extractResults(adapter) {
     const domain = adapter.id === "duckduckgo" ? "duckduckgo.com" : "ecosia.org";
     return h === domain || h.endsWith(`.${domain}`);
   }
+  function contentURL(url) {
+    return adapter.id === 'google' && /^books\.google\.[a-z]{2,3}(\.[a-z]{2})?$/.test(url.hostname) && url.pathname === '/books' && !!url.searchParams.get('id');
+  }
   function destination(raw) {
     let url;
     try { url = new URL(raw, page); } catch { return null; }
     // Decode explicit destination parameters on known provider redirects only.
     // Opaque tokens are reported, never guessed or followed in background.
-    if (owned(url)) {
+    if (owned(url) && !contentURL(url)) {
       let target;
       if (adapter.id === "google" && url.pathname === "/url") target = url.searchParams.get("q") || url.searchParams.get("url");
       if (adapter.id === "duckduckgo" && url.pathname.startsWith("/l/")) target = url.searchParams.get("uddg");
       if (adapter.id === "ecosia" && ["/redirect", "/url"].includes(url.pathname)) target = url.searchParams.get("url");
-      if (!target) { if (adapter.id === 'google') unreadableGoogle++; return null; }
+      if (!target) { if (adapter.id === 'google' && url.pathname === '/url') unreadableGoogle++; return null; }
       try { url = new URL(target); } catch { if (adapter.id === 'google') unreadableGoogle++; return null; }
-      if (adapter.id === 'google' && (owned(url) || !['http:', 'https:'].includes(url.protocol))) { unreadableGoogle++; return null; }
+      if (adapter.id === 'google' && ((owned(url) && !contentURL(url)) || !['http:', 'https:'].includes(url.protocol))) { unreadableGoogle++; return null; }
     }
-    if (!["https:", "http:"].includes(url.protocol) || url.username || url.password || owned(url)) return null;
+    if (!["https:", "http:"].includes(url.protocol) || url.username || url.password || (owned(url) && !contentURL(url))) return null;
     url.hash = "";
     return url.href;
   }
@@ -77,7 +80,10 @@ export function extractResults(adapter) {
     if (!anchor.getClientRects().length || anchor.closest('[hidden], [aria-hidden="true"], [data-text-ad], [data-ad], [data-testid*="ad-result"], [data-testid="ad"], [data-test-id="mainline-result-ad"], .result--ad, .result--advertisement, #tads, #bottomads')) continue;
     candidates++;
     const url = destination(anchor.getAttribute("href"));
-    if (!url) { unresolved++; continue; }
+    if (!url) {
+      let internal = false; try { const candidate = new URL(anchor.getAttribute('href'), page); internal = adapter.id === 'google' && owned(candidate) && candidate.pathname !== '/url' && !contentURL(candidate); } catch {}
+      if (!internal) unresolved++; continue;
+    }
     if (seen.has(url)) continue;
     seen.add(url);
     const titleNode = adapter.titleSelector ? anchor.querySelector(adapter.titleSelector) : anchor;

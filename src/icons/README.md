@@ -1,15 +1,13 @@
 # Sbafo — BootCaT mascot
 
-`BootCaT.svg` is the maintainer-provided `sbafo_vettoriale.svg`, preserved byte for byte.
-Its portrait viewBox is 0 0 245 285. The workspace uses this original vector artwork.
+`BootCaT.svg` is the maintainer-provided 2026 `sbafo-vector.svg`, preserved byte for byte. Its viewBox is 0 0 600 741. White markings are opaque; the background is transparent.
 
-The 16, 32, 48 and 128 pixel PNGs are square RGBA exports with the original artwork
-centred at its original aspect ratio on a white rounded backing. The backing keeps
-Sbafo visible on dark browser toolbars without recolouring or redrawing the mascot.
-The popup, favicons and both browser manifests share these assets.
+The workspace and popup use this shared vector without an added backing. The floating control embeds its paths during the normal build, so it needs no web-accessible resources, remote requests or website CSP exception.
 
-Exports were rendered with librsvg/Cairo. For 16/32/48 px, the white backing occupies
-93.75% of the canvas width; for the 128 px store icon it occupies 96 px, leaving 16 px
-of transparent padding per side. Corner radius is 16% of backing width and the artwork
-has a 5% inset inside the backing. No images, fonts or scripts are fetched externally.
-PNG files are committed: normal extension builds do not require an image renderer.
+The browser toolbar, favicons and both manifests use square transparent PNGs rendered from the same artwork. Regenerate 16/32/48 px with ImageMagick:
+
+```
+magick -background none src/icons/BootCaT.svg -resize 32x32 -gravity center -extent 32x32 src/icons/icon-32.png
+```
+
+Repeat for 16 and 48. For the 128 px store icon, resize to 116x116 and centre on a transparent 128x128 canvas. Normal extension builds use the committed PNGs and do not require an image renderer.

@@ -40,3 +40,6 @@ p { margin: 10px 0; font-size: 14px; }
 .floating-preferences label[for] { font-size: 12px; margin: 10px 0 5px; }
 #floating-position { padding: 7px; font-size: 13px; }
 #controls-feedback:empty { display: none; }
+
+.popup-brand img { object-fit: contain; }
+#collection-choices button { padding: 8px 10px; font-size: 13px; }

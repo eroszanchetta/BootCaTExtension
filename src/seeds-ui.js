@@ -127,6 +127,7 @@ export function initSeedsUI({ minimumSeeds = DEFAULT_SETTINGS.minimumSeeds, draf
     }
   }
   function render() {
+    el('queries-counter').textContent = `${prepared.length.toLocaleString()} ${prepared.length === 1 ? 'query' : 'queries'}`;
     const pages = Math.max(1, Math.ceil(prepared.length / PAGE_SIZE)); page = Math.min(page, pages - 1);
     const body = el('prepared-queries'), scroll = body.scrollTop; body.replaceChildren(); queryRows = []; body.start = page * PAGE_SIZE + 1;
     for (const query of prepared.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)) {

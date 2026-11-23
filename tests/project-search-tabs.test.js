@@ -359,3 +359,14 @@ test('a sibling that is still challenged stays blocked, while title-only slow pa
   assert.equal(state.tabs.find(tab => tab.tabId === second.tabId).challenge, true);
   assert.equal(state.tabs.find(tab => tab.tabId === slow.tabId).challenge, undefined);
 });
+
+
+test('accepting a partial collection keeps its tab open and completes only its own query', async () => {
+  const app = fixture();
+  const first = await app.manager.open({projectId:'project', engine:'google', query:'partial'});
+  await app.manager.open({projectId:'project', engine:'google', query:'other'});
+  await app.manager.acceptCollectedInQueue('project', [{engine:'google', pageURL: app.tabs.get(first.tabId).url}]);
+  const state = await app.state();
+  assert.equal(app.tabs.has(first.tabId), true); assert.equal(state.count, 1);
+  assert.equal(state.history.find(item => item.query === 'partial').status, 'collected');
+});

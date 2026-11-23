@@ -105,6 +105,9 @@ for (const namespace of ['chrome', 'browser']) test(`${namespace}: background se
     const replies = await Promise.all([request({ type: 'collect', tabId: 1 }), request({ type: 'collect', tabId: 2 })]);
     assert.equal(replies.every(r => r.ok), true);
     assert.equal(collections.length, 2);
+    assert.ok(replies.every(reply => reply.added === 1 && reply.duplicates === 0));
+    const repeated = await request({ type: 'collect', tabId: 1 });
+    assert.equal(repeated.added, 0); assert.equal(repeated.duplicates, 1);
     const wrongAction = await request({ type: 'save-page', tabId: 1 });
     assert.equal(wrongAction.ok, false);
     assert.match(wrongAction.error, /Use Add URLs from this tab to corpus/);
@@ -171,4 +174,17 @@ test('challenge detection requires page evidence and never mistakes a result pag
   assert.equal(extract('ecosia', url, [], { title: 'Just a moment...' }).challenge, undefined);
   const results = extract('ecosia', url, [{ href: 'https://example.org/' }], { title: 'Just a moment...', challengeResource: true, challengeForm: true });
   assert.equal(results.challenge, undefined); assert.equal(results.results.length, 1);
+});
+
+
+test('Google Books is readable content; internal Google navigation does not cause an encrypted-link warning', () => {
+  const result = extract('google', 'https://www.google.com/search?q=flowers', [
+    { href: 'https://books.google.it/books?id=In_Lv8iMt24C' },
+    { href: '/url?url=https%3A%2F%2Fbooks.google.com%2Fbooks%3Fid%3Dexample' },
+    { href: '/search?q=related' }, { href: 'https://accounts.google.com/' },
+    { href: 'https://books.google.it.evil.org/books?id=external' }
+  ]);
+  assert.equal(result.results.length, 3); assert.equal(result.unresolved, 0);
+  assert.equal(result.unreadableGoogle, undefined); assert.equal(collectionLinkWarning(result), '');
+  assert.ok(result.results.some(item => item.url === 'https://books.google.it/books?id=In_Lv8iMt24C'));
 });

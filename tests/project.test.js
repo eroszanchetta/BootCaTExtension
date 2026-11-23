@@ -1,3 +1,4 @@
+import { collectionSummary, collectionLinkWarning } from '../src/search-feedback.js';
 import { validateLanguage } from '../src/language-detection.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -28,7 +29,7 @@ test('collected URLs append automatically, defer during downloads and preserve m
   const context = vm.createContext({
     document: { getElementById: get, createElement: () => new Element() },
     getExtensionAPI: () => ({ storage: { local: { get: async () => ({ collections: [] }) }, onChanged: { addListener(fn) { notify = fn; } } } }),
-    ENGINES: [], uniqueResults, parseURLs, isRunning: () => running
+    collectionSummary, collectionLinkWarning, openWorkspaceSection() {}, ENGINES: [], uniqueResults, parseURLs, isRunning: () => running
   });
   const source = (await readFile(new URL('../src/search-ui.js', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '').replace(/^export /gm, '');
   vm.runInContext(source + '\nglobalThis.search = initSearchUI({ isRunning });', context);

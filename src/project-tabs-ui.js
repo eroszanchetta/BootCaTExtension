@@ -18,7 +18,7 @@ export function initProjectTabsUI({ getProjectId, onState = () => {} }) {
     el('stop-project-tabs').disabled = !!batch?.stopping;
     if (!batch) { el('project-tab-status').textContent = ''; return; }
     const prefix = batch.interrupted ? 'Collection was interrupted. Saved results remain; click Collect again to continue. ' : batch.stopping ? 'Stopping… ' : batch.stopped ? 'Stopped. ' : batch.running ? 'Collecting… ' : 'Finished. ';
-    el('project-tab-status').textContent = `${prefix}${batch.processed} of ${batch.total} tab${batch.total === 1 ? '' : 's'} processed. ${batch.saved} result page${batch.saved === 1 ? '' : 's'} saved; ${batch.closed} tab${batch.closed === 1 ? '' : 's'} closed; ${batch.leftOpen} left open; ${batch.skipped} skipped.`;
+    el('project-tab-status').textContent = `${prefix}${batch.processed} of ${batch.total} tab${batch.total === 1 ? '' : 's'} processed. ${batch.saved} result page${batch.saved === 1 ? '' : 's'} saved; ${batch.closed} tab${batch.closed === 1 ? '' : 's'} closed; ${batch.leftOpen} left open; ${batch.skipped} skipped.${!batch.running && !batch.saved ? ` ${(state.tabs || []).find(tab => tab.status === 'attention')?.reason || ''}` : ''}`;
     if (collectingBatchId && batch.id === collectingBatchId && !batch.running) {
       collectingBatchId = null;
       if (!state.count && batch.total > 0 && batch.closed === batch.total && batch.saved === batch.total && batch.processed === batch.total && !batch.leftOpen && !batch.skipped && !batch.stopped && !batch.stopping && !batch.interrupted) {
