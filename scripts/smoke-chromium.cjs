@@ -32,6 +32,15 @@ const { execFileSync } = require('node:child_process');
         } else response.end(body);
         return;
       }
+      if (request.url === '/challenge-pending') {
+        response.writeHead(200, { 'Content-Type': 'image/png' }); response.write(Buffer.from([137, 80, 78, 71])); return;
+      }
+      if (request.url.startsWith('/ecosia-fixture')) {
+        const query = new URL(request.url, 'http://fixture').searchParams.get('q') || '';
+        const ready = query.includes('challenge-good') || (request.headers.cookie || '').includes('bootcat_unlocked=1');
+        response.writeHead(200, { 'Content-Type': 'text/html' });
+        response.end(ready ? '<title>Ecosia results</title><a data-test-id="result-link" href="https://corpus.test/challenge-result">Result</a>' : '<title>Just a moment...</title><form id="challenge-form">Verify you are human</form><img src="/challenge-pending"><script>setInterval(() => { if (document.cookie.includes("bootcat_unlocked=1")) location.reload(); }, 100)</script>'); return;
+      }
       if (request.url.startsWith('/search-fixture')) {
         const query = new URL(request.url, 'http://fixture').searchParams.get('q') || '';
         const body = query === 'captcha' && !resolvedQueries.has(query) ? '<h1>CAPTCHA required</h1>' : `<a data-testid="result-title-a" href="https://corpus.test/search?q=${encodeURIComponent(query)}">Local result</a>${query === 'partial' ? '<a data-testid="result-title-a" href="https://duckduckgo.com/l/?opaque=1">Unresolved link</a>' : ''}`;
@@ -64,7 +73,8 @@ const { execFileSync } = require('node:child_process');
     assert.ok(engineSource.includes('searchURL: "https://duckduckgo.com/"'));
     const fixtureEngines = engineSource
       .replace('searchURL: "https://duckduckgo.com/"', `searchURL: "${pdfOrigin}/search-fixture"`)
-      .replace('const url = new URL(value);', `const url = new URL(value);\n    if (url.origin === '${pdfOrigin}' && url.pathname === '/search-fixture' && url.searchParams.get('q')) return ENGINES.find(engine => engine.id === 'duckduckgo');`)
+      .replace('searchURL: "https://www.ecosia.org/search"', `searchURL: "${pdfOrigin}/ecosia-fixture"`)
+      .replace('const url = new URL(value);', `const url = new URL(value);\n    if (url.origin === '${pdfOrigin}' && url.pathname === '/search-fixture' && url.searchParams.get('q')) return ENGINES.find(engine => engine.id === 'duckduckgo');\n    if (url.origin === '${pdfOrigin}' && url.pathname === '/ecosia-fixture' && url.searchParams.get('q')) return ENGINES.find(engine => engine.id === 'ecosia');`)
       .replace('if (!expectedHost) return', `if (!expectedHost && page.origin !== '${pdfOrigin}') return`);
     await writeFile(enginesPath, fixtureEngines);
     context = await chromium.launchPersistentContext(join(root, 'profile'), {
@@ -1119,14 +1129,6 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.equal(readableFeedback, true, 'floating errors must show the same Google guidance');
     await accessibility.detach(); await opaquePage.close();
     // Real DOM challenge pages retain a pending resource, so browser status stays loading.
-    const releaseChallenges = [];
-    await context.route('https://bootcat-challenge.invalid/**', route => new Promise(resolve => { releaseChallenges.push(() => route.abort().catch(() => {}).finally(resolve)); }));
-    await context.route('https://www.ecosia.org/search**', async route => {
-      const headers = await route.request().allHeaders();
-      const ready = route.request().url().includes('challenge-good') || (headers.cookie || '').includes('bootcat_unlocked=1');
-      const body = ready ? '<title>Ecosia results</title><a data-test-id="result-link" href="https://corpus.test/challenge-result">Result</a>' : '<title>Just a moment...</title><form id="challenge-form">Verify you are human</form><img src="https://bootcat-challenge.invalid/pending"><script>setInterval(() => { if (document.cookie.includes("bootcat_unlocked=1")) location.reload(); }, 100)</script>';
-      return route.fulfill({ contentType: 'text/html', body });
-    });
     await page.bringToFront(); await page.selectOption('#engine', 'ecosia');
     await page.fill('#tuples', 'challenge-one\nchallenge-two\nchallenge-good'); await page.click('#prepare-queries');
     await clickConfirmed('#open-all-queries');
@@ -1138,12 +1140,11 @@ with zipfile.ZipFile(sys.argv[1]) as z:
       console.log('Challenge batch diagnostics:', JSON.stringify(await page.evaluate(async () => { const ext = globalThis.browser ?? chrome; const { project } = await ext.runtime.sendMessage({ type: 'get-project' }); return { state: await ext.runtime.sendMessage({ type: 'get-project-search-tabs', projectId: project.id }), count: document.querySelector('#project-tab-count').textContent, status: document.querySelector('#project-tab-status').textContent }; })));
       throw error;
     }
-    const blockedPages = context.pages().filter(tab => tab.url().includes('ecosia.org/search'));
+    const blockedPages = context.pages().filter(tab => tab.url().startsWith(pdfOrigin + '/ecosia-fixture'));
     assert.equal(blockedPages.length, 2); assert.equal(await page.locator('#collect-project-tabs').isDisabled(), true);
     await blockedPages[0].evaluate(() => { document.cookie = 'bootcat_unlocked=1; Path=/'; });
     await page.waitForFunction(async () => { const ext = globalThis.browser ?? chrome; const { project } = await ext.runtime.sendMessage({ type: 'get-project' }); const state = await ext.runtime.sendMessage({ type: 'get-project-search-tabs', projectId: project.id }); return state.blocked === 0 && state.loaded === 2; });
     assert.ok(blockedPages.every(tab => !tab.isClosed()), 'unlocking must not collect or close sibling tabs');
-    await Promise.all(releaseChallenges.map(release => release()));
     const closedChallenges = blockedPages.map(tab => tab.waitForEvent('close')); await page.click('#collect-project-tabs'); await Promise.all(closedChallenges);
     console.log('Project download feedback/retry, shared Google guidance, loading challenge detection and sibling recovery passed.');
     assert.deepEqual(errors, []);
