@@ -16,7 +16,7 @@ import { getExtensionAPI } from './extension-api.js';
 import { parseURLs, filenameFor, fetchFile, urlListWarning } from './core.js';
 import { makeStoredZIP } from './zip-blob.js';
 import { createExportLayout, originalTextFilename } from './export-layout.js';
-import { makeMetadataWorkbook } from './metadata-xlsx.js';
+import { makeMetadataWorkbook, corpusURLList, excludedURLList } from './metadata-xlsx.js';
 import { initVersionBadge } from './version.js';
 import { initSearchUI, readCollections } from './search-ui.js';
 import { initSeedsUI } from './seeds-ui.js';
@@ -604,8 +604,10 @@ ui.export.addEventListener('click', () => {
       ui['export-status'].textContent = 'Preparing your corpus ZIP…';
       {
         async function* files() {
-          yield { name: 'Report.xlsx', blob: await makeMetadataWorkbook(saved.entries, { signal }) };
-          for (const [name, field] of [['url_list.txt', 'urls'], ['seeds.txt', 'seeds'], ['tuples.txt', 'tuples']]) {
+          yield { name: 'Report.xlsx', blob: await makeMetadataWorkbook(saved.entries, { signal, timestamp: new Date(exportedAt) }) };
+          yield { name: 'url_list.txt', blob: new Blob([corpusURLList(saved.entries)], { type: 'text/plain;charset=utf-8' }) };
+          yield { name: 'url_list_excluded.txt', blob: new Blob([excludedURLList(saved.entries, saved.draft.urls)], { type: 'text/plain;charset=utf-8' }) };
+          for (const [name, field] of [['seeds.txt', 'seeds'], ['tuples.txt', 'tuples']]) {
             yield { name, blob: new Blob([saved.draft[field] || ''], { type: 'text/plain;charset=utf-8' }) };
           }
           for (const entry of saved.entries) {
@@ -638,7 +640,7 @@ ui.export.addEventListener('click', () => {
           ];
           for (const [name, value] of json) yield { name, blob: new Blob([JSON.stringify(value, null, 2)]) };
         }
-        const archive = await makeStoredZIP(files(), { signal });
+        const archive = await makeStoredZIP(files(), { signal, timestamp: new Date(exportedAt) });
         if (resetting || signal.aborted) return;
         archiveURL = URL.createObjectURL(archive);
       }

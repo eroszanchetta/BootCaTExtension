@@ -16,6 +16,7 @@ This is release preparation; the store publication date has not been assigned.
 - **Clearer saving and search guidance.** Save Project shows green download-started feedback, tracks changes to the project and offers Download again. Unreadable Google links show practical guidance. Recognized verification pages show Needs attention instead of endless loading, and blocked search tabs are rechecked when another tab for the same engine recovers.
 - **Collection feedback.** See how many new URLs were added and how many were already present. Keep usable partial results and continue to corpus building, or review the search tab. Google Books content links are recognized correctly. Search and Build Corpus headings retain their counters while collapsed; refreshed Sbafo artwork is shared throughout the extension.
 - **Chrome package readability.** Removed obsolete PDF.js compatibility fallbacks identified in the Chrome Web Store notice for 2.0.1. Package builds verify the reviewed local PDF.js files; PDF support and supported browser versions are retained.
+- **Accurate corpus exports.** `url_list.txt` matches the included corpus and spreadsheet report, including manually added pages. `url_list_excluded.txt` lists the other valid project URLs. Saved projects and corpus archives show their save/export time instead of 1980 dates.
 - **Fixes and polish.** Firefox can save portable projects containing downloaded documents. Inclusion changes keep the document row, counters and export guidance stable. Close-after-success switches remain available when reopening the popup after an action succeeds.
 
 ## Updating and saving your work
@@ -45,3 +46,7 @@ and a larger text-review dialog with editing. A clearer Build Corpus workflow, c
 popup and updated Sbafo branding simplify corpus creation. Google searches can follow the
 corpus language without an added regional preference. Includes Firefox project-saving
 fixes and interface improvements. Extraction and language detection remain local.
+
+## Known issues
+
+Some DuckDuckGo pages may remain marked as partially collected after visible results are saved; **Continue with collected URLs** allows proceeding with the saved subset. Intermittent floating-control visibility on DuckDuckGo is also under investigation. See [KNOWN-ISSUES-2.1.md](KNOWN-ISSUES-2.1.md).

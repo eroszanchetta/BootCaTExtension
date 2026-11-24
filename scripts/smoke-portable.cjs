@@ -1,5 +1,6 @@
 // Exchange the exact same portable file between native browser engines.
 const { chromium, firefox } = require('playwright');
+const { execFileSync } = require('node:child_process');
 const { createServer } = require('node:http');
 const { readFile, mkdtemp, rm } = require('node:fs/promises');
 const { tmpdir } = require('node:os');
@@ -85,6 +86,7 @@ const assert = require('node:assert/strict');
       assert.equal(await download.failure(), null, `${name}: download must complete, not leave a .part file`);
       assert.ok(download.suggestedFilename().endsWith('.bootcat'));
       const path = join(downloads, `${name}.bootcat`); await download.saveAs(path);
+      execFileSync('python3', ['-c', "import sys,zipfile,json,datetime; z=zipfile.ZipFile(sys.argv[1]); t=datetime.datetime.fromisoformat(json.loads(z.read('project.json'))['savedAt'].replace('Z','+00:00')).astimezone(); expected=(t.year,t.month,t.day,t.hour,t.minute,t.second//2*2); assert all(i.date_time==expected for i in z.infolist())", path]);
       await page.waitForFunction(() => document.querySelector('#project-save-feedback').classList.contains('saved'));
       assert.equal(await page.locator('#save-project').isDisabled(), true);
       const { openProjectArchive } = await import('../src/portable-project.js');

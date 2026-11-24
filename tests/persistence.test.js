@@ -149,7 +149,7 @@ import io,sys,json,zipfile,xml.etree.ElementTree as E
 with zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())) as z:
  names=z.namelist()
  assert not any('/captured/' in name for name in names)
- lists={name:z.read(name).decode('utf-8') for name in ['url_list.txt','seeds.txt','tuples.txt']}
+ lists={name:z.read(name).decode('utf-8') for name in ['url_list.txt','url_list_excluded.txt','seeds.txt','tuples.txt']}
  with zipfile.ZipFile(io.BytesIO(z.read('Report.xlsx'))) as report:
   report_rows=E.fromstring(report.read('xl/worksheets/sheet1.xml')).findall('{*}sheetData/{*}row')
   filename=report_rows[1].find('{*}c/{*}is/{*}t').text
@@ -162,7 +162,7 @@ with zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())) as z:
   assert.equal(zipResult.record.source, 'browser-tab');
   assert.equal((await storage.loadWorkspace('legacy-export')).entries[0].doc.filename, filename);
   assert.equal(await (await storage.readOriginal('legacy-export', filename)).text(), 'ORIGINAL_CAPTURE');
-  assert.deepEqual(zipResult.lists, { 'url_list.txt': draft.urls, 'seeds.txt': draft.seeds, 'tuples.txt': draft.tuples });
+  assert.deepEqual(zipResult.lists, { 'url_list.txt': url + '\n', 'url_list_excluded.txt': 'https://not-yet-downloaded.test/\n', 'seeds.txt': draft.seeds, 'tuples.txt': draft.tuples });
   assert.equal(zipResult.reportFilename, '0001-capture.test.txt');
 });
 
@@ -249,5 +249,51 @@ with zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())) as z:
  assert not any(name.startswith('corpus/') for name in z.namelist())
  with zipfile.ZipFile(io.BytesIO(z.read('Report.xlsx'))) as report:
   assert len(E.fromstring(report.read('xl/worksheets/sheet1.xml')).findall('{*}sheetData/{*}row'))==1
+`], { input: Buffer.from(await app.archive().arrayBuffer()) });
+});
+
+test('corpus URL lists match included report rows, include manual pages and separate all excluded sources with export timestamps', async () => {
+  fresh(); const id = 'url-exports'; await storage.ensureStoredProject(id);
+  const input = 'https://included.test/\nhttps://unchecked.test/\nhttps://failed.test/\nhttps://pending.test/';
+  await storage.saveDraft(id, { urls: input });
+  const specs = [
+    ['https://included.test/', '0010-included', true, 'ok'],
+    ['https://manual.test/', '0002-manual', true, 'ok'],
+    ['https://unchecked.test/', '0003-unchecked', false, 'ok'],
+    ['https://manual-excluded.test/', '0004-manual-excluded', false, 'ok'],
+    ['https://bad-text.test/', '0005-bad-text', false, 'failed']
+  ];
+  for (const [url, name, included, status] of specs) {
+    const filename = `pages/${name}.html`, doc = document(url, filename); Object.assign(doc.extraction, { included, status });
+    await storage.saveDocument(id, record(url, filename), doc, new Blob(['original']));
+  }
+  await storage.saveFailure(id, { url: 'https://failed.test/', outcome: 'error', error: 'HTTP 403' });
+  const app = await workspace(id); await app.click('export');
+  const result = JSON.parse(execFileSync('python3', ['-c', `
+import sys,io,json,zipfile,datetime,xml.etree.ElementTree as E
+with zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())) as z:
+ included=z.read('url_list.txt').decode('utf-8').splitlines()
+ excluded=z.read('url_list_excluded.txt').decode('utf-8').splitlines()
+ when=datetime.datetime.fromisoformat(json.loads(z.read('results.json'))['exportedAt'].replace('Z','+00:00')).astimezone()
+ expected=(when.year,when.month,when.day,when.hour,when.minute,when.second//2*2)
+ assert all(i.date_time==expected for i in z.infolist())
+ draft=json.loads(z.read('project.json'))['draft']['urls']
+ with zipfile.ZipFile(io.BytesIO(z.read('Report.xlsx'))) as r:
+  assert all(i.date_time==expected for i in r.infolist())
+  rows=E.fromstring(r.read('xl/worksheets/sheet1.xml')).findall('{*}sheetData/{*}row')[1:]
+  report=[row.findall('{*}c')[1].find('{*}is/{*}t').text for row in rows]
+  assert included==report
+ print(json.dumps({'included':included,'excluded':excluded,'draft':draft}))
+`], { input: Buffer.from(await app.archive().arrayBuffer()), encoding: 'utf8' }));
+  assert.deepEqual(result.included, ['https://manual.test/', 'https://included.test/']);
+  assert.deepEqual(result.excluded, ['https://unchecked.test/', 'https://failed.test/', 'https://pending.test/', 'https://bad-text.test/', 'https://manual-excluded.test/']);
+  assert.equal(result.draft, input);
+  await storage.setIncluded(id, 'https://included.test/', false);
+  await app.focus(); await app.click('export');
+  execFileSync('python3', ['-c', `
+import sys,io,zipfile
+with zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())) as z:
+ assert z.read('url_list.txt').decode().splitlines()==['https://manual.test/']
+ assert 'https://included.test/' in z.read('url_list_excluded.txt').decode().splitlines()
 `], { input: Buffer.from(await app.archive().arrayBuffer()) });
 });

@@ -131,7 +131,7 @@ const { execFileSync } = require('node:child_process');
     };
     async function checkCorpusReport(zipPath, language = 'Not checked') {
       execFileSync('python3', ['-c', `
-import sys,json,zipfile,io,xml.etree.ElementTree as E
+import sys,json,zipfile,io,datetime,xml.etree.ElementTree as E
 n={'m':'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
 with zipfile.ZipFile(sys.argv[1]) as z:
  assert not any('/captured/' in name for name in z.namelist())
@@ -139,8 +139,15 @@ with zipfile.ZipFile(sys.argv[1]) as z:
  for name in ['results.json','extraction.json','searches.json']:
   assert json.loads(z.read(name))['version']==sys.argv[3]
  draft=json.loads(z.read('project.json'))['draft']
- for name,field in [('url_list.txt','urls'),('seeds.txt','seeds'),('tuples.txt','tuples')]:
+ for name,field in [('seeds.txt','seeds'),('tuples.txt','tuples')]:
   assert z.read(name).decode('utf-8')==draft.get(field,'')
+ included=z.read('url_list.txt').decode('utf-8').splitlines()
+ excluded=z.read('url_list_excluded.txt').decode('utf-8').splitlines()
+ assert not set(included)&set(excluded)
+ assert all(url in included or url in excluded for url in draft.get('urls','').splitlines() if url.startswith(('http://','https://')))
+ when=datetime.datetime.fromisoformat(json.loads(z.read('results.json'))['exportedAt'].replace('Z','+00:00')).astimezone()
+ expected=(when.year,when.month,when.day,when.hour,when.minute,when.second//2*2)
+ assert all(i.date_time==expected for i in z.infolist())
  report=z.read('Report.xlsx')
  for d in docs:
   assert d['textFilename'] in z.namelist() and d['originalFilename'] in z.namelist()
@@ -153,6 +160,8 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
  values=[]
  for row in rows:
   values.append([c.find('m:is/m:t',n).text if c.attrib.get('t')=='inlineStr' else int(c.find('m:v',n).text) for c in row])
+ assert included==[row[1] for row in values[1:]]
+ assert all(i.date_time==expected for i in z.infolist())
  assert values[0]==['Text file name','Source URL','Characters','Detected language']
  assert values[1:]==[[d['textFilename'].removeprefix('corpus/'),d['url'],d['characters'],sys.argv[2]] for d in docs]
  assert sheet.find('m:sheetViews/m:sheetView/m:pane',n).attrib['state']=='frozen'

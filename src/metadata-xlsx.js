@@ -1,3 +1,4 @@
+import { parseURLs } from './core.js';
 import { makeStoredZIP } from './zip-blob.js';
 import { createExportLayout } from './export-layout.js';
 import { languageName } from './language-detection.js';
@@ -29,9 +30,21 @@ export function corpusMetadataRows(entries) {
     .sort((a, b) => fileOrder.compare(a.filename, b.filename));
 }
 
+export function corpusURLList(entries) {
+  const rows = corpusMetadataRows(entries);
+  return rows.map(row => row.url).join('\n') + (rows.length ? '\n' : '');
+}
+
+export function excludedURLList(entries, inputURLs = '') {
+  const included = new Set(parseURLs(corpusURLList(entries)).urls);
+  const candidates = parseURLs([inputURLs, ...entries.map(entry => entry.url)].join('\n')).urls;
+  const excluded = candidates.filter(url => !included.has(url));
+  return excluded.join('\n') + (excluded.length ? '\n' : '');
+}
+
 // Deliberately supports one fixed, four-column table, rather than implementing
 // a general spreadsheet library. All strings are literal cells, never formulas.
-export async function makeMetadataWorkbook(entries, { signal } = {}) {
+export async function makeMetadataWorkbook(entries, { signal, timestamp = new Date() } = {}) {
   const rows = corpusMetadataRows(entries);
   if (rows.length > 1048575) throw new Error('Excel supports at most 1,048,575 document rows per worksheet. Export a smaller selection.');
   const sheet = [], links = [], relationships = [];
@@ -64,6 +77,6 @@ export async function makeMetadataWorkbook(entries, { signal } = {}) {
     { name: 'xl/worksheets/sheet1.xml', data: `${XML}<worksheet xmlns="${NS}" xmlns:r="${REL}"><dimension ref="A1:D${rows.length + 1}"/><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A2" sqref="A2"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="30"/><cols><col min="1" max="1" width="38" customWidth="1"/><col min="2" max="2" width="78" customWidth="1"/><col min="3" max="3" width="16" customWidth="1"/><col min="4" max="4" width="26" customWidth="1"/></cols><sheetData>${sheet.join('')}</sheetData><autoFilter ref="A1:D${rows.length + 1}"/>${links.length ? `<hyperlinks>${links.join('')}</hyperlinks>` : ''}</worksheet>` }
   ];
   if (relationships.length) files.push({ name: 'xl/worksheets/_rels/sheet1.xml.rels', data: `${XML}<Relationships xmlns="${PACKAGE}">${relationships.join('')}</Relationships>` });
-  const zip = await makeStoredZIP(files, { signal });
+  const zip = await makeStoredZIP(files, { signal, timestamp });
   return new Blob([zip], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
 }
