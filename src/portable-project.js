@@ -87,7 +87,7 @@ export async function makeProjectArchive(snapshot, { appVersion = '', forceZIP64
   const json = JSON.stringify(manifest);
   if (new TextEncoder().encode(json).length > 64 * 1024 * 1024) throw new Error('Project metadata exceeds the 64 MiB portable-format limit.');
   files.unshift({ name: 'project.json', data: json });
-  return makeStoredZIP(files, { forceZIP64 });
+  return makeStoredZIP(files, { forceZIP64, timestamp: new Date(manifest.savedAt) });
 }
 export async function openProjectArchive(blob) {
   const files = await readPortableZIP(blob), manifest = files.get('project.json');

@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { IDBFactory } from 'fake-indexeddb';
@@ -24,6 +25,13 @@ test('portable project round trip preserves every store, text baseline, exclusio
     const snapshot = await projectFixture();
     for (const forceZIP64 of [false, true]) {
       const file = await makeProjectArchive(snapshot, { forceZIP64, appVersion: '2.1.0' });
+      execFileSync('python3', ['-c', `
+import sys,io,json,zipfile,datetime
+with zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())) as z:
+ when=datetime.datetime.fromisoformat(json.loads(z.read('project.json'))['savedAt'].replace('Z','+00:00')).astimezone()
+ expected=(when.year,when.month,when.day,when.hour,when.minute,when.second//2*2)
+ assert all(i.date_time==expected for i in z.infolist())
+`], { input: Buffer.from(await file.arrayBuffer()) });
       const decoded = await openProjectArchive(file), restored = restoredProjectSnapshot(decoded);
       assert.equal(decoded.project.name, 'Corpus 中文 à');
       assert.notEqual(restored.project.id, snapshot.project.id);

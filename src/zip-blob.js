@@ -12,10 +12,21 @@ async function checksum(blob, signal) {
   } finally { await reader.cancel().catch(() => {}); }
   return (crc ^ 0xffffffff) >>> 0;
 }
+// ZIP stores local wall-clock time with two-second precision and years 1980–2107.
+// Capture once per archive so streaming entries and both headers agree.
+function archiveDateTime(timestamp) {
+  if (!(timestamp instanceof Date) || !Number.isFinite(timestamp.getTime())) throw new Error('Invalid archive timestamp');
+  const date = new Date(Math.max(new Date(1980, 0, 1).getTime(), Math.min(new Date(2107, 11, 31, 23, 59, 58).getTime(), timestamp.getTime())));
+  return {
+    date: ((date.getFullYear() - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate(),
+    time: (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2)
+  };
+}
 // Keep native Blob references, not complete ArrayBuffers, in the archive parts.
 // CRC calculation reads one bounded stream chunk at a time. ZIP64 allows large
 // offsets and entry counts; the browser's own Blob/storage limits still apply.
-export async function makeStoredZIP(entries, { signal, forceZIP64 = false } = {}) {
+export async function makeStoredZIP(entries, { signal, forceZIP64 = false, timestamp = new Date() } = {}) {
+  const stamp = archiveDateTime(timestamp);
   const parts = [], directory = [], names = new Set();
   let offset = 0n, count = 0n;
   for await (const file of entries) {
@@ -29,7 +40,7 @@ export async function makeStoredZIP(entries, { signal, forceZIP64 = false } = {}
     const localExtra = large ? 20 : 0;
     const local = new Uint8Array(30 + name.length + localExtra), l = new DataView(local.buffer);
     l.setUint32(0, 0x04034b50, true); l.setUint16(4, large ? 45 : 20, true);
-    l.setUint16(6, 0x0800, true); l.setUint16(12, 33, true); l.setUint32(14, crc, true);
+    l.setUint16(6, 0x0800, true); l.setUint16(10, stamp.time, true); l.setUint16(12, stamp.date, true); l.setUint32(14, crc, true);
     l.setUint32(18, large ? 0xffffffff : blob.size, true); l.setUint32(22, large ? 0xffffffff : blob.size, true);
     l.setUint16(26, name.length, true); l.setUint16(28, localExtra, true); local.set(name, 30);
     if (large) {
@@ -40,7 +51,7 @@ export async function makeStoredZIP(entries, { signal, forceZIP64 = false } = {}
     const extraLength = (large ? 16 : 0) + (largeOffset ? 8 : 0);
     const central = new Uint8Array(46 + name.length + (extraLength ? extraLength + 4 : 0)), c = new DataView(central.buffer);
     c.setUint32(0, 0x02014b50, true); c.setUint16(4, extraLength ? 45 : 20, true); c.setUint16(6, extraLength ? 45 : 20, true);
-    c.setUint16(8, 0x0800, true); c.setUint16(14, 33, true); c.setUint32(16, crc, true);
+    c.setUint16(8, 0x0800, true); c.setUint16(12, stamp.time, true); c.setUint16(14, stamp.date, true); c.setUint32(16, crc, true);
     c.setUint32(20, large ? 0xffffffff : blob.size, true); c.setUint32(24, large ? 0xffffffff : blob.size, true);
     c.setUint16(28, name.length, true); c.setUint16(30, extraLength ? extraLength + 4 : 0, true);
     c.setUint32(42, largeOffset ? 0xffffffff : Number(offset), true); central.set(name, 46);

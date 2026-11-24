@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { makeMetadataWorkbook, corpusMetadataRows } from '../src/metadata-xlsx.js';
+import { makeMetadataWorkbook, corpusMetadataRows, corpusURLList, excludedURLList } from '../src/metadata-xlsx.js';
 import { createExportLayout } from '../src/export-layout.js';
 
 const entry = (name, check, extra = {}) => ({ url: 'https://example.org/caffè?q=1&other=2',
@@ -80,4 +80,17 @@ test('report rows default to filename order even when URL order differs, includi
   const values = [entry('10000-z'), entry('0010-m'), entry('0002-a')];
   values[0].url = 'https://a.test/'; values[1].url = 'https://m.test/'; values[2].url = 'https://z.test/';
   assert.deepEqual(corpusMetadataRows(values).map(row => row.filename), ['0002-a.txt', '0010-m.txt', '10000-z.txt']);
+});
+
+test('included and excluded URL lists partition project inputs and manual pages, matching report order', () => {
+  const entries = [entry('0010-included-manual'), entry('0002-included'), entry('0003-unchecked', undefined, { included: false }), entry('0004-failed-extraction', undefined, { status: 'failed' }), { url: 'https://failed-download.test/', doc: null }];
+  entries.slice(0, 4).forEach((entry, i) => { entry.url = `https://example.org/${i + 1}`; });
+  const input = [entries[1].url, entries[2].url, entries[3].url, 'https://failed-download.test/', 'https://pending.test/', entries[2].url, 'not a URL'].join('\n');
+  const included = corpusURLList(entries).trimEnd().split('\n');
+  assert.deepEqual(included, corpusMetadataRows(entries).map(row => row.url));
+  assert.deepEqual(included, [entries[1].url, entries[0].url]);
+  assert.deepEqual(excludedURLList(entries, input).trimEnd().split('\n'), [entries[2].url, entries[3].url, 'https://failed-download.test/', 'https://pending.test/']);
+  entries[0].doc.extraction.included = false;
+  assert.ok(excludedURLList(entries, input).includes(entries[0].url), 'excluded manual pages need not appear in the input textarea');
+  assert.equal(corpusURLList([]), ''); assert.equal(excludedURLList([], ''), '');
 });

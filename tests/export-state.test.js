@@ -59,3 +59,23 @@ test('an export failure keeps saving available and stores no successful-export r
     assert.equal((await storage.loadWorkspace('failed')).corpusExport, undefined);
   } finally { delete globalThis.indexedDB; }
 });
+
+test('an old-layout export receipt permits a new download with the corrected URL lists', async () => {
+  globalThis.indexedDB = new IDBFactory();
+  try {
+    const app = await workspace('old-layout');
+    await app.input('urls', 'https://included.test/'); await app.click('start');
+    const saved = await storage.loadWorkspace('old-layout'), project = { id: 'old-layout', name: 'Test corpus', language: 'none' };
+    const oldData = JSON.stringify({ layoutVersion: 2, project, draft: saved.draft, batch: saved.batch, entries: saved.entries, collections: [] }, (_, value) => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+      return Object.fromEntries(Object.keys(value).sort().map(key => [key, value[key]]));
+    });
+    const oldFingerprint = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(oldData)))].map(value => value.toString(16).padStart(2, '0')).join('');
+    assert.notEqual(await corpusFingerprint(saved, project, []), oldFingerprint);
+    await storage.saveCorpusExport('old-layout', { fingerprint: oldFingerprint, filename: 'Corpus Test corpus.zip' });
+    const reopened = await workspace('old-layout');
+    assert.equal(reopened.get('export').disabled, false);
+    await reopened.click('export'); assert.equal(reopened.downloads(), 1);
+    assert.equal(reopened.get('export').disabled, true);
+  } finally { delete globalThis.indexedDB; }
+});

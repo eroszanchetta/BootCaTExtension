@@ -101,3 +101,12 @@ Official references: [Chrome updates](https://developer.chrome.com/docs/webstore
 - [ ] Confirm PDF extraction works in both browsers, using the prepared local library and worker under the existing CSP; retain the full Chromium extension workflow results.
 - [ ] Submit to the existing Chrome item as the replacement for 2.0.1, including the explanation in CHROME-SUBMISSION.md. Check the notice/dashboard for any deadline or required appeal process.
 - [ ] Record the new review outcome before calling the policy issue resolved by the store. Build verification and test success do not establish store approval.
+
+## Accepted release limitations
+
+The DuckDuckGo partial-collection status and intermittent floating-control visibility reports are deferred as known issues; see [KNOWN-ISSUES-2.1.md](KNOWN-ISSUES-2.1.md). Record their observed behavior without treating these deferred fixes as release blockers or claiming they have been resolved.
+
+## Final export checks
+
+- [ ] Include one manually added page, one unchecked document, a failed URL and a URL not yet downloaded. Export Corpus and confirm `url_list.txt` matches Report.xlsx's Source URL column in order, while `url_list_excluded.txt` contains the other valid project URLs without duplicates. Change inclusion and re-export to verify both lists update.
+- [ ] Open a newly exported corpus ZIP and a newly saved `.bootcat` project in the operating system's archive tool. Their entries should show the save/export date and time (ZIP precision: two seconds). Confirm the projects still round-trip between Firefox and Chrome.
