@@ -191,6 +191,11 @@ async function handle(message) {
   }
   if (message.type === 'get-settings') return { settings: await readSettingsState(ext.storage.local) };
   if (message.type === 'save-settings') return serialize(async () => ({ settings: await saveSettings(ext.storage.local, message.values, message.revision) }));
+  if (message.type === 'set-default-search-engine') return serialize(async () => {
+    await assertProject(message.projectId);
+    const current = await readSettingsState(ext.storage.local);
+    return { settings: await saveSettings(ext.storage.local, { ...current.values, defaultEngine: message.engine }, current.revision) };
+  });
   if (message.type === 'open-project-search') return searchTabs.open(message);
   if (message.type === 'get-project-search-tabs') return searchTabs.getState(message.projectId);
   if (message.type === 'collect-project-search-tabs') return searchTabs.start(message.projectId, { loadedOnly: message.loadedOnly === true });
@@ -249,7 +254,7 @@ async function handle(message) {
     if (!chosenName) throw new Error('Enter a project name.');
     const project = { language: validateLanguage(message.language ?? 'none'), id: crypto.randomUUID(), name: chosenName, nameConfirmed: true };
     for (const controller of captures.values()) controller.abort();
-    await resetStoredProject(project.id, await readUserDefaults(ext.storage.local), project);
+    await resetStoredProject(project.id, { ...await readUserDefaults(ext.storage.local), engine: (await readSettings(ext.storage.local)).defaultEngine }, project);
     await searchTabs.resetInQueue();
     await resetProjectLocalState(ext.storage.local, project);
     return { project };

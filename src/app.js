@@ -1,3 +1,4 @@
+import { initEngineDefaultUI } from './engine-default-ui.js';
 import { initPortableUI } from './portable-ui.js';
 import { DEFAULT_SETTINGS, SETTINGS_KEY, readSettings, fileLimit } from './settings.js';
 import { createProjectWork, createExtractionQueue } from './project-work.js';
@@ -52,13 +53,14 @@ const hasDocumentWork = () => documentJobs.size > 0 || remoteActivity.documents.
 ui.start.disabled = ui.export.disabled = true;
 ui.extractor.querySelector('option[value="defuddle"]').disabled = !DEFUDDLE_AVAILABLE;
 if (!DEFUDDLE_AVAILABLE) ui.extractor.querySelector('option[value="defuddle"]').textContent = 'Defuddle — library unavailable';
+let engineDefaultUI;
 const projectUI = initProjectUI({
   onRename: () => { invalidateArchive(); seedsUI?.refreshLanguage?.(); },
   onSaveProject: () => portableUI.save(), onOpenProject: () => portableUI.choose(),
   getBusy: () => portableBusy || running || isBatchActive() || importing || hasDocumentWork() || remoteActivity.exclusive,
   confirmReplacement: options => portableUI.confirmReplacement(options),
   onReset: () => {
-    resetting = true; ready = false; stopping = true; clearTimeout(activityTimer); controller?.abort(); for (const active of operationControllers) active.abort(); seedsUI?.destroy(); searchUI?.destroy(); projectTabsUI?.destroy(); running = downloading = importing = false; updateControls();
+    resetting = true; ready = false; stopping = true; clearTimeout(activityTimer); controller?.abort(); for (const active of operationControllers) active.abort(); seedsUI?.destroy(); searchUI?.destroy(); projectTabsUI?.destroy(); engineDefaultUI?.destroy(); running = downloading = importing = false; updateControls();
     invalidateArchive(); ui.urls.value = ''; clearPreview();
     document.getElementById('project-name').value = '';
     entries = []; state = null; documentImportTarget = null; ui['import-document-picker'].value = '';
@@ -353,7 +355,7 @@ async function restore({ draft = true } = {}) {
     for (const entry of saved.entries) revealAddedDocument(previous.get(entry.url), entry);
   }
   revokeArchive(); state = saved; entries = saved.entries;
-  if (draft) { ui.urls.value = saved.draft.urls; ui.extractor.value = saved.draft.extractor; if (saved.draft.engine) ui.engine.value = saved.draft.engine; seedsUI?.restore(saved.draft); }
+  if (draft) { ui.urls.value = saved.draft.urls; ui.extractor.value = saved.draft.extractor; if (saved.draft.engine) ui.engine.value = saved.draft.engine; seedsUI?.restore(saved.draft); engineDefaultUI?.refreshSelection(); }
   renderEntries();
   const selected = entries.find(entry => entry.url === previewURL)?.doc;
   if (previewURL && selected?.filename !== previewFilename) clearPreview();
@@ -705,6 +707,7 @@ portableUI = initPortableUI({
     searchUI = initSearchUI({ onCollectionsChange: invalidateArchive, isRunning: () => running, seenCollectionIds: state.draft.seenCollections, getProjectId: () => projectId, onChange: patch => { queueDraft(patch); warnURLs(); } });
     if (state.draft.engine) ui.engine.value = state.draft.engine;
     seedsUI = initSeedsUI({ minimumSeeds: currentSettings.minimumSeeds, draft: state.draft, onChange: queueDraft, getLanguage: () => projectUI.snapshot()?.language || 'none', getProjectId: () => projectId, onOpeningChange: value => projectTabsUI?.setOpening(value) });
+    engineDefaultUI = initEngineDefaultUI({ getProjectId: () => projectId });
     projectTabsUI = initProjectTabsUI({ getProjectId: () => projectId, onState: value => seedsUI?.updateTabState(value) });
     updateControls(); await refreshActivity(); await importSavedPages();
   } catch (error) { report(error); }

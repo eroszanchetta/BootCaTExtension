@@ -16,9 +16,9 @@ Standing maintainer authorization (26 November 2026): publish implementation bra
 
 Validate with local tests, both builds, release-package verification, Playwright in Chromium and Firefox, and CI. The reported scroll failure is not yet reproduced in the user's environment; distinguish tested failure cases from that report.
 
-## WP2 — Search engine defaults
+## WP2 — Search engine defaults (implemented; readiness determined by PR validation)
 
-Persistent personal engine default; Make default action beside engine selection; preference in Settings. Proposed initial default: Ecosia (confirm before implementation). Apply to new projects; preserve existing projects' engine selections.
+Persistent personal engine default; Make default action beside engine selection; preference in Settings. Approved initial default: Ecosia. Keep the compact selector and place Make default beside it. Apply to new projects; preserve existing projects' engine selections.
 
 ## WP3 — Download progress and completion
 
@@ -45,4 +45,4 @@ Collect actual failures and comparison examples early. Evaluate sampling/uncerta
 - Pseudo-XML export: preserve the legacy text/s tag structure, attribute order and one file per document under xml_corpus. Use standard XML escaping, UTF-8, standard original-document media types, and consistent stable IDs/filenames. Sentence segmentation remains undecided.
 - Bing support, with a reserved teal accent distinct from Google blue and Ecosia green. This is a design reservation, not an implemented adapter or engine choice.
 
-Suggested delivery order: WP1 through WP7, gathering WP7 examples early. WP1 alone is currently authorized for implementation.
+Suggested delivery order: WP1 through WP7, gathering WP7 examples early. WP1 and WP2 are authorized for implementation.

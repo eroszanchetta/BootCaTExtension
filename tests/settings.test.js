@@ -32,7 +32,7 @@ test('personal settings inherit defaults, persist independently and reject stale
 });
 
 test('every limit validates whole numbers and bounded ranges without silently changing invalid settings', async () => {
-  for (const field of SETTING_FIELDS) {
+  for (const field of SETTING_FIELDS.filter(field => !field.options)) {
     for (const value of [0, -1, 1.5, NaN, Infinity, '50', field.max + 1]) assert.throws(() => settings({ [field.key]: value }), /whole number/);
     assert.equal(settings({ [field.key]: field.max })[field.key], field.max);
   }
@@ -108,4 +108,14 @@ test('configured extraction and download timeouts stop stalled work and report t
     await app.input('urls', 'https://stalled.test'); await app.click('start');
     assert.match(app.state().entries[0].record.error, /Timed out after 1 seconds/);
   } finally { clearTimeout(keepAlive); delete globalThis.indexedDB; }
+});
+
+
+test('old settings gain Ecosia without changing limits; unsupported engine choices never persist', async () => {
+  const data = { [SETTINGS_KEY]: { version: 1, revision: 7, values: { fileMiB: 75 } } }, area = areaFor(data);
+  const previous = await readSettingsState(area);
+  assert.equal(previous.values.defaultEngine, 'ecosia'); assert.equal(previous.values.fileMiB, 75);
+  for (const value of ['bing', '', null, 1]) await assert.rejects(saveSettings(area, { defaultEngine: value }, 7), /supported search engine/);
+  assert.equal(data[SETTINGS_KEY].revision, 7);
+  for (const defaultEngine of ['google', 'duckduckgo', 'ecosia']) assert.equal(settings({ defaultEngine }).defaultEngine, defaultEngine);
 });
