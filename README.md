@@ -394,3 +394,10 @@ While Download URLs is running, a sticky strip immediately below navigation show
 The completed run keeps a summary of usable texts, failures, cancellations, language warnings and skipped URLs. The workspace tab title and toolbar badge also indicate the outcome: a check mark for a clean finish, an exclamation mark for issues or interruption, and STOP for a stopped run. These use existing extension capabilities and require no notification permission. A browser toolbar badge is easiest to see when BootCaT is pinned.
 
 Dismiss clears the sticky completion message, special tab title and badge in all workspace windows. The detailed summary remains in Build Corpus. Starting a new run replaces the feedback; closing or replacing the project clears it. Feedback is local to this browser, is not restored from portable project files, and does not disappear merely because the workspace receives focus.
+
+
+### Feedback after importing a recovery file
+
+Import downloaded file reports the saved extraction result. If usable text has no remaining language issue, Corpus documents opens, the recovered row scrolls into view and receives a soft green highlight for about two seconds. The message remains on the row and in the import summary, with Show document available to find it again. Successful recovery can still leave a document excluded from export when that was the user's existing choice.
+
+If extraction still fails or a language warning remains, the document stays in Documents with issues with a specific explanation and an amber highlight. Invalid files produce an explicit import error. Navigation waits until any open editor or dialog closes; it does not move keyboard focus. Reduced-motion preferences use a static timed highlight instead of a fading animation.

@@ -106,7 +106,8 @@ test('local PDF chooser keeps failures intact on invalid input and replaces only
   assert.equal(app.get('problem-results').children[1], row, 'returning from the chooser must not rebuild its target row');
   input.files = [new Blob(['Not PDF'])]; await input.handlers.change();
   assert.equal((await storage.loadWorkspace('local')).entries.filter(entry => entry.doc).length, 0);
-  assert.match(app.get('status').textContent, /Unsupported file contents/);
+  assert.match(app.get('document-import-status').textContent, /Unsupported file contents/);
+  assert.equal(app.get('status').textContent, 'Finished.', 'a file-picker error must not overwrite the batch outcome');
   assert.match(app.get('document-import-status').textContent, /File not imported/);
   await app.focus();
   assert.match(app.get('problem-results').children[1].children[1].children.find(item => item.className === 'hint document-import-feedback').textContent, /File not imported/);
@@ -170,3 +171,36 @@ test('old generic PDF notices are hidden without losing specific warnings', () =
   assert.deepEqual(fileWarnings(extraction), ['Specific warning']);
   assert.deepEqual(fileWarnings(extraction, { details: true }), ['Check PDF text layout before use. OCR is not performed.', 'Specific warning']);
  });
+
+
+test('a saved import with failed extraction remains an issue and reports the actual reason', async () => {
+  globalThis.indexedDB = new IDBFactory();
+  const feedback = [];
+  const app = await workspace('import-still-failed', { fetch: async () => { throw new Error('HTTP 403'); },
+    onRecoveryFeedback: value => feedback.push(value), extractor: async () => ({ status: 'failed', text: '', characters: 0, included: false, warnings: ['No extractable text found.'], format: 'pdf' }) });
+  await app.input('urls', 'https://example.org/scan.pdf'); await app.click('start');
+  app.get('problem-results').children[0].children[1].children.find(item => item.className === 'secondary import-document-button').handlers.click();
+  app.get('import-document-picker').files = [new Blob([pdf])]; await app.get('import-document-picker').handlers.change();
+  assert.equal(app.get('results').children.length, 0);
+  assert.equal(app.get('problem-results').children.length, 1);
+  assert.match(app.get('document-import-status').textContent, /Original file saved, but text recovery failed/);
+  assert.match(app.get('document-import-status').textContent, /No extractable text/);
+  assert.equal(feedback.at(-1).tone, 'warning');
+  const entry = (await storage.loadWorkspace('import-still-failed')).entries[0];
+  assert.deepEqual(new Uint8Array(await (await storage.readOriginal('import-still-failed', entry.doc.filename)).arrayBuffer()), pdf);
+});
+
+test('a successful import keeps its message on the moved corpus row', async () => {
+  globalThis.indexedDB = new IDBFactory();
+  const feedback = [];
+  const app = await workspace('import-success-message', { fetch: async () => { throw new Error('HTTP 403'); }, onRecoveryFeedback: value => feedback.push(value) });
+  await app.input('urls', 'https://example.org/recovered.pdf'); await app.click('start');
+  app.get('problem-results').children[0].children[1].children.find(item => item.className === 'secondary import-document-button').handlers.click();
+  app.get('import-document-picker').files = [new Blob([pdf])]; await app.get('import-document-picker').handlers.change();
+  assert.equal(app.get('problem-results').children.length, 0);
+  const message = app.get('results').children[0].children[1].children.find(item => item.className === 'hint document-import-feedback');
+  assert.match(message.textContent, /Text recovered successfully/);
+  assert.equal(message.attributes['data-state'], 'success'); assert.equal(feedback.at(-1).tone, 'success');
+  await app.focus();
+  assert.match(app.get('results').children[0].children[1].children.find(item => item.className === 'hint document-import-feedback').textContent, /Text recovered successfully/);
+});

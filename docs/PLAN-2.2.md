@@ -26,6 +26,10 @@ Persistent personal engine default; Make default action beside engine selection;
 
 Persistent progress strip below navigation while processing; visible counts and failures; completion summary, workspace title and toolbar badge without new permissions. Keep completion feedback until Dismiss, a new download run or project replacement/closure; focusing a tab does not clear it. The receipt is browser-local and excluded from portable projects. Processed counts advance after extraction and durable saving; download/extraction failures, cancellation and language warnings remain distinct. Closing the runner or losing its batch lock marks an unfinished run interrupted. System notifications requiring permission are outside this package.
 
+## Recovery-feedback follow-up before WP4 (authorized)
+
+For user-initiated downloaded-file recovery, report the saved and checked outcome persistently. Successful recovery opens Corpus documents, scrolls to the row below the sticky header and highlights it softly in green for two seconds. Remaining extraction/language issues stay in Documents with issues with amber highlighting and a specific explanation. Failed imports report the error without claiming success. Preserve known inclusion choices; usable text may remain excluded. Keep messages on moved rows and offer Show document. Defer automatic navigation until open dialogs/editors close, preserve keyboard focus, and use a static timed highlight for reduced motion.
+
 ## WP4 — DuckDuckGo collection reliability
 
 Investigate partial results, collection button availability and missing floating controls against populated live DOM and candidate diagnostics. Preserve pagination and dynamic-result distinctions. Implement evidence-backed fixes; do not assume the old unresolved candidates were internal links.

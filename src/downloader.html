@@ -132,7 +132,7 @@
       <p id="download-completion-summary" class="download-completion-summary" hidden></p>
       <p id="saved-status" role="status" aria-live="polite"></p>
       <input id="import-document-picker" type="file" aria-label="Choose a downloaded document for the selected failed URL" hidden>
-      <p id="document-import-status" role="status" aria-live="polite"></p>
+      <div id="document-import-feedback" class="recovery-feedback" hidden><p id="document-import-status" role="status" aria-live="polite"></p><button id="show-imported-document" type="button" class="secondary" hidden>Show document</button></div>
       <div id="review-lists">
       <details id="documents-section" open><summary class="document-list-heading"><h3 id="documents-heading">Corpus documents</h3><div class="document-counts" role="status" aria-live="polite" aria-atomic="true"><span id="documents-count" class="section-counter">0 documents</span><span id="included-count" class="section-counter">0 included</span></div></summary>
       <div class="table-wrap"><table aria-label="Documents with usable text"><thead><tr><th scope="col">Include</th><th scope="col">URL</th><th scope="col">Download / extraction</th><th scope="col">Delete</th></tr></thead><tbody id="results"></tbody></table></div></details>

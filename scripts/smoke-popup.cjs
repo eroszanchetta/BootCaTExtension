@@ -524,6 +524,70 @@ const assert = require('node:assert/strict');
         assert.equal(await workspace.evaluate(() => document.querySelector('#text-review-dialog').scrollWidth > document.querySelector('#text-review-dialog').clientWidth), false, `${name}: mobile dialog overflow`);
         await workspace.click('#text-review-close');
         assert.equal(await workspace.locator('#text-review-dialog[open]').count(), 0);
+        // Real recovery controller: nested table scrolling, disclosure layout,
+        // retained messages, reduced motion and deferral behind a dirty editor.
+        await workspace.evaluate(async () => {
+          const { initRecoveryFeedback } = await import('./recovery-feedback.js');
+          const rows = new Map();
+          document.querySelector('#results').replaceChildren();
+          for (let index = 0; index < 24; index++) {
+            const row = document.createElement('tr'); row.dataset.recovery = String(index);
+            for (const value of ['Include', 'https://example.org/document/' + index, 'Recovered document text and extraction details.', 'Delete']) {
+              const cell = document.createElement('td'); cell.textContent = value; row.append(cell);
+            }
+            document.querySelector('#results').append(row); rows.set(String(index), row);
+          }
+          const issue = document.createElement('tr'); issue.dataset.recovery = 'issue';
+          const cell = document.createElement('td'); cell.colSpan = 4; cell.textContent = 'Text recovered, but a language warning remains.'; issue.append(cell);
+          document.querySelector('#problem-results').replaceChildren(issue); rows.set('issue', issue);
+          globalThis.recoveryRows = rows;
+          globalThis.testRecovery = initRecoveryFeedback({ getRow: url => rows.get(url), isBlocked: () => !!document.querySelector('dialog[open]') });
+        });
+        for (const width of [1050, 390]) {
+          await workspace.setViewportSize({ width, height: 850 });
+          await workspace.evaluate(() => {
+            document.querySelector('#review-section .workspace-panel').open = false;
+            document.querySelector('#documents-section').open = false;
+          });
+          await workspace.locator('nav a[href="#project-section"]').focus();
+          await workspace.evaluate(() => { globalThis.recoveryFocus = document.activeElement; testRecovery.show({ url: '23', tone: 'success' }); });
+          await workspace.waitForFunction(() => {
+            const row = recoveryRows.get('23').getBoundingClientRect(), header = document.querySelector('.workspace-header').getBoundingClientRect();
+            return recoveryRows.get('23').classList.contains('recovery-success') && row.top >= header.bottom && row.bottom <= innerHeight;
+          });
+          assert.equal(await workspace.evaluate(() => document.activeElement === recoveryFocus), true, `${name}: recovery must not steal focus`);
+          assert.ok(await workspace.locator('#documents-section .table-wrap').evaluate(wrap => wrap.scrollTop) > 0, `${name}: scroll the table to the recovered row`);
+          assert.equal(await workspace.locator('#documents-section').evaluate(panel => panel.open), true);
+          await workspace.evaluate(() => {
+            const old = recoveryRows.get('23'), next = old.cloneNode(true);
+            next.className = ''; old.replaceWith(next); recoveryRows.set('23', next); testRecovery.apply(next, '23');
+          });
+          assert.equal(await workspace.locator('tr[data-recovery="23"]').evaluate(row => row.classList.contains('recovery-success')), true, `${name}: highlight survives row replacement`);
+          await workspace.waitForFunction(() => !recoveryRows.get('23').classList.contains('recovery-success'));
+        }
+        await workspace.emulateMedia({ reducedMotion: 'reduce' });
+        await workspace.evaluate(() => testRecovery.show({ url: '23', tone: 'success' }));
+        await workspace.waitForFunction(() => recoveryRows.get('23').classList.contains('recovery-success'));
+        assert.equal(await workspace.locator('tr[data-recovery="23"] td').first().evaluate(cell => getComputedStyle(cell).animationName), 'none');
+        assert.equal(await workspace.locator('tr[data-recovery="23"] td').first().evaluate(cell => getComputedStyle(cell).backgroundColor), 'rgb(220, 252, 231)');
+        await workspace.emulateMedia({ reducedMotion: 'no-preference' });
+        await workspace.evaluate(() => { document.querySelector('#attention-section').open = false; testRecovery.show({ url: 'issue', tone: 'warning' }); });
+        await workspace.waitForFunction(() => recoveryRows.get('issue').classList.contains('recovery-attention'));
+        assert.equal(await workspace.locator('#attention-section').evaluate(panel => panel.open && !panel.hidden), true);
+        await workspace.evaluate(async () => {
+          document.querySelector('#documents-section').open = false;
+          await testTextReview.open('https://example.org/article');
+        });
+        await workspace.locator('#text-review-edit').click(); await workspace.fill('#preview-text', 'Keep this unsaved edit.');
+        const recoveryScroll = await workspace.evaluate(() => scrollY);
+        await workspace.evaluate(() => testRecovery.show({ url: '23', tone: 'success' }));
+        assert.equal(await workspace.inputValue('#preview-text'), 'Keep this unsaved edit.');
+        assert.equal(await workspace.evaluate(() => scrollY), recoveryScroll, `${name}: no scrolling behind an open editor`);
+        assert.equal(await workspace.locator('#documents-section').evaluate(panel => panel.open), false);
+        await workspace.locator('#text-review-edit').click(); await workspace.locator('#text-review-close').click();
+        await workspace.waitForFunction(() => recoveryRows.get('23').classList.contains('recovery-success') && document.querySelector('#documents-section').open);
+        await workspace.evaluate(() => testRecovery.destroy());
+        console.log(`${name}: recovery row navigation, transient highlights, focus, reduced motion and editor deferral passed.`);
         // Native sticky progress and completion in both browser engines. The
         // real background feedback controller is exercised with local fixtures.
         const feedbackPage = await browser.newPage({ viewport: { width: 1050, height: 850 } });
