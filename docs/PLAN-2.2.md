@@ -4,7 +4,7 @@ Agreed scope, 26 November 2026. Version 2.1 is published in both browser stores.
 
 Standing maintainer authorization (26 November 2026): publish implementation branches to this public repository, open unmerged PRs and run/fix checks automatically without asking again. Leave PRs unmerged and do not create releases or upload to stores without separate authorization.
 
-## WP1 — Interface polish (implemented locally; browser-suite validation pending)
+## WP1 — Interface polish (implemented; readiness determined by PR validation)
 
 - Center the Welcome dialog actions, including wrapped rows.
 - Separate the Project Name focus ring from the Project Language label.

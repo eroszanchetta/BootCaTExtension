@@ -414,15 +414,20 @@ const assert = require('node:assert/strict');
                 return urls.querySelector('.workspace-panel').open && document.querySelector('#review-section .workspace-panel').open &&
                   urls.getBoundingClientRect().top >= bar.bottom && urls.getBoundingClientRect().top < bar.bottom + 80;
               });
+              // Move away first: re-scrolling to the same target is otherwise
+              // indistinguishable from no navigation. Firefox can round the
+              // anchored position by a pixel while disclosure layout settles.
+              await workspace.evaluate(() => window.scrollBy({ top: -100, behavior: 'instant' }));
+              await workspace.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
               const y = await workspace.evaluate(() => scrollY);
               await workspace.evaluate(() => finishCollectionTest());
               await workspace.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-              assert.equal(await workspace.evaluate(() => scrollY), y, `${name}: collection refresh must not repeat navigation`);
+              assert.ok(Math.abs(await workspace.evaluate(() => scrollY) - y) <= 2, `${name}: collection refresh must not repeat navigation`);
               assert.doesNotMatch(await workspace.locator('#project-tab-status').innerText(), /0 left open|0 skipped/);
               assert.equal(await workspace.locator('.collection-details').evaluate(panel => panel.open), false);
             } else {
               assert.equal(await workspace.locator('#urls-section .workspace-panel').evaluate(panel => panel.open), false);
-              assert.equal(await workspace.evaluate(() => scrollY), before, `${name}: partial/stopped collection stays for review`);
+              assert.ok(Math.abs(await workspace.evaluate(() => scrollY) - before) <= 2, `${name}: partial/stopped collection stays for review`);
             }
             await workspace.evaluate(() => collectionTest.destroy());
           }
