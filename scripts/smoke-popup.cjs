@@ -257,7 +257,7 @@ const assert = require('node:assert/strict');
           for (const [id, name] of [['google', 'Google'], ['duckduckgo', 'DuckDuckGo'], ['ecosia', 'Ecosia']]) {
             const option = document.createElement('option'); option.value = id; option.textContent = name; select.append(option);
           }
-          select.value = 'google';
+          select.value = 'ecosia';
           const state = globalThis.fixtureQueryState = { tabs: [], history: [] }; globalThis.fixtureQueryOpens = 0;
           const settingsMessage = chrome.runtime.sendMessage;
           chrome.runtime.sendMessage = async message => {
@@ -277,7 +277,7 @@ const assert = require('node:assert/strict');
           testQueryUI.updateTabState(state);
         });
         await workspace.locator('nav a[href="#search-section"]').click();
-        await workspace.waitForFunction(() => document.querySelector('#engine-default-status').textContent.includes('Google'));
+        await workspace.waitForFunction(() => document.querySelector('#engine-default-status').textContent.includes('Ecosia'));
         assert.equal(await workspace.locator('#make-default-engine').isDisabled(), true);
         const row = await workspace.evaluate(() => ({ select: document.querySelector('#engine').getBoundingClientRect().width,
           gap: document.querySelector('#make-default-engine').getBoundingClientRect().left - document.querySelector('#engine').getBoundingClientRect().right }));
