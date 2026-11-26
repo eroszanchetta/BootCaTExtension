@@ -888,6 +888,24 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.equal(await retryRow.locator('.preview-button').innerText(), 'Details');
     assert.equal(await page.locator('#results tr').count(), 0);
     await deleteAllRows();
+    // Drop a real File onto the recovery button: use the full extension reader,
+    // durable storage, language checks, row movement and success feedback.
+    await page.fill('#urls', pdfOrigin + '/always-blocked.pdf'); await page.click('#start'); await waitForFinished(); await openIssues();
+    await page.evaluate(({ url, bytes }) => {
+      const row = [...document.querySelectorAll('#problem-results tr')].find(row => row.querySelector('a')?.href === url);
+      const transfer = new DataTransfer(); transfer.items.add(new File([new Uint8Array(bytes)], 'downloaded.pdf', { type: 'application/pdf' }));
+      row.querySelector('.import-document-button').dispatchEvent(new DragEvent('drop', { dataTransfer: transfer, bubbles: true, cancelable: true }));
+    }, { url: pdfOrigin + '/always-blocked.pdf', bytes: Array.from(Buffer.from(pdfFixture())) });
+    await page.waitForFunction(() => document.querySelector('#document-import-feedback').dataset.state === 'success');
+    assert.equal(await page.locator('#document-import-status').innerText(), 'Text recovered successfully');
+    assert.equal(await page.locator('#results tr').count(), 1); assert.equal(await page.locator('#problem-results tr').count(), 0);
+    const dropped = await page.evaluate(async url => {
+      const store = await import('./project-store.js'), projectId = await store.storedProjectId();
+      const entry = (await store.loadWorkspace(projectId)).entries.find(entry => entry.url === url);
+      return { source: entry.record.source, size: (await store.readOriginal(projectId, entry.doc.filename)).size };
+    }, pdfOrigin + '/always-blocked.pdf');
+    assert.equal(dropped.source, 'local-file'); assert.equal(dropped.size, Buffer.byteLength(pdfFixture()));
+    await deleteAllRows();
     // Usable text with a new language warning remains in Documents with issues.
     await page.selectOption('#project-language', 'ita');
     await page.fill('#urls', pdfOrigin + '/always-blocked.pdf'); await page.click('#start'); await waitForFinished(); await openIssues();

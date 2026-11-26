@@ -593,6 +593,68 @@ const assert = require('node:assert/strict');
         await workspace.waitForFunction(() => recoveryRows.get('23').classList.contains('recovery-success') && document.querySelector('#documents-section').open);
         await workspace.evaluate(() => testRecovery.destroy());
         console.log(`${name}: recovery row navigation, transient highlights, focus, reduced motion and editor deferral passed.`);
+        // Browser-native DataTransfer/File events exercise both engines' drop
+        // plumbing, including real signature validation and navigation guards.
+        const dropPage = await browser.newPage({ viewport: { width: 1050, height: 850 } });
+        await dropPage.route('**/settings-ui.js', route => route.fulfill({ contentType: 'text/javascript', body: '' }));
+        await dropPage.route('**/app.js', route => route.fulfill({ contentType: 'text/javascript', body: `
+          import { bindImportFileDrop, guardFileDropNavigation } from './import-file-drop.js';
+          import { readImportedDocument } from './document-formats.js';
+          import { pdfFixture } from './tests/browser-tests.fixtures.js';
+          import { initWorkspaceSections } from './workspace-sections.js';
+          initWorkspaceSections();
+          document.querySelector('#review-section .workspace-panel').open = true;
+          document.querySelector('#attention-section').hidden = false; document.querySelector('#attention-section').open = true;
+          const row = document.createElement('tr'), cell = document.createElement('td'), button = document.createElement('button');
+          cell.colSpan = 4; button.className = 'secondary import-document-button'; button.textContent = 'Import downloaded file'; button.id = 'drop-import';
+          const hint = document.createElement('span'); hint.className = 'file-drop-hint'; hint.textContent = 'or drop here'; cell.append(button, hint); row.append(cell); document.querySelector('#problem-results').append(row);
+          const status = document.querySelector('#document-import-status'); document.querySelector('#document-import-feedback').hidden = false;
+          const fixture = globalThis.dropFixture = { imports: 0, busy: false, name: '', bytes: 0 };
+          bindImportFileDrop({ button, canImport: () => !fixture.busy, onError: message => { status.textContent = message; }, onFile: async file => {
+            const result = await readImportedDocument(file); fixture.imports++; fixture.name = result.format.id; fixture.bytes = result.bytes.length; status.textContent = 'Text recovered successfully';
+          } });
+          guardFileDropNavigation({ root: window, onOutsideDrop: () => { status.textContent = 'Drop the file on an Import downloaded file button.'; } });
+          fixture.transfer = mode => {
+            const transfer = new DataTransfer();
+            if (mode === 'link') transfer.setData('text/uri-list', 'https://example.org/document.pdf');
+            else {
+              transfer.items.add(new File([mode === 'invalid' ? '<html>Sign in</html>' : pdfFixture()], 'recovery.data', { type: 'application/octet-stream' }));
+              if (mode === 'multiple') transfer.items.add(new File([pdfFixture()], 'second.pdf', { type: 'application/pdf' }));
+              if (mode === 'mixed') transfer.setData('text/uri-list', 'https://example.org/document.pdf');
+            }
+            return transfer;
+          };
+          fixture.event = (type, mode, outside = false) => {
+            const event = new DragEvent(type, { dataTransfer: fixture.transfer(mode), bubbles: true, cancelable: true });
+            (outside ? document.body : button).dispatchEvent(event); return event.defaultPrevented;
+          };
+          globalThis.dropReady = true;
+        ` }));
+        await dropPage.goto(`http://127.0.0.1:${server.address().port}/downloader.html`); await dropPage.waitForFunction(() => globalThis.dropReady);
+        assert.equal(await dropPage.evaluate(() => dropFixture.event('dragover', 'file')), true);
+        assert.equal(await dropPage.locator('#drop-import').evaluate(button => button.classList.contains('file-drop-active')), true);
+        assert.equal(await dropPage.locator('.file-drop-hint').innerText(), 'or drop here');
+        await dropPage.evaluate(() => document.querySelector('#drop-import').dispatchEvent(new DragEvent('dragleave', { bubbles: true })));
+        assert.equal(await dropPage.locator('#drop-import').evaluate(button => button.classList.contains('file-drop-active')), false);
+        for (const [mode, message] of [['multiple', 'one file at a time'], ['link', 'not a link'], ['invalid', 'Unsupported file contents']]) {
+          assert.equal(await dropPage.evaluate(mode => dropFixture.event('drop', mode), mode), true);
+          await dropPage.waitForFunction(message => document.querySelector('#document-import-status').textContent.includes(message), message);
+          assert.equal(await dropPage.evaluate(() => dropFixture.imports), 0);
+        }
+        await dropPage.evaluate(() => { dropFixture.busy = true; dropFixture.event('drop', 'file'); });
+        assert.match(await dropPage.locator('#document-import-status').innerText(), /finish processing/);
+        await dropPage.evaluate(() => { dropFixture.busy = false; dropFixture.event('drop', 'mixed'); });
+        await dropPage.waitForFunction(() => dropFixture.imports === 1);
+        assert.equal(await dropPage.evaluate(() => dropFixture.name), 'pdf', `${name}: actual bytes determine format`);
+        assert.equal(await dropPage.locator('#document-import-status').innerText(), 'Text recovered successfully');
+        assert.equal(await dropPage.locator('#drop-import').evaluate(button => button.classList.contains('file-drop-active')), false);
+        const dropURL = dropPage.url();
+        assert.equal(await dropPage.evaluate(() => dropFixture.event('drop', 'file', true)), true);
+        assert.equal(await dropPage.url(), dropURL); assert.equal(await dropPage.evaluate(() => dropFixture.imports), 1);
+        assert.match(await dropPage.locator('#document-import-status').innerText(), /on an Import downloaded file button/);
+        for (const width of [1050, 390]) { await dropPage.setViewportSize({ width, height: 850 }); assert.equal(await dropPage.evaluate(() => document.documentElement.scrollWidth > innerWidth), false); }
+        await dropPage.close();
+        console.log(`${name}: native file drops, mixed metadata, invalid/multiple/link rejection, busy guards and navigation protection passed.`);
         // Native sticky progress and completion in both browser engines. The
         // real background feedback controller is exercised with local fixtures.
         const feedbackPage = await browser.newPage({ viewport: { width: 1050, height: 850 } });

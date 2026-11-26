@@ -13,7 +13,7 @@ export function recoveryOutcome(entry, format) {
     return { tone: 'warning', message: `${format} imported. Original file saved, but text recovery failed. ${reason} The document remains in Documents with issues.` };
   }
   if (hasLanguageWarning(extraction)) return { tone: 'warning', message: `${format} imported. Text recovered, but it still needs review. ${languageMessage(extraction)} The document remains in Documents with issues.` };
-  return { tone: 'success', message: `${format} imported. Text recovered successfully. Added to Corpus documents${extraction.included ? ' and included in the corpus.' : '; it remains excluded from the corpus.'}` };
+  return { tone: 'success', message: 'Text recovered successfully' };
 }
 
 export function initRecoveryFeedback({ getRow, isBlocked }) {

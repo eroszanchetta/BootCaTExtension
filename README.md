@@ -398,6 +398,8 @@ Dismiss clears the sticky completion message, special tab title and badge in all
 
 ### Feedback after importing a recovery file
 
-Import downloaded file reports the saved extraction result. If usable text has no remaining language issue, Corpus documents opens, the recovered row scrolls into view and receives a soft green highlight for about two seconds. The message remains on the row and in the import summary, with Show document available to find it again. Successful recovery can still leave a document excluded from export when that was the user's existing choice.
+Click Import downloaded file or drop one downloaded file onto that button. Both use the same format, size and extraction checks. The button highlights during a file drag. Links, folders and multiple files are rejected; file drops elsewhere do not navigate away from BootCaT.
+
+Successful recovery says “Text recovered successfully”. Import downloaded file reports the saved extraction result. If usable text has no remaining language issue, Corpus documents opens, the recovered row scrolls into view and receives a soft green highlight for about two seconds. The message remains on the row and in the import summary, with Show document available to find it again. Successful recovery can still leave a document excluded from export when that was the user's existing choice.
 
 If extraction still fails or a language warning remains, the document stays in Documents with issues with a specific explanation and an amber highlight. Invalid files produce an explicit import error. Navigation waits until any open editor or dialog closes; it does not move keyboard focus. Reduced-motion preferences use a static timed highlight instead of a fading animation.
