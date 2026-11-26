@@ -8,7 +8,7 @@ Standing maintainer authorization (26 November 2026): publish implementation bra
 
 - Center the Welcome dialog actions, including wrapped rows.
 - Separate the Project Name focus ring from the Project Language label.
-- Use Sbafo on a white circle with blue backing for square toolbar icons; preserve the original mascot vector.
+- Use Sbafo directly on light blue (#dceaf3) backing without a white circle for square toolbar icons; preserve the original mascot vector.
 - Make Corpus documents collapsible; leave total and included counts visible in its summary. Start expanded, preserving existing visibility.
 - Use named search-engine color cues: Google blue, DuckDuckGo warm orange, Ecosia green. Engine names remain visible; contrast and keyboard focus must remain clear. Reserve teal (#007c83) for Bing in 2.3; do not add Bing support in WP1.
 - Check collection completion navigation with collapsed URLs/Build Corpus panels, sticky navigation and narrow windows. Successful complete collections should open both panels and scroll to URLs once. Partial/stopped collections must retain their review workflow.
