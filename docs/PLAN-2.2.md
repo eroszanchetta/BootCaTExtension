@@ -2,6 +2,8 @@
 
 Agreed scope, 26 November 2026. Version 2.1 is published in both browser stores. Implement and validate each agreed package in a reviewable PR; leave merging, releases and store publication to the maintainer. No version bump in WP1.
 
+Before every work package or follow-up edit, check GitHub main, PR status and maintainer changes, then synchronize the checkout while preserving uncommitted work.
+
 Standing maintainer authorization (26 November 2026): publish implementation branches to this public repository, open unmerged PRs and run/fix checks automatically without asking again. Leave PRs unmerged and do not create releases or upload to stores without separate authorization.
 
 ## WP1 — Interface polish (implemented; readiness determined by PR validation)
@@ -20,9 +22,9 @@ Validate with local tests, both builds, release-package verification, Playwright
 
 Persistent personal engine default; Make default action beside engine selection; preference in Settings. Approved initial default: Ecosia. Keep the compact selector and place Make default beside it. Apply to new projects; preserve existing projects' engine selections.
 
-## WP3 — Download progress and completion
+## WP3 — Download progress and completion (implemented; readiness determined by PR validation)
 
-Persistent progress strip below navigation while processing; visible counts and failures; completion summary, workspace title and toolbar badge without new permissions. Confirm badge clearing behavior before implementation. System notifications requiring permission are outside this package.
+Persistent progress strip below navigation while processing; visible counts and failures; completion summary, workspace title and toolbar badge without new permissions. Keep completion feedback until Dismiss, a new download run or project replacement/closure; focusing a tab does not clear it. The receipt is browser-local and excluded from portable projects. Processed counts advance after extraction and durable saving; download/extraction failures, cancellation and language warnings remain distinct. Closing the runner or losing its batch lock marks an unfinished run interrupted. System notifications requiring permission are outside this package.
 
 ## WP4 — DuckDuckGo collection reliability
 
@@ -45,4 +47,4 @@ Collect actual failures and comparison examples early. Evaluate sampling/uncerta
 - Pseudo-XML export: preserve the legacy text/s tag structure, attribute order and one file per document under xml_corpus. Use standard XML escaping, UTF-8, standard original-document media types, and consistent stable IDs/filenames. Sentence segmentation remains undecided.
 - Bing support, with a reserved teal accent distinct from Google blue and Ecosia green. This is a design reservation, not an implemented adapter or engine choice.
 
-Suggested delivery order: WP1 through WP7, gathering WP7 examples early. WP1 and WP2 are authorized for implementation.
+Suggested delivery order: WP1 through WP7, gathering WP7 examples early. WP1, WP2 and WP3 are authorized for implementation.

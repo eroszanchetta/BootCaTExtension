@@ -1,3 +1,4 @@
+import { createDownloadFeedback } from './download-feedback.js';
 import { collectionFailure, collectionLinkWarning } from './search-feedback.js';
 import { stageProject, readStagedProject, removeStagedProject } from './project-transfer.js';
 import { validateProjectSnapshot, restoredProjectSnapshot } from './portable-project.js';
@@ -181,7 +182,11 @@ async function handleFloating(message, sender) {
   return runPageAction({ type: action, projectId: state.projectId, tabId: tab.id });
 }
 
+const downloadFeedback = createDownloadFeedback({ ext, getProject: ensureProject, serialize });
+
 async function handle(message) {
+  if (message.type === 'get-download-feedback') return { feedback: await downloadFeedback.sync() };
+  if (['download-feedback-start', 'download-feedback-progress', 'download-feedback-finish', 'download-feedback-dismiss'].includes(message.type)) return downloadFeedback.handle(message);
   if (message.type === 'get-collection-controls') return { preferences: await readCollectionControls(ext.storage.local) };
   if (message.type === 'save-collection-controls') {
     const preferences = await serialize(() => saveCollectionControls(ext.storage.local, message.patch));
