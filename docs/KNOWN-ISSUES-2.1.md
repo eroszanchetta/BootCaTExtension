@@ -9,3 +9,7 @@ Use **Continue with collected URLs** to keep the saved subset and proceed to cor
 Floating controls have also been reported as intermittently absent on DuckDuckGo pages in Chrome and Firefox. Hiding on an already collected page is expected; the reported absence on an unaccepted partial collection still needs reproduction. This is tracked separately from the confirmed partial-result metadata.
 
 These issues are deferred beyond the 2.1 release. Further investigation should capture the populated live result DOM and candidate-link diagnostics. No candidate-filtering or floating-control fix is claimed in this release.
+
+## 2.2 development follow-up
+
+WP4 reproduced a false partial collection caused by Related Searches sharing the legacy result selector, and confirmed More results can append documents without changing the URL. The 2.2 implementation addresses those cases and floating-control lifecycle gaps. The original eight unidentified candidates and exact intermittent absence remain unconfirmed. See [the investigation](DUCKDUCKGO-2.2.md) for evidence and limits.

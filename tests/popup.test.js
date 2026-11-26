@@ -1,3 +1,4 @@
+import { matchingCollection } from '../src/collection.js';
 import { collectionLinkWarning, collectionSummary } from '../src/search-feedback.js';
 import { COLLECTION_CONTROLS_KEY, DEFAULT_COLLECTION_CONTROLS, collectionControlsFromRecord } from '../src/collection-preferences.js';
 import { test } from 'node:test';
@@ -23,7 +24,7 @@ async function popup(state, url, fail = false) {
   let requests = 0, reloads = 0; const actions = [];
   const notify = changes => listeners.forEach(fn => fn(changes, 'local'));
   const context = vm.createContext({
-    collectionLinkWarning, collectionSummary, COLLECTION_CONTROLS_KEY, DEFAULT_COLLECTION_CONTROLS, collectionControlsFromRecord,
+    matchingCollection, collectionLinkWarning, collectionSummary, COLLECTION_CONTROLS_KEY, DEFAULT_COLLECTION_CONTROLS, collectionControlsFromRecord,
     initVersionBadge: () => '2.0.0',
     document: { getElementById: get }, adapterForURL,
     window: { close() {}, location: { reload() { reloads++; } } },
@@ -34,6 +35,7 @@ async function popup(state, url, fail = false) {
         actions.push(message);
         if (message.type === 'open-workspace') return { ok: true };
         if (message.type === 'accept-collected-results') { state.collections = state.collections.map(item => ({...item, acceptedPartial:true})); notify({ collections: {newValue:state.collections} }); return {ok:true}; }
+        if (message.type === 'get-search-collection-state') return { ok: true, projectId: 'current', collection: state.changedResults ? null : state.collections.find(item => item.pageURL === url) };
         if (message.type === 'get-collection-controls') return { ok: true, preferences: state.preferences || DEFAULT_COLLECTION_CONTROLS };
         if (message.type === 'save-collection-controls') { state.preferences = { ...DEFAULT_COLLECTION_CONTROLS, ...state.preferences, ...message.patch }; notify({ [COLLECTION_CONTROLS_KEY]: { newValue: { version: 1, values: state.preferences } } }); return { ok: true, preferences: state.preferences }; }
         if (message.type === 'get-project') return { ok: true, project: state.project === undefined ? { id: 'current', name: 'Test corpus', nameConfirmed: true } : state.project };
@@ -192,4 +194,12 @@ test('partial popup results show their count and can be kept without recollectio
   assert.equal(reopened.get('collect').disabled, true);
   assert.equal(reopened.get('review-urls').hidden, false);
   assert.equal(reopened.get('continue-collected').hidden, true);
+});
+
+test('DDG popup offers collection again when results changed at the same URL', async () => {
+  const url = 'https://duckduckgo.com/?q=flowers';
+  const state = {collections:[{engine:'duckduckgo',pageURL:url,unresolved:0,results:[{url:'https://example.org/'}]}],changedResults:true};
+  const ui = await popup(state,url);
+  assert.equal(ui.get('collect-action').hidden,false);
+  assert.equal(ui.get('collect').disabled,false);
 });

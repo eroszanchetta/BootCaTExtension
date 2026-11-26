@@ -8,6 +8,26 @@
   if (previous) { previous.refresh(); return; }
   let host, root, primary, feedback, tooltip, current, busy = false, flash = false, note = '', refreshRevision = 0, generation = 0, flashTimer;
   let documentURL = location.href, collectionResult = null, collectionFailed = false;
+  const readResults = null; // Shared collector embedded by the build.
+  const ddgAdapter = null;
+  let observedKey, observedURL = location.href, refreshTimer;
+  function pageKey() {
+    if (!/^(www\.|html\.)?duckduckgo\.com$/.test(location.hostname)) return '';
+    return readResults(ddgAdapter)?.resultSetKey || '';
+  }
+  function watchPage() {
+    if (!current?.enabled || refreshTimer) return;
+    refreshTimer = setTimeout(() => {
+      refreshTimer = undefined;
+      if (!current?.enabled) return;
+      const key = pageKey();
+      if (location.href !== observedURL || key !== observedKey) {
+        observedURL = location.href; observedKey = key;
+        generation++; busy = flash = false; note = ''; collectionResult = null; collectionFailed = false; clearTimeout(flashTimer);
+        refresh();
+      } else if (host && !host.isConnected) render();
+    }, 200);
+  }
   const mascot = null; // Populated from the shared SVG by the build.
   const summarize = null; // Populated from shared collection feedback by the build.
   const paths = {
@@ -112,20 +132,28 @@
     } catch (error) { if (token === generation) { busy = false; flash = false; collectionFailed = true; note = error.message.slice(0, 400); render(); } }
   }
   async function refresh() {
-    const request = ++refreshRevision;
+    const request = ++refreshRevision, requestURL = location.href, requestKey = pageKey();
     try {
       const reply = await ext.runtime.sendMessage({ type: 'get-floating-state' });
       if (request !== refreshRevision) return;
+      if (location.href !== requestURL || pageKey() !== requestKey) {
+        if (!refreshTimer) refreshTimer = setTimeout(() => { refreshTimer = undefined; refresh(); }, 200);
+        return;
+      }
       if (!reply?.ok) { current = { enabled: false }; remove(); return; }
       const next = reply.state;
-      if (location.href !== documentURL || current?.projectId !== next?.projectId) { generation++; busy = flash = false; note = ''; collectionResult = null; collectionFailed = false; clearTimeout(flashTimer); documentURL = location.href; }
-      current = next; render();
+      const key = pageKey();
+      if (location.href !== documentURL || current?.projectId !== next?.projectId || (observedKey !== undefined && key !== observedKey)) { generation++; busy = flash = false; note = ''; collectionResult = null; collectionFailed = false; clearTimeout(flashTimer); documentURL = location.href; }
+      current = next; observedURL = location.href; observedKey = key; render();
     } catch { current = { enabled: false }; remove(); }
   }
   ext.runtime.onMessage.addListener((message, sender, respond) => {
     if (message?.type !== 'bootcat-floating-refresh' || sender.id !== ext.runtime.id) return;
     refresh(); respond?.({ ok: true }); return false;
   });
+  new MutationObserver(watchPage).observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ['href', 'hidden', 'aria-hidden', 'class', 'style'] });
+  window.addEventListener('pageshow', refresh);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
   window.addEventListener('popstate', refresh); window.addEventListener('hashchange', refresh);
   globalThis.__bootcatFloatingControl = { refresh, get host() { return host; } };
   refresh();

@@ -134,6 +134,26 @@ const assert = require('node:assert/strict');
           assert.equal((await measure()).x, false, `${name}: ${scenario} narrow-panel overflow`);
           assert.deepEqual(errors, []); await page.close();
         }
+        // Minimized populated live DDG DOM: the old selector saw ten documents
+        // plus two related queries and incorrectly reported a partial collection.
+        const ddgHTML = await readFile(resolve('tests/fixtures/duckduckgo-populated.html'), 'utf8');
+        const { ENGINES, extractResults } = await import('../src/engines.js');
+        const ddgAdapter = ENGINES.find(item => item.id === 'duckduckgo');
+        const ddg = await browser.newPage();
+        await ddg.route('https://duckduckgo.com/**', route => route.fulfill({ contentType: 'text/html', body: ddgHTML }));
+        await ddg.goto('https://duckduckgo.com/?q=sepalo+stame+petalo&ia=web');
+        let collected = await ddg.evaluate(extractResults, ddgAdapter);
+        assert.equal(collected.results.length, 10); assert.equal(collected.unresolved, 0);
+        assert.equal(collected.candidateDiagnostics.filter(item => item.reason === 'related-search').length, 2);
+        const firstKey = collected.resultSetKey;
+        await ddg.evaluate(() => { const a = document.createElement('a'); a.dataset.testid = 'result-title-a'; a.href = 'https://example.org/appended'; a.textContent = 'More results fixture'; document.querySelector('main').append(a); });
+        collected = await ddg.evaluate(extractResults, ddgAdapter);
+        assert.equal(collected.results.length, 11); assert.notEqual(collected.resultSetKey, firstKey);
+        await ddg.evaluate(() => { const a = document.createElement('a'); a.dataset.testid = 'result-title-a'; a.href = '/l/?opaque=unresolved'; a.textContent = 'Unresolved destination'; document.querySelector('main').append(a); });
+        collected = await ddg.evaluate(extractResults, ddgAdapter);
+        assert.equal(collected.unresolved, 1); assert.ok(collected.candidateDiagnostics.some(item => item.href === '/l/?opaque=unresolved' && item.outcome === 'unresolved'));
+        await ddg.close();
+        console.log(`${name}: populated DDG result selectors, related-search diagnostics, appended results and genuine partial results passed.`);
         // Run the real, self-contained floating control in both native DOMs.
         const floating = await browser.newPage({ viewport: { width: 640, height: 600 } });
         const floatingErrors = []; floating.on('pageerror', error => floatingErrors.push(error.message));
@@ -158,6 +178,13 @@ const assert = require('node:assert/strict');
         assert.equal(await floating.evaluate(async () => { const { captureCurrentPage } = await import('./page-capture.js'); return captureCurrentPage().html.includes('data-bootcat-floating-control'); }), false);
         await floating.addScriptTag({ url: `http://127.0.0.1:${server.address().port}/floating-control.js` });
         assert.equal(await host.count(), 1); assert.equal(await floating.evaluate(() => floatingFixture.listeners.length), 1);
+        await floating.evaluate(() => document.querySelector('[data-bootcat-floating-control]').remove());
+        await host.waitFor(); assert.equal(await host.count(), 1, 'page replacement restores one floating control');
+        await floating.evaluate(() => { floatingFixture.state.saved = true; for (const listener of floatingFixture.listeners) listener({type:'bootcat-floating-refresh'},{id:'floating-fixture'},()=>{}); });
+        await host.waitFor({state:'hidden'});
+        await floating.evaluate(() => { floatingFixture.state.saved = false; history.pushState({},'', '?changed=1'); document.body.append(document.createElement('p')); });
+        await host.waitFor();
+
         for (const position of ['top-right', 'top-left', 'bottom-right', 'bottom-left']) {
           await floating.evaluate(position => { floatingFixture.state.position = position; for (const listener of floatingFixture.listeners) listener({ type: 'bootcat-floating-refresh' }, { id: 'floating-fixture' }, () => {}); }, position);
           await floating.waitForFunction(position => { const node = document.querySelector('[data-bootcat-floating-control]'); return node.style[position.startsWith('top') ? 'top' : 'bottom'] === '16px' && node.style[position.endsWith('left') ? 'left' : 'right'] === '16px'; }, position);
