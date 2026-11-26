@@ -844,6 +844,13 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     await localRow.locator('.preview-button').waitFor();
     await page.waitForFunction(() => !document.querySelector('#urls').disabled && !document.querySelector('#open-project').disabled);
     assert.match(await localRow.innerText(), /Imported PDF/);
+    await page.waitForFunction(() => document.querySelector('#document-import-feedback').dataset.state === 'success');
+    assert.match(await localRow.locator('.document-import-feedback').innerText(), /Text recovered successfully/);
+    await page.locator('#show-imported-document').click();
+    await page.waitForFunction(url => {
+      const row = [...document.querySelectorAll('#results tr')].find(row => row.querySelector('a')?.href === url);
+      return row?.classList.contains('recovery-success') && row.getBoundingClientRect().top >= document.querySelector('.workspace-header').getBoundingClientRect().bottom;
+    }, pdfOrigin + '/always-blocked.pdf');
     assert.equal(await page.locator('#review-lists tbody tr').count(), 2, 'recovery must replace failed rows');
     await page.fill('#urls', `${pdfOrigin}/session-document\n${pdfOrigin}/always-blocked.pdf\n${pdfOrigin}/always-blocked.docx`);
     await page.click('#start');
@@ -871,6 +878,28 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.match(await page.locator('#review-lists').innerText(), /Imported DOCX/);
     await deleteAllRows();
     console.log('Session-aware PDF tab recovery, browser file chooser import, persistence and export passed.');
+    // An imported original can be valid even when extraction still fails.
+    await page.fill('#urls', pdfOrigin + '/always-blocked.pdf'); await page.click('#start'); await waitForFinished(); await openIssues();
+    let retryRow = page.locator('#problem-results tr').filter({ has: page.locator(`a[href="${pdfOrigin}/always-blocked.pdf"]`) });
+    let retryChooser = page.waitForEvent('filechooser'); await retryRow.locator('.import-document-button').click();
+    await (await retryChooser).setFiles({ name: 'scan.pdf', mimeType: 'application/pdf', buffer: Buffer.from(pdfFixture({ empty: true })) });
+    await page.waitForFunction(() => document.querySelector('#document-import-feedback').dataset.state === 'warning');
+    assert.match(await page.locator('#document-import-status').innerText(), /Original file saved, but text recovery failed/);
+    assert.equal(await retryRow.locator('.preview-button').innerText(), 'Details');
+    assert.equal(await page.locator('#results tr').count(), 0);
+    await deleteAllRows();
+    // Usable text with a new language warning remains in Documents with issues.
+    await page.selectOption('#project-language', 'ita');
+    await page.fill('#urls', pdfOrigin + '/always-blocked.pdf'); await page.click('#start'); await waitForFinished(); await openIssues();
+    retryRow = page.locator('#problem-results tr').filter({ has: page.locator(`a[href="${pdfOrigin}/always-blocked.pdf"]`) });
+    retryChooser = page.waitForEvent('filechooser'); await retryRow.locator('.import-document-button').click();
+    await (await retryChooser).setFiles({ name: 'english.pdf', mimeType: 'application/pdf', buffer: Buffer.from(pdfFixture()) });
+    await page.waitForFunction(() => document.querySelector('#document-import-feedback').dataset.state === 'warning');
+    assert.match(await page.locator('#document-import-status').innerText(), /Text recovered, but it still needs review/);
+    assert.match(await retryRow.innerText(), /language|Detected/i);
+    assert.equal(await page.locator('#results tr').count(), 0);
+    await deleteAllRows(); await page.selectOption('#project-language', 'none');
+    console.log('Real imports distinguish successful recovery, failed extraction and remaining language warnings.');
     await page.evaluate(() => (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'open-workspace' }));
     assert.equal(context.pages().filter(tab => tab.url().split('#')[0] === origin + '/downloader.html').length, 1);
     await page.reload(); await assertCollapsed(); await openPanels();

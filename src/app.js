@@ -1,3 +1,4 @@
+import { initRecoveryFeedback, recoveryOutcome, preserveRecoveryInclusion } from './recovery-feedback.js';
 import { initDownloadFeedbackUI } from './download-feedback-ui.js';
 import { initEngineDefaultUI } from './engine-default-ui.js';
 import { initPortableUI } from './portable-ui.js';
@@ -42,6 +43,7 @@ let projectId, state, entries = [], searchUI, seedsUI, projectTabsUI, archiveURL
 let exportSaved = false, exportRevision = 0;
 let writes = Promise.resolve(), pendingWrites = 0, writeError = null, capturesPending = false, refreshing = false;
 let pickingDocument = false, documentImportTarget = null, documentImportStatus = { url: null, message: '' };
+const documentImportMessages = new Map();
 const rows = new Map(), controls = new Map(), documentJobs = new Map(), inclusionJobs = new Set(), operationControllers = new Set();
 const coordinator = createProjectWork({ locks: navigator.locks, getProjectId: () => projectId });
 const extractionQueue = createExtractionQueue(navigator.locks);
@@ -54,14 +56,14 @@ const hasDocumentWork = () => documentJobs.size > 0 || remoteActivity.documents.
 ui.start.disabled = ui.export.disabled = true;
 ui.extractor.querySelector('option[value="defuddle"]').disabled = !DEFUDDLE_AVAILABLE;
 if (!DEFUDDLE_AVAILABLE) ui.extractor.querySelector('option[value="defuddle"]').textContent = 'Defuddle — library unavailable';
-let engineDefaultUI, downloadFeedbackUI;
+let engineDefaultUI, downloadFeedbackUI, recoveryFeedback;
 const projectUI = initProjectUI({
   onRename: () => { invalidateArchive(); seedsUI?.refreshLanguage?.(); },
   onSaveProject: () => portableUI.save(), onOpenProject: () => portableUI.choose(),
   getBusy: () => portableBusy || running || isBatchActive() || importing || hasDocumentWork() || remoteActivity.exclusive,
   confirmReplacement: options => portableUI.confirmReplacement(options),
   onReset: () => {
-    resetting = true; ready = false; stopping = true; clearTimeout(activityTimer); controller?.abort(); for (const active of operationControllers) active.abort(); seedsUI?.destroy(); searchUI?.destroy(); projectTabsUI?.destroy(); engineDefaultUI?.destroy(); downloadFeedbackUI?.destroy(); running = downloading = importing = false; updateControls();
+    resetting = true; ready = false; stopping = true; clearTimeout(activityTimer); controller?.abort(); for (const active of operationControllers) active.abort(); seedsUI?.destroy(); searchUI?.destroy(); projectTabsUI?.destroy(); engineDefaultUI?.destroy(); downloadFeedbackUI?.destroy(); recoveryFeedback?.destroy(); documentImportMessages.clear(); running = downloading = importing = false; updateControls();
     invalidateArchive(); ui.urls.value = ''; clearPreview();
     document.getElementById('project-name').value = '';
     entries = []; state = null; documentImportTarget = null; ui['import-document-picker'].value = '';
@@ -265,6 +267,7 @@ function renderRow(entry) {
     importDocument = document.createElement('button'); importDocument.type = 'button'; importDocument.className = 'secondary import-document-button'; importDocument.textContent = 'Import downloaded file';
     importDocument.addEventListener('click', () => {
       if (isDocumentBusy(url) || resetting || pickingDocument) return;
+      recoveryFeedback?.begin();
       documentImportTarget = { url, finalURL: record.finalURL || url, projectId };
       pickingDocument = true;
       documentImportMessage(url, `Choose the file downloaded for this URL (up to ${currentSettings.fileMiB} MiB).`);
@@ -273,9 +276,13 @@ function renderRow(entry) {
       ui['import-document-picker'].accept = '';
       ui['import-document-picker'].value = ''; ui['import-document-picker'].click();
     });
-    importFeedback = document.createElement('p'); importFeedback.className = 'hint document-import-feedback'; importFeedback.setAttribute('role', 'status');
-    importFeedback.textContent = documentImportStatus.url === url ? documentImportStatus.message : '';
-    source.append(importDocument, importFeedback);
+    source.append(importDocument);
+  }
+  if (importDocument || documentImportMessages.has(url)) {
+    importFeedback = document.createElement('p'); importFeedback.className = 'hint document-import-feedback';
+    const message = documentImportMessages.get(url);
+    importFeedback.textContent = message?.message || ''; importFeedback.setAttribute('data-state', message?.tone || 'hint');
+    source.append(importFeedback);
   }
   const trash = document.createElement('button'); trash.type = 'button'; trash.className = 'delete-button'; trash.title = 'Delete page'; trash.setAttribute('aria-label', `Delete ${doc?.extraction.title || url}`);
   const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -285,7 +292,9 @@ function renderRow(entry) {
     if (!await confirmAction({ title: 'Delete document?', message: 'This removes the document and its text from the project.', confirmLabel: 'Delete document', destructive: true })) return;
     ui.urls.value = ui.urls.value.split(/\r?\n/).filter(line => parseURLs(line).urls[0] !== url).join('\n');
     await queueDraft({ urls: ui.urls.value }); await flushWrites(); await storage.removeDocument(projectId, url);
-    metadataRevision++; entries = entries.filter(item => item.url !== url); rows.get(url)?.remove(); rows.delete(url); controls.delete(url);
+    metadataRevision++; documentImportMessages.delete(url); recoveryFeedback?.forget(url);
+    if (documentImportStatus.url === url) document.getElementById('document-import-feedback').hidden = true;
+    entries = entries.filter(item => item.url !== url); rows.get(url)?.remove(); rows.delete(url); controls.delete(url);
     ui.urls.value = ui.urls.value.split(/\r?\n/).filter(line => parseURLs(line).urls[0] !== url).join('\n');
     state.draft.urls = ui.urls.value;
     if (previewURL === url) clearPreview(); invalidateArchive(); updateCounts(); warnURLs();
@@ -297,18 +306,19 @@ function renderRow(entry) {
   if (old?.parentNode === target) old.replaceWith(tr);
   else { old?.remove(); target.append(tr); }
   const activity = document.createElement('p'); activity.className = 'hint document-activity'; activity.setAttribute('role', 'status'); result.append(activity);
-  rows.set(url, tr); markPreviewRow(url, tr); controls.set(url, { activity, trash, checkbox, acceptLanguage, importDocument, importFeedback, failed: doc?.extraction.status !== 'ok' || hasLanguageWarning(doc?.extraction) });
+  rows.set(url, tr); recoveryFeedback?.apply(tr, url); markPreviewRow(url, tr); controls.set(url, { activity, trash, checkbox, acceptLanguage, importDocument, importFeedback, failed: doc?.extraction.status !== 'ok' || hasLanguageWarning(doc?.extraction) });
   if (importDocument) importDocument.disabled = isDocumentBusy(url);
   trash.disabled = isDocumentBusy(url); if (checkbox) checkbox.disabled = isDocumentBusy(url) || doc.extraction.status !== 'ok' || hasLanguageWarning(doc.extraction);
 }
-function documentImportMessage(url, message) {
-  documentImportStatus = { url, message };
+function documentImportMessage(url, message, tone = 'hint') {
+  documentImportStatus = { url, message, tone }; documentImportMessages.set(url, documentImportStatus);
+  const banner = document.getElementById('document-import-feedback'); banner.hidden = false; banner.setAttribute('data-state', tone);
   ui['document-import-status'].textContent = `${url} · ${message}`;
   const feedback = controls.get(url)?.importFeedback;
-  if (feedback) feedback.textContent = message;
+  if (feedback) { feedback.textContent = message; feedback.setAttribute('data-state', tone); }
 }
 ui['import-document-picker'].addEventListener('cancel', () => {
-  pickingDocument = false;
+  pickingDocument = false; recoveryFeedback?.begin();
   if (documentImportTarget) documentImportMessage(documentImportTarget.url, 'File selection cancelled.');
   documentImportTarget = null;
 });
@@ -316,25 +326,29 @@ ui['import-document-picker'].addEventListener('change', async () => {
   const target = documentImportTarget, file = ui['import-document-picker'].files?.[0];
   pickingDocument = false;
   if (!target || !file || resetting || target.projectId !== projectId) { documentImportTarget = null; return; }
+  recoveryFeedback?.begin();
   let started = false;
   await documentWork(target.url, async () => {
     started = true;
     try {
       const settings = await readSettings(ext.storage.local);
+      ui['saved-status'].textContent = '';
       documentImportMessage(target.url, `Importing file… Reading and extracting text may take up to ${settings.extractionSeconds} seconds.`);
       await flushWrites();
       const { bytes, format } = await readImportedDocument(file, fileLimit(settings));
-      await storeCapture({ ...target, settings, bytes, contentType: format.mime, source: 'local-file', capturedAt: new Date().toISOString() });
+      const entry = await storeCapture({ ...target, settings, bytes, contentType: format.mime, source: 'local-file', capturedAt: new Date().toISOString() });
       if (resetting) return;
-      documentImportMessage(target.url, `${format.label} imported. Original file saved; review its extraction result below.`);
-      ui['saved-status'].textContent = `Downloaded ${format.label} added to the review list. Review its text before saving your corpus.`;
+      const outcome = recoveryOutcome(entry, format.label);
+      documentImportMessage(target.url, outcome.message, outcome.tone);
+      recoveryFeedback?.show({ url: target.url, tone: outcome.tone });
     } catch (error) {
-      documentImportMessage(target.url, `File not imported: ${error.message}`);
-      throw error;
+      if (resetting) return;
+      documentImportMessage(target.url, `File not imported: ${error.message}`, 'error');
+      recoveryFeedback?.show({ url: target.url, tone: 'error' });
     }
   }, { wait: true });
-  if (!started && !resetting) documentImportMessage(target.url, 'File not imported: another operation is running. Choose the file again when it finishes.');
-  documentImportTarget = null; ui['import-document-picker'].value = '';
+  if (!started && !resetting) documentImportMessage(target.url, 'File not imported: another operation is running. Choose the file again when it finishes.', 'warning');
+  if (documentImportTarget === target) { documentImportTarget = null; ui['import-document-picker'].value = ''; }
 });
 function remember(entry, { keepPreview = false, updateRow = true } = {}) {
   metadataRevision++;
@@ -547,11 +561,13 @@ async function storeCapture({ url, finalURL, bytes, contentType, source, capture
         : extractDocument(bytes, contentType, { settings, extractor: ui.extractor.value, sourceURL: finalURL });
     }, { priority: true });
     if (resetting) return;
-    const checkedExtraction = await checkLanguage(extraction, projectUI.snapshot().language || 'none');
+    const previous = source === 'local-file' ? (await storage.readDownloadTarget(projectId, url)).entry?.doc?.extraction : null;
+    const checkedExtraction = await checkLanguage(preserveRecoveryInclusion(extraction, previous), projectUI.snapshot().language || 'none');
     const doc = { url, filename, textFilename: filename.replace(/^pages\//, 'corpus/').replace(/\.[^.]+$/, '.txt'), extraction: checkedExtraction, captureId, source, capturedAt };
     const record = { url, finalURL, outcome: 'captured', source, capturedAt, captureId, filename, contentType, bytes: bytes.length };
-    remember(await storage.saveDocument(projectId, record, doc, bytes));
-    if (!state.batch.startedAt) { state.batch.startedAt = new Date().toISOString(); await storage.saveBatch(projectId, { startedAt: state.batch.startedAt }, await readCollections()); }
+    if (!state.batch.startedAt) { const startedAt = new Date().toISOString(); await storage.saveBatch(projectId, { startedAt }, await readCollections()); state.batch.startedAt = startedAt; }
+    const saved = await storage.saveDocument(projectId, record, doc, bytes);
+    remember(saved); return saved;
   } finally { operationControllers.delete(active); }
 }
 async function importSavedPages() {
@@ -732,6 +748,7 @@ portableUI = initPortableUI({
     searchUI = initSearchUI({ onCollectionsChange: invalidateArchive, isRunning: () => running, seenCollectionIds: state.draft.seenCollections, getProjectId: () => projectId, onChange: patch => { queueDraft(patch); warnURLs(); } });
     if (state.draft.engine) ui.engine.value = state.draft.engine;
     seedsUI = initSeedsUI({ minimumSeeds: currentSettings.minimumSeeds, draft: state.draft, onChange: queueDraft, getLanguage: () => projectUI.snapshot()?.language || 'none', getProjectId: () => projectId, onOpeningChange: value => projectTabsUI?.setOpening(value) });
+    recoveryFeedback = initRecoveryFeedback({ getRow: url => rows.get(url), isBlocked: () => resetting || pickingDocument || !!document.querySelector('dialog[open]') });
     downloadFeedbackUI = initDownloadFeedbackUI({ getProjectId: () => projectId });
     engineDefaultUI = initEngineDefaultUI({ getProjectId: () => projectId });
     projectTabsUI = initProjectTabsUI({ getProjectId: () => projectId, onState: value => seedsUI?.updateTabState(value) });

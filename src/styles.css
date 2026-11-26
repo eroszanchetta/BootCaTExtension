@@ -229,3 +229,22 @@ section { scroll-margin-top: 0; }
 .download-feedback-strip[data-state="finished"] { background: #ecfdf3; border-color: #a6d7b5; color: #14532d; }
 .download-feedback-strip[data-state="attention"] { background: #fff6df; border-color: #d5b976; color: #73520c; }
 .download-completion-summary { padding: 12px; border: 1px solid #c4d8e7; border-radius: 8px; background: #f4f8fb; }
+
+.recovery-feedback { margin: 16px 0; padding: 12px 16px; border-radius: 8px; background: #f4f8fb; overflow-wrap: anywhere; }
+.recovery-feedback p { margin: 0; }
+.recovery-feedback button { margin-top: 8px; padding: 6px 12px; font-size: .85rem; }
+.recovery-feedback[data-state="success"] { background: #ecfdf3; border-left: 4px solid #28753e; color: #14532d; }
+.recovery-feedback[data-state="warning"] { background: #fff6df; border-left: 4px solid #c68210; color: #73520c; }
+.recovery-feedback[data-state="error"] { background: #fff1f0; border-left: 4px solid #a22d25; color: #a22d25; }
+.document-import-feedback:empty { display: none; }
+.document-import-feedback[data-state="success"] { color: #14532d; }
+.document-import-feedback[data-state="warning"] { color: #73520c; }
+.document-import-feedback[data-state="error"] { color: #a22d25; }
+#review-lists tr.recovery-success > td { animation: recovery-green var(--recovery-highlight-duration, 2s) ease-out forwards; }
+#review-lists tr.recovery-attention > td { animation: recovery-amber var(--recovery-highlight-duration, 2s) ease-out forwards; }
+@keyframes recovery-green { 0%, 65% { background-color: #dcfce7; } 100% { background-color: transparent; } }
+@keyframes recovery-amber { 0%, 65% { background-color: #fff1ce; } 100% { background-color: transparent; } }
+@media (prefers-reduced-motion: reduce) {
+  #review-lists tr.recovery-success > td { animation: none; background-color: #dcfce7; }
+  #review-lists tr.recovery-attention > td { animation: none; background-color: #fff1ce; }
+}
