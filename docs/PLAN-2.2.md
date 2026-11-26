@@ -28,6 +28,8 @@ Persistent progress strip below navigation while processing; visible counts and 
 
 ## Recovery-feedback follow-up before WP4 (authorized)
 
+The Import downloaded file button also accepts one dropped local file, with an or drop here hint. Picker and drop share validation, locking and feedback. Links, folders and multiple files are rejected; file drops outside import controls cannot navigate away. Success text is exactly Text recovered successfully.
+
 For user-initiated downloaded-file recovery, report the saved and checked outcome persistently. Successful recovery opens Corpus documents, scrolls to the row below the sticky header and highlights it softly in green for two seconds. Remaining extraction/language issues stay in Documents with issues with amber highlighting and a specific explanation. Failed imports report the error without claiming success. Preserve known inclusion choices; usable text may remain excluded. Keep messages on moved rows and offer Show document. Defer automatic navigation until open dialogs/editors close, preserve keyboard focus, and use a static timed highlight for reduced motion.
 
 ## WP4 — DuckDuckGo collection reliability

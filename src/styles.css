@@ -248,3 +248,6 @@ section { scroll-margin-top: 0; }
   #review-lists tr.recovery-success > td { animation: none; background-color: #dcfce7; }
   #review-lists tr.recovery-attention > td { animation: none; background-color: #fff1ce; }
 }
+
+.file-drop-hint { display: block; margin-top: 3px; color: #536a79; font-size: .75rem; }
+.import-document-button.file-drop-active:not(:disabled) { outline: 2px solid #007aa6; outline-offset: 2px; background: #e7f2f8; }

@@ -1,3 +1,4 @@
+import { bindImportFileDrop, guardFileDropNavigation } from '../../src/import-file-drop.js';
 import { recoveryOutcome, preserveRecoveryInclusion } from '../../src/recovery-feedback.js';
 import { DEFAULT_SETTINGS, SETTINGS_KEY, readSettings, fileLimit } from '../../src/settings.js';
 import { createProjectWork, createExtractionQueue } from '../../src/project-work.js';
@@ -58,7 +59,7 @@ export async function workspace(projectId, options = {}) {
     initVersionBadge: () => '2.0.0',
     initWorkspaceSections() {}, openWorkspaceSection(...args) { options.onOpenSection?.(...args); }, setProjectSectionState() {},
     initSeedsUI: () => ({ restore() {}, isBusy: () => false, destroy() {} }),
-    recoveryOutcome, preserveRecoveryInclusion,
+    bindImportFileDrop, guardFileDropNavigation, recoveryOutcome, preserveRecoveryInclusion,
     initRecoveryFeedback: () => ({ begin() {}, forget() {}, show: value => options.onRecoveryFeedback?.(value), apply() {}, destroy() {} }),
     initDownloadFeedbackUI: () => ({ destroy() {} }),
     initEngineDefaultUI: () => ({ destroy() {}, refreshSelection() {} }),

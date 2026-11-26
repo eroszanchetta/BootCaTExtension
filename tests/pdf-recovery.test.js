@@ -133,7 +133,7 @@ test('manually selected PDF above 10 MiB imports and exports exact original', as
   app.get('import-document-picker').files = [new Blob([bytes])]; await app.get('import-document-picker').handlers.change();
   const entry = (await storage.loadWorkspace('large')).entries[0];
   assert.equal(entry.record.bytes, 15690948); assert.equal(entry.doc.extraction.status, 'ok');
-  assert.match(app.get('document-import-status').textContent, /PDF imported/);
+  assert.match(app.get('document-import-status').textContent, /Text recovered successfully/);
   assert.deepEqual(new Uint8Array(await (await storage.readOriginal('large', entry.doc.filename)).arrayBuffer()), bytes);
   await app.click('export'); assert.ok(app.archive().size > bytes.length);
 });
@@ -203,4 +203,27 @@ test('a successful import keeps its message on the moved corpus row', async () =
   assert.equal(message.attributes['data-state'], 'success'); assert.equal(feedback.at(-1).tone, 'success');
   await app.focus();
   assert.match(app.get('results').children[0].children[1].children.find(item => item.className === 'hint document-import-feedback').textContent, /Text recovered successfully/);
+});
+
+
+test('dropped recovery files use the same durable import path and affect only their target URL', async () => {
+  globalThis.indexedDB = new IDBFactory();
+  const app = await workspace('drop-target', { fetch: async () => { throw new Error('HTTP 403'); } });
+  await app.input('urls', 'https://example.org/one.pdf\nhttps://example.org/two.pdf'); await app.click('start');
+  const button = app.get('problem-results').children[1].children[1].children.find(item => item.className === 'secondary import-document-button');
+  const drop = files => ({ dataTransfer: { types: ['Files'], files }, preventDefault() {}, stopPropagation() {} });
+  await button.handlers.drop(drop([new Blob([pdf]), new Blob([pdf])]));
+  assert.equal((await storage.loadWorkspace('drop-target')).entries.filter(entry => entry.doc).length, 0);
+  assert.match(app.get('document-import-status').textContent, /one file/);
+  await button.handlers.drop(drop([new Blob(['not a document'])]));
+  assert.equal((await storage.loadWorkspace('drop-target')).entries.filter(entry => entry.doc).length, 0);
+  assert.match(app.get('document-import-status').textContent, /Unsupported file contents/);
+  await button.handlers.drop(drop([new Blob([pdf])]));
+  const entries = (await storage.loadWorkspace('drop-target')).entries;
+  assert.equal(entries[0].doc, null); assert.equal(entries[1].record.source, 'local-file');
+  assert.equal(app.get('document-import-status').textContent, 'Text recovered successfully');
+  assert.deepEqual(new Uint8Array(await (await storage.readOriginal('drop-target', entries[1].doc.filename)).arrayBuffer()), pdf);
+  // A stale button retained during a row rebuild cannot overwrite the recovered file.
+  await button.handlers.drop(drop([new Blob([pdf])]));
+  assert.equal((await storage.loadWorkspace('drop-target')).entries[1].doc.filename, entries[1].doc.filename);
 });

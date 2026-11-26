@@ -4,10 +4,10 @@ import { recoveryOutcome, preserveRecoveryInclusion } from '../src/recovery-feed
 import { checkLanguage } from '../src/language-detection.js';
 const extraction = patch => ({ status: 'ok', included: true, text: 'Recovered text.', characters: 15, warnings: [], ...patch });
 const entry = patch => ({ doc: { extraction: extraction(patch) } });
-test('recovery describes exclusion, language warnings and extraction failure without promising inclusion', () => {
-  assert.match(recoveryOutcome(entry({}), 'PDF').message, /included in the corpus/);
+test('recovery keeps success concise and explains language warnings and extraction failure', () => {
+  assert.equal(recoveryOutcome(entry({}), 'PDF').message, 'Text recovered successfully');
   const excluded = recoveryOutcome(entry({ included: false }), 'DOCX');
-  assert.equal(excluded.tone, 'success'); assert.match(excluded.message, /remains excluded/);
+  assert.equal(excluded.tone, 'success'); assert.equal(excluded.message, 'Text recovered successfully');
   const warning = recoveryOutcome(entry({ included: false, languageCheck: { outcome: 'mismatch', detected: 'eng', target: 'ita' } }), 'PDF');
   assert.equal(warning.tone, 'warning'); assert.match(warning.message, /expected Italian/); assert.match(warning.message, /remains in Documents with issues/);
   const failed = recoveryOutcome(entry({ status: 'failed', warnings: ['Extraction timed out.'] }), 'PDF');

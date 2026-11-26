@@ -1,3 +1,4 @@
+import { bindImportFileDrop, guardFileDropNavigation } from './import-file-drop.js';
 import { initRecoveryFeedback, recoveryOutcome, preserveRecoveryInclusion } from './recovery-feedback.js';
 import { initDownloadFeedbackUI } from './download-feedback-ui.js';
 import { initEngineDefaultUI } from './engine-default-ui.js';
@@ -56,14 +57,14 @@ const hasDocumentWork = () => documentJobs.size > 0 || remoteActivity.documents.
 ui.start.disabled = ui.export.disabled = true;
 ui.extractor.querySelector('option[value="defuddle"]').disabled = !DEFUDDLE_AVAILABLE;
 if (!DEFUDDLE_AVAILABLE) ui.extractor.querySelector('option[value="defuddle"]').textContent = 'Defuddle — library unavailable';
-let engineDefaultUI, downloadFeedbackUI, recoveryFeedback;
+let engineDefaultUI, downloadFeedbackUI, recoveryFeedback, removeFileDropGuard;
 const projectUI = initProjectUI({
   onRename: () => { invalidateArchive(); seedsUI?.refreshLanguage?.(); },
   onSaveProject: () => portableUI.save(), onOpenProject: () => portableUI.choose(),
   getBusy: () => portableBusy || running || isBatchActive() || importing || hasDocumentWork() || remoteActivity.exclusive,
   confirmReplacement: options => portableUI.confirmReplacement(options),
   onReset: () => {
-    resetting = true; ready = false; stopping = true; clearTimeout(activityTimer); controller?.abort(); for (const active of operationControllers) active.abort(); seedsUI?.destroy(); searchUI?.destroy(); projectTabsUI?.destroy(); engineDefaultUI?.destroy(); downloadFeedbackUI?.destroy(); recoveryFeedback?.destroy(); documentImportMessages.clear(); running = downloading = importing = false; updateControls();
+    resetting = true; ready = false; stopping = true; clearTimeout(activityTimer); controller?.abort(); for (const active of operationControllers) active.abort(); seedsUI?.destroy(); searchUI?.destroy(); projectTabsUI?.destroy(); engineDefaultUI?.destroy(); downloadFeedbackUI?.destroy(); recoveryFeedback?.destroy(); removeFileDropGuard?.(); documentImportMessages.clear(); running = downloading = importing = false; updateControls();
     invalidateArchive(); ui.urls.value = ''; clearPreview();
     document.getElementById('project-name').value = '';
     entries = []; state = null; documentImportTarget = null; ui['import-document-picker'].value = '';
@@ -265,10 +266,12 @@ function renderRow(entry) {
   let importDocument, importFeedback;
   if (!doc && record.outcome === 'error' && record.errorCode !== 'DOWNLOAD_TOO_LARGE') {
     importDocument = document.createElement('button'); importDocument.type = 'button'; importDocument.className = 'secondary import-document-button'; importDocument.textContent = 'Import downloaded file';
+    const importTarget = { url, finalURL: record.finalURL || url, projectId };
+    const canImport = () => !resetting && !pickingDocument && importTarget.projectId === projectId && !isDocumentBusy(url) && controls.get(url)?.importDocument === importDocument;
     importDocument.addEventListener('click', () => {
-      if (isDocumentBusy(url) || resetting || pickingDocument) return;
+      if (!canImport()) return;
       recoveryFeedback?.begin();
-      documentImportTarget = { url, finalURL: record.finalURL || url, projectId };
+      documentImportTarget = { ...importTarget };
       pickingDocument = true;
       documentImportMessage(url, `Choose the file downloaded for this URL (up to ${currentSettings.fileMiB} MiB).`);
       // Keep the input outside the table: focus/storage updates may rebuild rows
@@ -276,7 +279,13 @@ function renderRow(entry) {
       ui['import-document-picker'].accept = '';
       ui['import-document-picker'].value = ''; ui['import-document-picker'].click();
     });
-    source.append(importDocument);
+    const dropHint = document.createElement('span'); dropHint.className = 'file-drop-hint'; dropHint.textContent = 'or drop here';
+    dropHint.id = 'import-file-hint-' + encodeURIComponent(url); importDocument.setAttribute('aria-describedby', dropHint.id);
+    bindImportFileDrop({ button: importDocument, canImport, onFile: file => importRecoveryFile(importTarget, file), onError: (message, tone = 'error') => {
+      if (resetting || importTarget.projectId !== projectId || controls.get(url)?.importDocument !== importDocument) return;
+      recoveryFeedback?.begin(); documentImportMessage(url, message, tone);
+    } });
+    source.append(importDocument, dropHint);
   }
   if (importDocument || documentImportMessages.has(url)) {
     importFeedback = document.createElement('p'); importFeedback.className = 'hint document-import-feedback';
@@ -313,7 +322,7 @@ function renderRow(entry) {
 function documentImportMessage(url, message, tone = 'hint') {
   documentImportStatus = { url, message, tone }; documentImportMessages.set(url, documentImportStatus);
   const banner = document.getElementById('document-import-feedback'); banner.hidden = false; banner.setAttribute('data-state', tone);
-  ui['document-import-status'].textContent = `${url} · ${message}`;
+  ui['document-import-status'].textContent = tone === 'success' ? message : `${url} · ${message}`;
   const feedback = controls.get(url)?.importFeedback;
   if (feedback) { feedback.textContent = message; feedback.setAttribute('data-state', tone); }
 }
@@ -325,7 +334,12 @@ ui['import-document-picker'].addEventListener('cancel', () => {
 ui['import-document-picker'].addEventListener('change', async () => {
   const target = documentImportTarget, file = ui['import-document-picker'].files?.[0];
   pickingDocument = false;
-  if (!target || !file || resetting || target.projectId !== projectId) { documentImportTarget = null; return; }
+  try { await importRecoveryFile(target, file); }
+  finally { if (documentImportTarget === target) { documentImportTarget = null; ui['import-document-picker'].value = ''; } }
+});
+// Picker selections and dropped Files share validation, locking and feedback.
+async function importRecoveryFile(target, file) {
+  if (!target || !file || resetting || target.projectId !== projectId) return;
   recoveryFeedback?.begin();
   let started = false;
   await documentWork(target.url, async () => {
@@ -348,8 +362,7 @@ ui['import-document-picker'].addEventListener('change', async () => {
     }
   }, { wait: true });
   if (!started && !resetting) documentImportMessage(target.url, 'File not imported: another operation is running. Choose the file again when it finishes.', 'warning');
-  if (documentImportTarget === target) { documentImportTarget = null; ui['import-document-picker'].value = ''; }
-});
+}
 function remember(entry, { keepPreview = false, updateRow = true } = {}) {
   metadataRevision++;
   const index = entries.findIndex(item => item.url === entry.url);
@@ -748,6 +761,12 @@ portableUI = initPortableUI({
     searchUI = initSearchUI({ onCollectionsChange: invalidateArchive, isRunning: () => running, seenCollectionIds: state.draft.seenCollections, getProjectId: () => projectId, onChange: patch => { queueDraft(patch); warnURLs(); } });
     if (state.draft.engine) ui.engine.value = state.draft.engine;
     seedsUI = initSeedsUI({ minimumSeeds: currentSettings.minimumSeeds, draft: state.draft, onChange: queueDraft, getLanguage: () => projectUI.snapshot()?.language || 'none', getProjectId: () => projectId, onOpeningChange: value => projectTabsUI?.setOpening(value) });
+    removeFileDropGuard = guardFileDropNavigation({ root: window, onOutsideDrop: event => {
+      if (resetting) return;
+      recoveryFeedback?.begin();
+      const banner = document.getElementById('document-import-feedback'); banner.hidden = false; banner.setAttribute('data-state', 'warning');
+      ui['document-import-status'].textContent = event.target?.closest?.('.import-document-button') ? 'Wait for this document to finish processing.' : 'Drop the file on an Import downloaded file button.';
+    } });
     recoveryFeedback = initRecoveryFeedback({ getRow: url => rows.get(url), isBlocked: () => resetting || pickingDocument || !!document.querySelector('dialog[open]') });
     downloadFeedbackUI = initDownloadFeedbackUI({ getProjectId: () => projectId });
     engineDefaultUI = initEngineDefaultUI({ getProjectId: () => projectId });

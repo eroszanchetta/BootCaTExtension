@@ -54,7 +54,7 @@ test('DOCX recovery replaces only its failed row, preserves the original and per
   app.get('import-document-picker').files = [new Blob([original])]; await app.get('import-document-picker').handlers.change();
   const entry = (await storage.loadWorkspace('docx-import')).entries[0];
   assert.equal(entry.record.contentType, DOCX_MIME); assert.match(entry.doc.filename, /\.docx$/); assert.equal(entry.record.source, 'local-file');
-  assert.match(app.get('document-import-status').textContent, /DOCX imported/);
+  assert.match(app.get('document-import-status').textContent, /Text recovered successfully/);
   assert.match(app.get('results').children[0].children[2].children[0].textContent, /^Imported DOCX/);
   assert.deepEqual(new Uint8Array(await (await storage.readOriginal('docx-import', entry.doc.filename)).arrayBuffer()), original);
   const reopened = await workspace('docx-import'); await reopened.get('results').children[0].children[2].children[1].handlers.click();
