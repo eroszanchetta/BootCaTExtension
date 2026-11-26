@@ -4,7 +4,7 @@
 
 The workspace and popup use this shared vector without an added backing. The floating control embeds its paths during the normal build, so it needs no web-accessible resources, remote requests or website CSP exception.
 
-The browser toolbar, favicons and both manifests use square PNGs rendered from `toolbar.svg`: Sbafo on a white circle with a blue rounded-square background. The original `BootCaT.svg` remains unchanged for workspace, popup and floating controls.
+The browser toolbar, favicons and both manifests use square PNGs rendered from `toolbar.svg`: Sbafo directly on a light blue (`#dceaf3`) rounded-square background, without a white circle. The original `BootCaT.svg` remains unchanged for workspace, popup and floating controls.
 
 `toolbar.svg` embeds the original vector paths at a fixed scale, so rendering needs no external files. Regenerate the committed PNGs with ImageMagick:
 
