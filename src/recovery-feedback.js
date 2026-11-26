@@ -26,6 +26,9 @@ export function initRecoveryFeedback({ getRow, isBlocked }) {
   function apply(row, url) {
     const value = highlights.get(url), remaining = (value?.expires || 0) - Date.now();
     if (!row || remaining <= 0) return;
+    row.classList.remove('recovery-success', 'recovery-attention');
+    // Restart a repeated reveal and discard the previous outcome's color.
+    void row.offsetWidth;
     row.style.setProperty('--recovery-highlight-duration', `${remaining}ms`);
     row.classList.add(value.tone === 'success' ? 'recovery-success' : 'recovery-attention');
   }
@@ -62,5 +65,5 @@ export function initRecoveryFeedback({ getRow, isBlocked }) {
   showButton.addEventListener('click', () => { if (latest) { pending = latest; flush(); } });
   document.addEventListener('close', flush, true);
   return { show, apply, flush, forget(url) { highlights.delete(url); if (latest?.url === url) { latest = pending = null; revision++; showButton.hidden = true; } }, begin() { latest = pending = null; revision++; showButton.hidden = true; },
-    destroy() { destroyed = true; revision++; for (const id of timers) clearTimeout(id); timers.clear(); highlights.clear(); document.removeEventListener('close', flush, true); } };
+    destroy() { destroyed = true; revision++; for (const id of timers) clearTimeout(id); timers.clear(); for (const url of highlights.keys()) getRow(url)?.classList.remove('recovery-success', 'recovery-attention'); highlights.clear(); document.removeEventListener('close', flush, true); } };
 }
