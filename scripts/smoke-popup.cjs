@@ -184,11 +184,13 @@ const assert = require('node:assert/strict');
         await workspace.route('**/app.js', route => route.fulfill({ contentType: 'text/javascript',
           body: "import { initWorkspaceSections } from './workspace-sections.js'; initWorkspaceSections();" }));
         await workspace.addInitScript(() => {
-          globalThis.chrome = { runtime: { sendMessage: async message => {
+          globalThis.settingsListeners = [];
+          globalThis.chrome = { storage: { onChanged: { addListener(fn) { settingsListeners.push(fn); } } }, runtime: { sendMessage: async message => {
             const settings = await import('/settings.js');
-            const area = { get: async key => ({ [key]: JSON.parse(localStorage.getItem(key) || 'null') }), set: async patch => { for (const [key, value] of Object.entries(patch)) localStorage.setItem(key, JSON.stringify(value)); } };
+            const area = { get: async key => ({ [key]: JSON.parse(localStorage.getItem(key) || 'null') }), set: async patch => { for (const [key, value] of Object.entries(patch)) { localStorage.setItem(key, JSON.stringify(value)); for (const fn of settingsListeners) fn({ [key]: { newValue: value } }, 'local'); } } };
             try {
               if (message.type === 'get-settings') return { ok: true, settings: await settings.readSettingsState(area) };
+              if (message.type === 'set-default-search-engine') { const current = await settings.readSettingsState(area); return { ok: true, settings: await settings.saveSettings(area, { ...current.values, defaultEngine: message.engine }, current.revision) }; }
               if (message.type === 'save-settings') return { ok: true, settings: await settings.saveSettings(area, message.values, message.revision) };
               return { ok: true };
             } catch (error) { return { ok: false, error: error.message }; }
@@ -217,6 +219,8 @@ const assert = require('node:assert/strict');
         }
         await workspace.setViewportSize({ width: 1050, height: 850 });
         await openSettings();
+        assert.equal(await workspace.inputValue('#setting-defaultEngine'), 'ecosia');
+        await workspace.selectOption('#setting-defaultEngine', 'google');
         assert.equal(await workspace.inputValue('#setting-fileMiB'), '50');
         assert.equal(await workspace.locator('#settings-advanced').evaluate(panel => panel.open), false);
         await workspace.fill('#setting-fileMiB', '75');
@@ -224,12 +228,15 @@ const assert = require('node:assert/strict');
         await workspace.getByRole('button', { name: 'Cancel', exact: true }).click();
         assert.equal(await workspace.locator('#open-settings').evaluate(button => button === document.activeElement), true);
         await openSettings(); assert.equal(await workspace.inputValue('#setting-fileMiB'), '50');
+        assert.equal(await workspace.inputValue('#setting-defaultEngine'), 'ecosia', 'Cancel discards the engine preference');
+        await workspace.selectOption('#setting-defaultEngine', 'google');
         await workspace.fill('#setting-fileMiB', '0'); await workspace.click('#settings-save');
         assert.equal(await workspace.locator('#settings-dialog').evaluate(dialog => dialog.open), true);
         await workspace.fill('#setting-fileMiB', '75'); await workspace.fill('#setting-urlWarning', '2');
         await workspace.click('#settings-save'); await workspace.locator('#settings-dialog[open]').waitFor({ state: 'hidden' });
         await workspace.reload(); await openSettings();
         assert.equal(await workspace.inputValue('#setting-fileMiB'), '75'); assert.equal(await workspace.inputValue('#setting-urlWarning'), '2');
+        assert.equal(await workspace.inputValue('#setting-defaultEngine'), 'google', 'default persists after reload');
         await workspace.click('#settings-reset'); assert.equal(await workspace.inputValue('#setting-fileMiB'), '50');
         await workspace.keyboard.press('Escape'); await openSettings();
         assert.equal(await workspace.inputValue('#setting-fileMiB'), '75', 'Escape must discard reset-to-defaults draft');
@@ -252,7 +259,9 @@ const assert = require('node:assert/strict');
           }
           select.value = 'google';
           const state = globalThis.fixtureQueryState = { tabs: [], history: [] }; globalThis.fixtureQueryOpens = 0;
+          const settingsMessage = chrome.runtime.sendMessage;
           chrome.runtime.sendMessage = async message => {
+            if (message.type === 'set-default-search-engine' && globalThis.rejectEngineDefault) return { ok: false, error: 'Preference storage unavailable.' };
             if (message.type === 'get-project-search-tabs') return { ok: true, ...structuredClone(state) };
             if (message.type === 'open-project-search') {
               if (!queryPlan([message.query], message.engine, state).missing.length) return { ok: true, opened: false, ...structuredClone(state) };
@@ -260,12 +269,31 @@ const assert = require('node:assert/strict');
               state.tabs.push({ tabId, engine: message.engine, query: message.query, status: 'loading' });
               return { ok: true, opened: true, tabId, ...structuredClone(state) };
             }
-            return { ok: true };
+            return settingsMessage(message);
           };
+          const { initEngineDefaultUI } = await import('./engine-default-ui.js');
+          globalThis.testEngineDefaultUI = initEngineDefaultUI({ getProjectId: () => 'query-fixture' });
           globalThis.testQueryUI = initSeedsUI({ draft: { preparedQueries: ['first', 'second'], excludedSites: '' }, getProjectId: () => 'query-fixture' });
           testQueryUI.updateTabState(state);
         });
         await workspace.locator('nav a[href="#search-section"]').click();
+        await workspace.waitForFunction(() => document.querySelector('#engine-default-status').textContent.includes('Google'));
+        assert.equal(await workspace.locator('#make-default-engine').isDisabled(), true);
+        const row = await workspace.evaluate(() => ({ select: document.querySelector('#engine').getBoundingClientRect().width,
+          gap: document.querySelector('#make-default-engine').getBoundingClientRect().left - document.querySelector('#engine').getBoundingClientRect().right }));
+        assert.ok(Math.abs(row.select - 560) < 1 && row.gap >= 8, `${name}: keep the 560px selector with Make default beside it`);
+        await workspace.selectOption('#engine', 'duckduckgo'); await workspace.click('#make-default-engine');
+        await workspace.waitForFunction(() => document.querySelector('#engine-default-status').textContent.includes('DuckDuckGo') && document.querySelector('#make-default-engine').disabled);
+        await openSettings(); assert.equal(await workspace.inputValue('#setting-defaultEngine'), 'duckduckgo');
+        await workspace.selectOption('#setting-defaultEngine', 'ecosia'); await workspace.click('#settings-save');
+        await workspace.locator('#settings-dialog[open]').waitFor({ state: 'hidden' });
+        await workspace.waitForFunction(() => document.querySelector('#engine-default-status').textContent.includes('Ecosia') && !document.querySelector('#make-default-engine').disabled);
+        assert.equal(await workspace.inputValue('#engine'), 'duckduckgo', 'Settings changes only future projects');
+        await workspace.evaluate(() => { globalThis.rejectEngineDefault = true; });
+        await workspace.click('#make-default-engine');
+        await workspace.waitForFunction(() => document.querySelector('#engine-default-status').textContent.includes('storage unavailable') && !document.querySelector('#make-default-engine').disabled);
+        await openSettings(); assert.equal(await workspace.inputValue('#setting-defaultEngine'), 'ecosia'); await workspace.click('#settings-cancel');
+        await workspace.evaluate(() => { globalThis.rejectEngineDefault = false; });
         const engineColors = [];
         for (const id of ['google', 'duckduckgo', 'ecosia']) {
           await workspace.selectOption('#engine', id);
@@ -433,6 +461,7 @@ const assert = require('node:assert/strict');
           }
         }
         await workspace.setViewportSize({ width: 1050, height: 850 });
+        console.log(`${name}: WP2 preference persistence, Settings synchronization and save failure passed.`);
         console.log(`${name}: WP1 welcome layout, focus spacing, engine colors, document disclosure and collection navigation passed.`);
         // Exercise the real text-review controller and native modal in both engines.
         await workspace.evaluate(async () => {

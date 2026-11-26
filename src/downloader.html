@@ -65,7 +65,8 @@
     <section id="search-section" aria-labelledby="search-heading" tabindex="-1">
       <details class="workspace-panel"><summary><h2 id="search-heading">Search</h2><span id="queries-counter" class="section-counter">0 queries</span></summary><div class="panel-content">
       <div class="engine-selection"><label for="engine">Search engine</label>
-      <select id="engine" disabled></select></div>
+      <div class="engine-selection-row"><select id="engine" aria-describedby="engine-default-status" disabled></select><button id="make-default-engine" type="button" class="secondary" disabled>Make default</button></div>
+      <p id="engine-default-status" class="hint" role="status" aria-live="polite"></p></div>
       <details id="more-search-options" class="options-panel" data-default-collapsed>
         <summary>More search options</summary>
         <div class="search-filters">

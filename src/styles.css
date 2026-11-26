@@ -193,7 +193,7 @@ section { scroll-margin-top: 0; }
 #project-dialog-language-fields { margin-top: 20px; }
 
 /* A visible name accompanies each engine accent; no engine artwork is used. */
-.engine-selection { max-width: 560px; }
+.engine-selection { max-width: none; }
 #engine[data-engine="google"], #query-summary[data-engine="google"] { --engine-color: #245bb2; --engine-tint: #eef4ff; }
 #engine[data-engine="duckduckgo"], #query-summary[data-engine="duckduckgo"] { --engine-color: #a63f20; --engine-tint: #fff2e9; }
 #engine[data-engine="ecosia"], #query-summary[data-engine="ecosia"] { --engine-color: #237447; --engine-tint: #edf8ef; }
@@ -211,3 +211,8 @@ section { scroll-margin-top: 0; }
 #documents-section > summary::-webkit-details-marker { display: none; }
 #documents-section > summary::before { content: '›'; color: #007aa6; font-size: 1.6rem; line-height: 1; }
 #documents-section[open] > summary::before { transform: rotate(90deg); }
+
+.engine-selection-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.engine-selection-row select { flex: 1 1 220px; min-width: 0; max-width: 560px; }
+.engine-selection-row button { flex: 0 0 auto; }
+#engine-default-status { margin: 8px 0 0; }

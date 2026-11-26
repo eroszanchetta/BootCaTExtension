@@ -1,10 +1,11 @@
+import { SEARCH_ENGINE_NAMES } from './search-engine-options.js';
 import { compileSearchQuery } from './search-filters.js';
 // Provider-specific DOM knowledge lives here, not in the downloader.
 // Selectors are heuristics, not a guaranteed search-engine interface.
 export const ENGINES = [
-  { id: "google", name: "Google", searchURL: "https://www.google.com/search", queryParam: "q", querySyntax: { fileType: "filetype:", includeSite: "site:", excludeSite: "-site:" }, selectors: ["#search a:has(h3)", "#rso a:has(h3)", "#search h3 a"], titleSelector: "h3", experimental: false },
-  { id: "duckduckgo", name: "DuckDuckGo", searchURL: "https://duckduckgo.com/", queryParam: "q", querySyntax: { fileType: "filetype:", includeSite: "site:", excludeSite: "-site:" }, selectors: ['a[data-testid="result-title-a"]', "a.result__a"], titleSelector: null, experimental: false },
-  { id: "ecosia", name: "Ecosia", searchURL: "https://www.ecosia.org/search", queryParam: "q", querySyntax: { fileType: "filetype:", includeSite: "site:", excludeSite: "-site:" }, selectors: ['a[data-test-id="result-link"]', "a.result-title", "a.result__link"], titleSelector: null, experimental: false }
+  { id: "google", name: SEARCH_ENGINE_NAMES.google, searchURL: "https://www.google.com/search", queryParam: "q", querySyntax: { fileType: "filetype:", includeSite: "site:", excludeSite: "-site:" }, selectors: ["#search a:has(h3)", "#rso a:has(h3)", "#search h3 a"], titleSelector: "h3", experimental: false },
+  { id: "duckduckgo", name: SEARCH_ENGINE_NAMES.duckduckgo, searchURL: "https://duckduckgo.com/", queryParam: "q", querySyntax: { fileType: "filetype:", includeSite: "site:", excludeSite: "-site:" }, selectors: ['a[data-testid="result-title-a"]', "a.result__a"], titleSelector: null, experimental: false },
+  { id: "ecosia", name: SEARCH_ENGINE_NAMES.ecosia, searchURL: "https://www.ecosia.org/search", queryParam: "q", querySyntax: { fileType: "filetype:", includeSite: "site:", excludeSite: "-site:" }, selectors: ['a[data-test-id="result-link"]', "a.result-title", "a.result__link"], titleSelector: null, experimental: false }
 ];
 export function adapterForURL(value) {
   try {

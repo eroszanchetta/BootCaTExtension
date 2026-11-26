@@ -1,3 +1,4 @@
+import { loadWorkspace, saveDraft } from '../src/project-store.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { IDBFactory } from 'fake-indexeddb';
@@ -87,6 +88,37 @@ for (const namespace of ['chrome', 'browser']) {
       assert.equal((await app.content({ type: 'floating-hide', projectId: project.id })).ok, true);
       assert.equal((await app.send({ type: 'get-collection-controls' })).preferences.floatingEnabled, false);
       assert.equal((await app.content({ type: 'get-floating-state' })).state.enabled, false);
+    } finally { delete globalThis[namespace]; delete globalThis.indexedDB; }
+  });
+}
+
+
+for (const namespace of ['chrome', 'browser']) {
+  test(`${namespace}: engine defaults apply only to new projects and protect stale settings drafts`, async () => {
+    const app = await fixture(namespace, 'engine-default');
+    try {
+      let { project } = await app.send({ type: 'new-project', projectId: null, name: 'First' });
+      assert.equal((await loadWorkspace(project.id)).draft.engine, 'ecosia');
+      await saveDraft(project.id, { engine: 'duckduckgo' });
+      const before = (await app.send({ type: 'get-settings' })).settings;
+      await app.send({ type: 'save-settings', values: { ...before.values, fileMiB: 75 }, revision: before.revision });
+      const stale = (await app.send({ type: 'get-settings' })).settings;
+      const saved = await app.send({ type: 'set-default-search-engine', projectId: project.id, engine: 'google' });
+      assert.equal(saved.ok, true); assert.equal(saved.settings.values.fileMiB, 75);
+      assert.equal(saved.settings.values.defaultEngine, 'google');
+      assert.equal((await loadWorkspace(project.id)).draft.engine, 'duckduckgo');
+      assert.equal((await app.send({ type: 'save-settings', values: stale.values, revision: stale.revision })).ok, false);
+      assert.equal((await app.send({ type: 'set-default-search-engine', projectId: project.id, engine: 'bing' })).ok, false);
+      assert.equal((await app.send({ type: 'get-settings' })).settings.values.defaultEngine, 'google');
+      await app.send({ type: 'close-project', projectId: project.id });
+      ({ project } = await app.send({ type: 'new-project', projectId: null, name: 'Second' }));
+      assert.equal((await loadWorkspace(project.id)).draft.engine, 'google');
+      // Legacy saved drafts may contain an empty engine (the old Google fallback).
+      await saveDraft(project.id, { engine: '' });
+      const current = (await app.send({ type: 'get-settings' })).settings;
+      await app.send({ type: 'save-settings', values: { ...current.values, defaultEngine: 'ecosia' }, revision: current.revision });
+      await app.send({ type: 'get-project' });
+      assert.equal((await loadWorkspace(project.id)).draft.engine, '');
     } finally { delete globalThis[namespace]; delete globalThis.indexedDB; }
   });
 }

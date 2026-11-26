@@ -57,6 +57,7 @@ export async function workspace(projectId, options = {}) {
     initVersionBadge: () => '2.0.0',
     initWorkspaceSections() {}, openWorkspaceSection(...args) { options.onOpenSection?.(...args); }, setProjectSectionState() {},
     initSeedsUI: () => ({ restore() {}, isBusy: () => false, destroy() {} }),
+    initEngineDefaultUI: () => ({ destroy() {}, refreshSelection() {} }),
     initProjectTabsUI: () => ({ refresh() {}, destroy() {} }),
     DEFUDDLE_AVAILABLE: true, storage: options.storage || storage, ...pages, parseURLs, filenameFor, FILE_LIMIT, urlListWarning, makeStoredZIP, corpusURLList, excludedURLList, makeMetadataWorkbook: options.makeMetadataWorkbook || makeMetadataWorkbook, createExportLayout, originalTextFilename, extractionMetadata, fileWarnings, readPDFFile, formatByMIME, readImportedDocument,
     extractionContentType: (bytes, type) => type,

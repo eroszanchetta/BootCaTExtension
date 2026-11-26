@@ -181,6 +181,14 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     await page.locator('#project-dialog[open]').waitFor({ state: 'hidden' });
     await page.waitForFunction(() => document.querySelector('#project-name').value === 'First corpus' && !document.querySelector('#urls').disabled && !document.querySelector('#open-project').disabled);
     await assertCollapsed();
+    assert.equal(await page.inputValue('#engine'), 'ecosia', 'fresh projects start with Ecosia');
+    await page.locator('nav a[href="#search-section"]').click();
+    await page.waitForFunction(() => document.querySelector('#engine-default-status').textContent.includes('Ecosia'));
+    assert.equal(await page.locator('#make-default-engine').isDisabled(), true);
+    await page.selectOption('#engine', 'google'); await page.click('#make-default-engine');
+    await page.waitForFunction(() => document.querySelector('#engine-default-status').textContent.includes('Google') && document.querySelector('#make-default-engine').disabled);
+    await page.reload(); await assertCollapsed();
+    assert.equal(await page.inputValue('#engine'), 'google', 'project selection survives reload');
     assert.equal(await page.locator('.workspace-panel').count(), 5);
     assert.equal(await page.locator('#export-metadata, #metadata-export-status').count(), 0);
     assert.equal(await page.locator('#project-section #export').count(), 1);
@@ -1012,6 +1020,14 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     console.log('Floating controls, corner preference, popup switches, durable capture before closure and tracked collection closure passed.');
     // Save/open through the native picker and the real extension worker.
     await page.waitForFunction(() => !document.querySelector('#open-project').disabled);
+    const portableEngine = await page.inputValue('#engine');
+    const personalEngine = portableEngine === 'ecosia' ? 'google' : 'ecosia';
+    await page.evaluate(async engine => {
+      const ext = globalThis.browser ?? chrome;
+      const current = (await ext.runtime.sendMessage({ type: 'get-settings' })).settings;
+      const reply = await ext.runtime.sendMessage({ type: 'save-settings', values: { ...current.values, defaultEngine: engine }, revision: current.revision });
+      if (!reply.ok) throw new Error(reply.error);
+    }, personalEngine);
     const portableDownload = page.waitForEvent('download'); await page.click('#save-project');
     const portableFile = join(root, 'complete.bootcat'); await (await portableDownload).saveAs(portableFile);
     execFileSync('python3', ['-c', "import zipfile,json,sys; z=zipfile.ZipFile(sys.argv[1]); assert z.testzip() is None; p=json.loads(z.read('project.json')); assert p['format']=='BootCaTProject' and p['version']==1; assert any(n.startswith('originals/') for n in z.namelist())", portableFile]);
@@ -1043,6 +1059,8 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     await assertCollapsed(); await openPanels();
     const afterPortable = await page.evaluate(async () => (await (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'get-project' })).project.id);
     assert.notEqual(afterPortable, beforePortable);
+    assert.equal(await page.inputValue('#engine'), portableEngine, 'opening a portable project preserves its selected engine');
+    assert.equal(await page.evaluate(async () => (await (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'get-settings' })).settings.values.defaultEngine), personalEngine, 'opening a project preserves personal defaults');
     assert.equal((await page.inputValue('#urls')).includes('unsaved-after-snapshot'), false);
     assert.equal(await page.locator('#results a[href="https://corpus.test/floating-original"]').count(), 1);
     const restoredTracking = await page.evaluate(async projectId => (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'get-project-search-tabs', projectId }), afterPortable);
@@ -1099,6 +1117,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.equal(keptControls.closeCollectedTab, true); assert.equal(keptControls.closeCapturedTab, true); assert.equal(keptControls.floatingPosition, 'top-right');
     await setCollectionControls({ floatingEnabled: false }); await floatingKeep.locator('[data-bootcat-floating-control]').waitFor({ state: 'hidden' });
     await floatingKeep.close(); await floatingSource.close();
+    assert.equal(await page.inputValue('#engine'), personalEngine, 'later new projects inherit the saved personal engine');
     await page.selectOption('#engine', 'google'); await page.fill('#tuples', 'language preference test'); await page.click('#prepare-queries');
     await page.selectOption('#project-language', 'ita');
     await page.waitForFunction(() => new URL(document.querySelector('#prepared-queries a').href).searchParams.get('lr') === 'lang_it');
