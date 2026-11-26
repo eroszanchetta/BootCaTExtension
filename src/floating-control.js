@@ -109,7 +109,7 @@
     if (note) tooltip.hidden = true;
   }
   async function send(type, extra = {}) {
-    const result = await ext.runtime.sendMessage({ type, projectId: current?.projectId, ...extra });
+    const result = await ext.runtime.sendMessage({ type, projectId: current?.projectId, ...extra, pageURL: location.href });
     if (!result?.ok) throw new Error(result?.error || 'BootCaT could not complete this action.');
     return result;
   }
@@ -134,7 +134,7 @@
   async function refresh() {
     const request = ++refreshRevision, requestURL = location.href, requestKey = pageKey();
     try {
-      const reply = await ext.runtime.sendMessage({ type: 'get-floating-state' });
+      const reply = await ext.runtime.sendMessage({ type: 'get-floating-state', pageURL: location.href });
       if (request !== refreshRevision) return;
       if (location.href !== requestURL || pageKey() !== requestKey) {
         if (!refreshTimer) refreshTimer = setTimeout(() => { refreshTimer = undefined; refresh(); }, 200);

@@ -141,7 +141,10 @@ for (const namespace of ['chrome','browser']) test(`${namespace}: DDG popup and 
     assert.equal((await app.send({type:'get-search-collection-state',tabId:1})).collection.unresolved,1);
     await app.send({type:'accept-collected-results',projectId:project.id,pageURL:app.tabs.get(1).url});
     assert.equal((await app.content({type:'get-floating-state'})).state.saved,true);
+    const originalURL = app.tabs.get(1).url;
     app.tabs.get(1).url += '&s=10';
-    assert.equal((await app.content({type:'get-floating-state'})).state.saved,false);
+    assert.equal((await app.content({type:'get-floating-state',pageURL:app.tabs.get(1).url},{url:originalURL})).state.saved,false, 'same-document navigation keeps controls available despite the original sender URL');
+    assert.equal((await app.content({type:'get-floating-state',pageURL:originalURL},{url:originalURL})).ok,false, 'stale action URL is rejected');
+    assert.equal((await app.content({type:'get-floating-state',pageURL:app.tabs.get(1).url},{url:'https://other.test/'})).ok,false, 'cross-origin stale document is rejected');
   } finally { delete globalThis[namespace]; delete globalThis.indexedDB; }
 });

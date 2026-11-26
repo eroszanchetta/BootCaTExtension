@@ -182,7 +182,10 @@ async function floatingState(tabId) {
 }
 async function handleFloating(message, sender) {
   const tab = await ext.tabs.get(sender.tab.id);
-  if (!/^https?:\/\//.test(tab.url || '') || canonicalURL(tab.url) !== canonicalURL(sender.url)) throw new Error('The page changed. Use the controls on the current page.');
+  // A content script can survive same-document history changes. sender.url can
+  // retain its original document address; verify its origin and the isolated
+  // script's current address against the browser-owned tab instead.
+  if (!/^https?:\/\//.test(tab.url || '') || new URL(tab.url).origin !== new URL(sender.url).origin || canonicalURL(tab.url) !== canonicalURL(message.pageURL || sender.url)) throw new Error('The page changed. Use the controls on the current page.');
   if (message.type === 'get-floating-state') return { state: await floatingState(tab.id) };
   const state = await floatingState(tab.id);
   if (!state.enabled || message.projectId !== state.projectId) throw new Error('Floating controls are unavailable for this project.');
