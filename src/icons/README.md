@@ -4,10 +4,15 @@
 
 The workspace and popup use this shared vector without an added backing. The floating control embeds its paths during the normal build, so it needs no web-accessible resources, remote requests or website CSP exception.
 
-The browser toolbar, favicons and both manifests use square transparent PNGs rendered from the same artwork. Regenerate 16/32/48 px with ImageMagick:
+The browser toolbar, favicons and both manifests use square PNGs rendered from `toolbar.svg`: Sbafo on a white circle with a blue rounded-square background. The original `BootCaT.svg` remains unchanged for workspace, popup and floating controls.
 
-```
-magick -background none src/icons/BootCaT.svg -resize 32x32 -gravity center -extent 32x32 src/icons/icon-32.png
+`toolbar.svg` embeds the original vector paths at a fixed scale, so rendering needs no external files. Regenerate the committed PNGs with ImageMagick:
+
+```sh
+magick -background none src/icons/toolbar.svg -resize 16x16 src/icons/icon-16.png
+magick -background none src/icons/toolbar.svg -resize 32x32 src/icons/icon-32.png
+magick -background none src/icons/toolbar.svg -resize 48x48 src/icons/icon-48.png
+magick -background none src/icons/toolbar.svg src/icons/icon-128.png
 ```
 
-Repeat for 16 and 48. For the 128 px store icon, resize to 116x116 and centre on a transparent 128x128 canvas. Normal extension builds use the committed PNGs and do not require an image renderer.
+Normal extension builds use the committed PNGs and do not require an image renderer.

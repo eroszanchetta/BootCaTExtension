@@ -246,8 +246,11 @@ const assert = require('node:assert/strict');
         await workspace.evaluate(async () => {
           const { initSeedsUI } = await import('./seeds-ui.js');
           const { queryPlan } = await import('./query-lifecycle.js');
-          const select = document.querySelector('#engine'), option = document.createElement('option');
-          option.value = 'google'; option.textContent = 'Google'; select.append(option); select.value = 'google';
+          const select = document.querySelector('#engine');
+          for (const [id, name] of [['google', 'Google'], ['duckduckgo', 'DuckDuckGo'], ['ecosia', 'Ecosia']]) {
+            const option = document.createElement('option'); option.value = id; option.textContent = name; select.append(option);
+          }
+          select.value = 'google';
           const state = globalThis.fixtureQueryState = { tabs: [], history: [] }; globalThis.fixtureQueryOpens = 0;
           chrome.runtime.sendMessage = async message => {
             if (message.type === 'get-project-search-tabs') return { ok: true, ...structuredClone(state) };
@@ -263,6 +266,18 @@ const assert = require('node:assert/strict');
           testQueryUI.updateTabState(state);
         });
         await workspace.locator('nav a[href="#search-section"]').click();
+        const engineColors = [];
+        for (const id of ['google', 'duckduckgo', 'ecosia']) {
+          await workspace.selectOption('#engine', id);
+          const cue = await workspace.locator('#engine').evaluate(select => ({ id: select.dataset.engine, name: select.selectedOptions[0].textContent,
+            color: getComputedStyle(select).color, background: getComputedStyle(select).backgroundColor,
+            border: getComputedStyle(select).borderInlineStartColor }));
+          assert.equal(cue.id, id); assert.ok(cue.name); assert.equal(cue.border, cue.color);
+          assert.equal(await workspace.locator('#query-summary').getAttribute('data-engine'), id);
+          engineColors.push(cue.color);
+        }
+        assert.equal(new Set(engineColors).size, 3, `${name}: distinct named engine cues`);
+        await workspace.selectOption('#engine', 'google');
         await workspace.getByRole('button', { name: 'Run all queries', exact: true }).click();
         await workspace.locator('#confirmation-dialog[open]').waitFor();
         assert.equal(await workspace.locator('#open-all-queries').isDisabled(), true);
@@ -290,6 +305,18 @@ const assert = require('node:assert/strict');
         await workspace.locator('nav a[href="#project-section"]').click();
         assert.equal(await workspace.locator('#project-section .workspace-panel').evaluate(panel => panel.open), true);
         await workspace.locator('nav a[href="#review-section"]').click();
+        await workspace.evaluate(() => {
+          document.querySelector('#documents-count').textContent = '20 documents';
+          document.querySelector('#included-count').textContent = '15 included';
+        });
+        assert.equal(await workspace.locator('#documents-section').evaluate(panel => panel.open), true);
+        await workspace.locator('#documents-section > summary').focus(); await workspace.keyboard.press('Enter');
+        assert.equal(await workspace.locator('#documents-section').evaluate(panel => panel.open), false);
+        assert.equal(await workspace.locator('#documents-section table').isVisible(), false);
+        assert.equal(await workspace.locator('#documents-count').isVisible(), true);
+        assert.equal(await workspace.locator('#included-count').innerText(), '15 included');
+        await workspace.keyboard.press('Space');
+        assert.equal(await workspace.locator('#documents-section table').isVisible(), true);
         await workspace.evaluate(() => { document.querySelector('#attention-section').hidden = false; });
         assert.equal(await workspace.locator('#attention-heading').innerText(), 'Documents with issues');
         assert.equal(await workspace.locator('#attention-section').evaluate(panel => panel.open), false);
@@ -307,8 +334,30 @@ const assert = require('node:assert/strict');
         assert.equal(await workspace.locator('#project-choice-close').isVisible(), true);
         await workspace.keyboard.press('Escape');
         assert.equal(await workspace.locator('#project-choice-dialog[open]').count(), 1);
+        for (const width of [1050, 500, 390, 320]) {
+          await workspace.setViewportSize({ width, height: 850 });
+          const layout = await workspace.locator('#project-choice-dialog .actions').evaluate(actions => {
+            const bounds = actions.getBoundingClientRect(), rows = new Map();
+            for (const button of actions.querySelectorAll('button')) {
+              const box = button.getBoundingClientRect(), key = Math.round(box.top);
+              const row = rows.get(key) || []; row.push(box); rows.set(key, row);
+            }
+            return { offsets: [...rows.values()].map(row => Math.abs((Math.min(...row.map(b => b.left)) + Math.max(...row.map(b => b.right))) / 2 - (bounds.left + bounds.right) / 2)),
+              overflow: actions.scrollWidth > actions.clientWidth };
+          });
+          assert.ok(layout.offsets.every(offset => offset < 2), `${name}: centered welcome rows at ${width}px: ${JSON.stringify(layout)}`);
+          assert.equal(layout.overflow, false);
+        }
         // Resume the isolated disclosure/layout checks without an open modal.
-        await workspace.evaluate(() => document.querySelector('#project-choice-dialog').close());
+        await workspace.evaluate(() => { document.querySelector('#project-choice-dialog').close(); document.querySelector('#project-dialog').showModal(); });
+        await workspace.locator('#project-dialog-name').focus();
+        const focusGap = await workspace.evaluate(() => {
+          const input = document.querySelector('#project-dialog-name'), label = document.querySelector('label[for="project-dialog-language"]');
+          const style = getComputedStyle(input);
+          return label.getBoundingClientRect().top - input.getBoundingClientRect().bottom - parseFloat(style.outlineWidth) - parseFloat(style.outlineOffset);
+        });
+        assert.ok(focusGap >= 8, `${name}: name focus ring must clear the language label: ${focusGap}`);
+        await workspace.evaluate(() => document.querySelector('#project-dialog').close());
         await workspace.locator('nav a[href="#search-section"]').click();
         assert.equal(await workspace.locator('#more-search-options').evaluate(panel => panel.open), false);
         assert.equal(await workspace.locator('#search-site').isVisible(), false);
@@ -324,6 +373,67 @@ const assert = require('node:assert/strict');
         await workspace.reload();
         assert.equal(await workspace.locator('#more-search-options').evaluate(panel => panel.open), false);
         await workspace.setViewportSize({ width: 1050, height: 850 });
+        // Real collection UI and layout: final tab status changes before navigation,
+        // collapsed destinations, wrapped sticky menu, fast completion and partial work.
+        for (const width of [1050, 390]) {
+          await workspace.setViewportSize({ width, height: 850 });
+          for (const outcome of ['success', 'fast', 'partial', 'stopped']) {
+            await workspace.evaluate(async outcome => {
+              const { initProjectTabsUI } = await import('./project-tabs-ui.js');
+              const { SEARCH_TABS_KEY } = await import('./project-search-tabs.js');
+              const batch = { id: outcome, total: 1, processed: 1, saved: 1, closed: 1, leftOpen: 0, skipped: 0, running: false };
+              const final = { ok: true, count: 0, loaded: 0, tabs: [], batch };
+              if (outcome === 'partial') { final.count = final.loaded = 1; batch.closed = 0; batch.leftOpen = 1; }
+              if (outcome === 'stopped') batch.stopped = true;
+              let current = { ok: true, count: 1, loaded: 1, tabs: [], batch: null }, changed;
+              chrome.storage = { onChanged: { addListener(fn) { changed = fn; } } };
+              chrome.runtime.sendMessage = async message => {
+                if (message.type === 'collect-project-search-tabs') {
+                  current = outcome === 'fast' ? final : { ...current, batch: { ...batch, running: true, processed: 0 } };
+                  return current;
+                }
+                return current;
+              };
+              globalThis.collectionTest = initProjectTabsUI({ getProjectId: () => 'collection-fixture', onState: value => {
+                if (value.batch && !value.batch.running) document.querySelector('#query-summary').textContent = 'Query status updated. '.repeat(100);
+              } });
+              globalThis.finishCollectionTest = () => { current = final; changed({ [SEARCH_TABS_KEY]: {} }, 'session'); };
+              document.querySelector('#urls-section .workspace-panel').open = false;
+              document.querySelector('#review-section .workspace-panel').open = false;
+              document.querySelector('#search-section .workspace-panel').open = true;
+              document.querySelector('#search-section').scrollIntoView({ behavior: 'instant' });
+            }, outcome);
+            await workspace.waitForFunction(() => !document.querySelector('#collect-project-tabs').disabled);
+            const before = await workspace.evaluate(() => scrollY);
+            await workspace.locator('#collect-project-tabs').evaluate(button => button.click());
+            await workspace.evaluate(() => finishCollectionTest());
+            await workspace.waitForFunction(() => document.querySelector('#project-tab-status').textContent.startsWith('Finished.') || document.querySelector('#project-tab-status').textContent.startsWith('Stopped.'));
+            if (['success', 'fast'].includes(outcome)) {
+              await workspace.waitForFunction(() => {
+                const urls = document.querySelector('#urls-section'), bar = document.querySelector('.topbar').getBoundingClientRect();
+                return urls.querySelector('.workspace-panel').open && document.querySelector('#review-section .workspace-panel').open &&
+                  urls.getBoundingClientRect().top >= bar.bottom && urls.getBoundingClientRect().top < bar.bottom + 80;
+              });
+              // Move away first: re-scrolling to the same target is otherwise
+              // indistinguishable from no navigation. Firefox can round the
+              // anchored position by a pixel while disclosure layout settles.
+              await workspace.evaluate(() => window.scrollBy({ top: -100, behavior: 'instant' }));
+              await workspace.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+              const y = await workspace.evaluate(() => scrollY);
+              await workspace.evaluate(() => finishCollectionTest());
+              await workspace.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+              assert.ok(Math.abs(await workspace.evaluate(() => scrollY) - y) <= 2, `${name}: collection refresh must not repeat navigation`);
+              assert.doesNotMatch(await workspace.locator('#project-tab-status').innerText(), /0 left open|0 skipped/);
+              assert.equal(await workspace.locator('.collection-details').evaluate(panel => panel.open), false);
+            } else {
+              assert.equal(await workspace.locator('#urls-section .workspace-panel').evaluate(panel => panel.open), false);
+              assert.ok(Math.abs(await workspace.evaluate(() => scrollY) - before) <= 2, `${name}: partial/stopped collection stays for review`);
+            }
+            await workspace.evaluate(() => collectionTest.destroy());
+          }
+        }
+        await workspace.setViewportSize({ width: 1050, height: 850 });
+        console.log(`${name}: WP1 welcome layout, focus spacing, engine colors, document disclosure and collection navigation passed.`);
         // Exercise the real text-review controller and native modal in both engines.
         await workspace.evaluate(async () => {
           const storage = await import('./project-store.js');

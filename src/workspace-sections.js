@@ -4,7 +4,14 @@ export function openWorkspaceSection(id, { scroll = false } = {}) {
   const panel = section?.querySelector('details.workspace-panel');
   if (panel) {
     panel.open = true;
-    if (scroll) section.scrollIntoView({ block: 'start' });
+    if (scroll) {
+      // Let disclosure layout and the sticky menu's ResizeObserver settle first.
+      // Automatic collection navigation must not be interrupted by another
+      // smooth scroll when closed tabs restore focus to the workspace.
+      const reveal = () => { if (panel.open && section.isConnected !== false) section.scrollIntoView({ block: 'start', behavior: 'instant' }); };
+      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => requestAnimationFrame(reveal));
+      else reveal();
+    }
   }
 }
 export function initWorkspaceSections() {

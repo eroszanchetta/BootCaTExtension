@@ -64,8 +64,8 @@
     </section>
     <section id="search-section" aria-labelledby="search-heading" tabindex="-1">
       <details class="workspace-panel"><summary><h2 id="search-heading">Search</h2><span id="queries-counter" class="section-counter">0 queries</span></summary><div class="panel-content">
-      <label for="engine">Search engine</label>
-      <select id="engine" disabled></select>
+      <div class="engine-selection"><label for="engine">Search engine</label>
+      <select id="engine" disabled></select></div>
       <details id="more-search-options" class="options-panel" data-default-collapsed>
         <summary>More search options</summary>
         <div class="search-filters">
@@ -93,10 +93,14 @@
       <h3>Collect project search tabs</h3>
       <p id="project-tab-count" role="status" aria-live="polite">Checking project search tabs…</p>
       <div class="actions"><button id="collect-project-tabs" type="button" disabled>Add URLs and close search tabs</button><button id="collect-loaded-tabs" type="button" class="secondary" hidden disabled>Add URLs and close loaded tabs</button><button id="stop-project-tabs" type="button" class="secondary" hidden>Stop collecting</button></div>
+      <div class="collection-feedback">
       <p id="project-tab-loading-hint" class="hint" role="status"></p>
       <p id="project-tab-status" role="status" aria-live="polite"></p>
       <p id="collection-status" role="status" aria-live="polite"></p><div id="collection-choices" class="actions" hidden><button id="continue-collected" type="button">Continue with collected URLs</button><button id="review-search-tabs" type="button" class="secondary">Review search tabs</button></div>
-      <p class="hint">Only tabs opened by BootCaT for this project in this browser session are included.</p>
+      </div>
+      <details class="collection-details"><summary>Collection details</summary>
+      <p id="project-tab-detail-summary" class="hint"></p>
+      <p class="hint">Only tabs opened by BootCaT for this project in this browser session are included. Tabs with incomplete or blocked results stay open for review.</p></details>
       </div></details>
     </section>
     <section id="urls-section" aria-labelledby="input-heading" tabindex="-1">
@@ -123,8 +127,8 @@
       <input id="import-document-picker" type="file" aria-label="Choose a downloaded document for the selected failed URL" hidden>
       <p id="document-import-status" role="status" aria-live="polite"></p>
       <div id="review-lists">
-      <div class="document-list-heading"><h3 id="documents-heading">Corpus documents</h3><div class="document-counts" role="status" aria-live="polite" aria-atomic="true"><span id="documents-count" class="section-counter">0 documents</span><span id="included-count" class="section-counter">0 included</span></div></div>
-      <div class="table-wrap"><table aria-label="Documents with usable text"><thead><tr><th scope="col">Include</th><th scope="col">URL</th><th scope="col">Download / extraction</th><th scope="col">Delete</th></tr></thead><tbody id="results"></tbody></table></div>
+      <details id="documents-section" open><summary class="document-list-heading"><h3 id="documents-heading">Corpus documents</h3><div class="document-counts" role="status" aria-live="polite" aria-atomic="true"><span id="documents-count" class="section-counter">0 documents</span><span id="included-count" class="section-counter">0 included</span></div></summary>
+      <div class="table-wrap"><table aria-label="Documents with usable text"><thead><tr><th scope="col">Include</th><th scope="col">URL</th><th scope="col">Download / extraction</th><th scope="col">Delete</th></tr></thead><tbody id="results"></tbody></table></div></details>
       <details id="attention-section" class="attention-section" aria-labelledby="attention-heading" data-default-collapsed hidden>
         <summary><h3 id="attention-heading">Documents with issues</h3><span id="attention-count" class="section-counter">0 documents</span></summary>
         <p class="hint">These documents are not included in the corpus. Review them if you wish, or leave them here. Successfully recovered documents return to the main list.</p>
