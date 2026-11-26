@@ -43,6 +43,8 @@ export function initSeedsUI({ minimumSeeds = DEFAULT_SETTINGS.minimumSeeds, draf
     if (bases && preparedFilters) prepared = bases.map(query => buildSearchQuery(engineID(), query, preparedFilters));
   }
   function controls() {
+    el('engine').dataset.engine = engineID();
+    el('query-summary').dataset.engine = engineID();
     for (const id of ['seeds', 'tuple-length', 'tuple-count', ...filterControls.map(field => field.id)]) el(id).disabled = busy();
     el('tuples').disabled = false;
     el('save-site-defaults').disabled = busy() || savingDefaults;

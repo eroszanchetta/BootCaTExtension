@@ -24,3 +24,22 @@ test('workspace sections collapse on initialization; navigation and download act
     initWorkspaceSections(); assert.ok([...panels.entries()].every(([id, panel]) => panel.open === (id === 'project-section'))); assert.equal(options.open, false);
   } finally { globalThis.document = previous; }
 });
+
+
+test('automatic navigation waits for layout and uses a non-animated scroll; closing the panel cancels it', () => {
+  const previous = { document: globalThis.document, frame: globalThis.requestAnimationFrame };
+  const frames = [], scrolls = [], panel = { open: false };
+  globalThis.document = { getElementById: () => ({ querySelector: () => panel, scrollIntoView: options => scrolls.push(options) }) };
+  globalThis.requestAnimationFrame = fn => frames.push(fn);
+  try {
+    openWorkspaceSection('urls-section', { scroll: true });
+    assert.equal(panel.open, true); assert.equal(scrolls.length, 0);
+    frames.shift()(); assert.equal(scrolls.length, 0);
+    frames.shift()(); assert.deepEqual(scrolls, [{ block: 'start', behavior: 'instant' }]);
+    openWorkspaceSection('urls-section', { scroll: true }); panel.open = false;
+    frames.shift()(); frames.shift()(); assert.equal(scrolls.length, 1);
+  } finally {
+    globalThis.document = previous.document;
+    if (previous.frame) globalThis.requestAnimationFrame = previous.frame; else delete globalThis.requestAnimationFrame;
+  }
+});

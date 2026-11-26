@@ -16,9 +16,12 @@ export function initProjectTabsUI({ getProjectId, onState = () => {} }) {
     el('project-tab-loading-hint').textContent = blocked ? (state.tabs || []).find(tab => tab.challenge)?.reason || 'Open blocked search tabs to complete the check or sign-in.' : skip.hidden ? '' : 'Still loading—open these tabs to check, or add URLs from the loaded tabs.';
     el('stop-project-tabs').hidden = !batch?.running;
     el('stop-project-tabs').disabled = !!batch?.stopping;
-    if (!batch) { el('project-tab-status').textContent = ''; return; }
+    if (!batch) { el('project-tab-status').textContent = ''; el('project-tab-detail-summary').textContent = ''; return; }
     const prefix = batch.interrupted ? 'Collection was interrupted. Saved results remain; click Collect again to continue. ' : batch.stopping ? 'Stopping… ' : batch.stopped ? 'Stopped. ' : batch.running ? 'Collecting… ' : 'Finished. ';
-    el('project-tab-status').textContent = `${prefix}${batch.processed} of ${batch.total} tab${batch.total === 1 ? '' : 's'} processed. ${batch.saved} result page${batch.saved === 1 ? '' : 's'} saved; ${batch.closed} tab${batch.closed === 1 ? '' : 's'} closed; ${batch.leftOpen} left open; ${batch.skipped} skipped.${!batch.running && !batch.saved ? ` ${(state.tabs || []).find(tab => tab.status === 'attention')?.reason || ''}` : ''}`;
+    const counts = `${batch.saved} result page${batch.saved === 1 ? '' : 's'} saved; ${batch.closed} tab${batch.closed === 1 ? '' : 's'} closed`;
+    const remaining = [batch.leftOpen ? `${batch.leftOpen} left open` : '', batch.skipped ? `${batch.skipped} skipped` : ''].filter(Boolean);
+    el('project-tab-status').textContent = `${prefix}${batch.running ? `${batch.processed} of ${batch.total} tabs processed. ` : ''}${counts}${remaining.length ? '; ' + remaining.join('; ') : ''}.${!batch.running && !batch.saved ? ` ${(state.tabs || []).find(tab => tab.status === 'attention')?.reason || ''}` : ''}`;
+    el('project-tab-detail-summary').textContent = `${batch.processed} of ${batch.total} tab${batch.total === 1 ? '' : 's'} processed; ${batch.leftOpen} left open; ${batch.skipped} skipped.`;
     if (collectingBatchId && batch.id === collectingBatchId && !batch.running) {
       collectingBatchId = null;
       if (!state.count && batch.total > 0 && batch.closed === batch.total && batch.saved === batch.total && batch.processed === batch.total && !batch.leftOpen && !batch.skipped && !batch.stopped && !batch.stopping && !batch.interrupted) {
@@ -35,7 +38,7 @@ export function initProjectTabsUI({ getProjectId, onState = () => {} }) {
       const reply = await ext.runtime.sendMessage({ type: 'get-project-search-tabs', projectId });
       if (destroyed || request !== revision || getProjectId() !== projectId) return;
       if (!reply?.ok) throw new Error(reply?.error || 'Could not read project search tabs.');
-      state = reply; render(); onState(state);
+      state = reply; onState(state); render();
       clearTimeout(timer);
       if (state.loading || state.blocked) timer = setTimeout(refresh, state.blocked ? 2000 : 1000);
     } catch (error) { if (!destroyed && request === revision) { el('project-tab-status').textContent = error.message; onState({ ...state, ready: false }); } }
