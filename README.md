@@ -385,3 +385,12 @@ Collection feedback reports newly added URLs separately from URLs already in the
 PDF.js package preparation for the 2.0.1 Chrome code-readability notice is documented in [docs/PDFJS-STORE-BUILD.md](docs/PDFJS-STORE-BUILD.md). Normal builds remove the reviewed obsolete fallbacks automatically, and packaging verifies the serialized ZIP contents. Repeat `node scripts/verify-release-package.mjs` after packaging to check the exact release files. Version 2.1 is prepared as the replacement update; store submission and approval are separate steps.
 
 Corpus ZIPs contain `url_list.txt` for the included corpus texts, in the same order as `Report.xlsx`, and `url_list_excluded.txt` for other valid project URLs (unchecked documents, failed downloads/extractions and URLs not yet downloaded). Both lists cover manually added pages, even when absent from the URL input field. The original input list remains in the project's metadata and portable project. User-created corpus ZIPs and `.bootcat` projects timestamp their entries at export/save time, with ZIP's two-second precision; these are archive creation times, not source-file modification dates.
+
+
+### Download progress and completion
+
+While Download URLs is running, a sticky strip immediately below navigation shows processed URLs and whether BootCaT is downloading or extracting text. View downloads opens Build Corpus. Progress advances after the document has been processed and saved; completion does not mean every document succeeded or was included.
+
+The completed run keeps a summary of usable texts, failures, cancellations, language warnings and skipped URLs. The workspace tab title and toolbar badge also indicate the outcome: a check mark for a clean finish, an exclamation mark for issues or interruption, and STOP for a stopped run. These use existing extension capabilities and require no notification permission. A browser toolbar badge is easiest to see when BootCaT is pinned.
+
+Dismiss clears the sticky completion message, special tab title and badge in all workspace windows. The detailed summary remains in Build Corpus. Starting a new run replaces the feedback; closing or replacing the project clears it. Feedback is local to this browser, is not restored from portable project files, and does not disappear merely because the workspace receives focus.

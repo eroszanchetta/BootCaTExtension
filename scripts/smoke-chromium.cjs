@@ -592,6 +592,10 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     const concurrentDeadline = Date.now() + 10000;
     while (!pendingCorpusResponses.has('blocked') && Date.now() < concurrentDeadline) await new Promise(resolve => setTimeout(resolve, 20));
     assert.equal(pendingCorpusResponses.has('blocked'), true, 'the delayed batch URL must begin downloading');
+    await page.waitForFunction(() => !document.querySelector('#download-feedback-strip').hidden && document.querySelector('#header-download-progress').value < document.querySelector('#header-download-progress').max);
+    assert.equal(await page.evaluate(async () => (globalThis.browser ?? chrome).action.getBadgeText({})), '…');
+    await page.locator('nav a[href="#project-section"]').click();
+    assert.equal(await page.locator('#download-feedback-strip').isVisible(), true, 'progress remains visible away from Build Corpus');
     // A real reload must offer the browser's confirmation and allow cancelling.
     cancelUnload = true;
     const unloadDialog = page.waitForEvent('dialog', dialog => dialog.type() === 'beforeunload');
@@ -607,6 +611,8 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     const parallelWorkspace = await context.newPage(); await parallelWorkspace.goto(origin + '/downloader.html');
     await parallelWorkspace.waitForFunction(() => document.querySelector('#download-activity').textContent.includes('another BootCaT window'));
     assert.equal(await parallelWorkspace.locator('#start').isDisabled(), true);
+    await parallelWorkspace.waitForFunction(() => !document.querySelector('#download-feedback-strip').hidden);
+    assert.match(await parallelWorkspace.title(), /processed/);
     assert.equal(await parallelWorkspace.locator('#export').isDisabled(), true);
     await page.bringToFront();
     const goodRow = page.locator('#results tr').filter({ has: page.locator(`a[href="${concurrentURLs[0]}"]`) });
@@ -638,6 +644,14 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.equal(corpusFetches.get('blocked'), 1);
     assert.equal(await page.locator('#results tr').count(), 5);
     assert.equal(await page.locator('#attention-section').isVisible(), false);
+    await page.waitForFunction(() => document.title.startsWith('Downloads finished'));
+    assert.equal(await page.evaluate(async () => (globalThis.browser ?? chrome).action.getBadgeText({})), '✓');
+    await parallelWorkspace.waitForFunction(() => document.title.startsWith('Downloads finished'));
+    await parallelWorkspace.reload();
+    await parallelWorkspace.waitForFunction(() => document.querySelector('#download-feedback-summary').textContent.startsWith('Finished.'));
+    await parallelWorkspace.locator('#dismiss-download-feedback').click();
+    await page.waitForFunction(() => document.querySelector('#download-feedback-strip').hidden);
+    assert.equal(await page.evaluate(async () => (globalThis.browser ?? chrome).action.getBadgeText({})), '');
     await parallelWorkspace.close(); await deleteAllRows();
     console.log('Concurrent text editing, cross-window activity, manual capture/import and recovered-URL skipping passed.');
     await page.fill('#urls', 'https://corpus.test/document.pdf\nhttps://corpus.test/document.docx');
@@ -1059,6 +1073,8 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     await assertCollapsed(); await openPanels();
     const afterPortable = await page.evaluate(async () => (await (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'get-project' })).project.id);
     assert.notEqual(afterPortable, beforePortable);
+    await page.waitForFunction(async () => await (globalThis.browser ?? chrome).action.getBadgeText({}) === '');
+    assert.equal(await page.locator('#download-feedback-strip').isVisible(), false, 'portable imports do not replay download feedback');
     assert.equal(await page.inputValue('#engine'), portableEngine, 'opening a portable project preserves its selected engine');
     assert.equal(await page.evaluate(async () => (await (globalThis.browser ?? chrome).runtime.sendMessage({ type: 'get-settings' })).settings.values.defaultEngine), personalEngine, 'opening a project preserves personal defaults');
     assert.equal((await page.inputValue('#urls')).includes('unsaved-after-snapshot'), false);

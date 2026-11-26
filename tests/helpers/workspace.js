@@ -44,7 +44,7 @@ export async function workspace(projectId, options = {}) {
   const context = vm.createContext({
     DEFAULT_SETTINGS, SETTINGS_KEY, readSettings, fileLimit,
     console, navigator: options.navigator || {}, Blob, URL: { createObjectURL: value => { archive = value; downloads++; return 'blob:test'; }, revokeObjectURL() {} },
-    AbortController, TextEncoder, Date, queueMicrotask, corpusFingerprint, corpusSavedMessage, initTextReview, createProjectWork, createExtractionQueue,
+    AbortController, TextEncoder, Date, crypto, queueMicrotask, corpusFingerprint, corpusSavedMessage, initTextReview, createProjectWork, createExtractionQueue,
     setTimeout: (fn, delay) => { if (delay < 1000) { queueMicrotask(fn); return 0; } return setTimeout(fn, delay); }, clearTimeout,
     document: { getElementById: get, createElement: tag => { const node = new Element(); if (tag === 'a') node.click = () => { lastFilename = node.download; }; return node; }, createElementNS: () => new Element(), createTextNode: text => ({ textContent: text }), body: new Element() },
     confirmAction: async () => confirm,
@@ -57,6 +57,7 @@ export async function workspace(projectId, options = {}) {
     initVersionBadge: () => '2.0.0',
     initWorkspaceSections() {}, openWorkspaceSection(...args) { options.onOpenSection?.(...args); }, setProjectSectionState() {},
     initSeedsUI: () => ({ restore() {}, isBusy: () => false, destroy() {} }),
+    initDownloadFeedbackUI: () => ({ destroy() {} }),
     initEngineDefaultUI: () => ({ destroy() {}, refreshSelection() {} }),
     initProjectTabsUI: () => ({ refresh() {}, destroy() {} }),
     DEFUDDLE_AVAILABLE: true, storage: options.storage || storage, ...pages, parseURLs, filenameFor, FILE_LIMIT, urlListWarning, makeStoredZIP, corpusURLList, excludedURLList, makeMetadataWorkbook: options.makeMetadataWorkbook || makeMetadataWorkbook, createExportLayout, originalTextFilename, extractionMetadata, fileWarnings, readPDFFile, formatByMIME, readImportedDocument,

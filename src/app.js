@@ -1,3 +1,4 @@
+import { initDownloadFeedbackUI } from './download-feedback-ui.js';
 import { initEngineDefaultUI } from './engine-default-ui.js';
 import { initPortableUI } from './portable-ui.js';
 import { DEFAULT_SETTINGS, SETTINGS_KEY, readSettings, fileLimit } from './settings.js';
@@ -53,14 +54,14 @@ const hasDocumentWork = () => documentJobs.size > 0 || remoteActivity.documents.
 ui.start.disabled = ui.export.disabled = true;
 ui.extractor.querySelector('option[value="defuddle"]').disabled = !DEFUDDLE_AVAILABLE;
 if (!DEFUDDLE_AVAILABLE) ui.extractor.querySelector('option[value="defuddle"]').textContent = 'Defuddle — library unavailable';
-let engineDefaultUI;
+let engineDefaultUI, downloadFeedbackUI;
 const projectUI = initProjectUI({
   onRename: () => { invalidateArchive(); seedsUI?.refreshLanguage?.(); },
   onSaveProject: () => portableUI.save(), onOpenProject: () => portableUI.choose(),
   getBusy: () => portableBusy || running || isBatchActive() || importing || hasDocumentWork() || remoteActivity.exclusive,
   confirmReplacement: options => portableUI.confirmReplacement(options),
   onReset: () => {
-    resetting = true; ready = false; stopping = true; clearTimeout(activityTimer); controller?.abort(); for (const active of operationControllers) active.abort(); seedsUI?.destroy(); searchUI?.destroy(); projectTabsUI?.destroy(); engineDefaultUI?.destroy(); running = downloading = importing = false; updateControls();
+    resetting = true; ready = false; stopping = true; clearTimeout(activityTimer); controller?.abort(); for (const active of operationControllers) active.abort(); seedsUI?.destroy(); searchUI?.destroy(); projectTabsUI?.destroy(); engineDefaultUI?.destroy(); downloadFeedbackUI?.destroy(); running = downloading = importing = false; updateControls();
     invalidateArchive(); ui.urls.value = ''; clearPreview();
     document.getElementById('project-name').value = '';
     entries = []; state = null; documentImportTarget = null; ui['import-document-picker'].value = '';
@@ -442,7 +443,22 @@ async function work(task) {
   if (capturesPending && !resetting) { capturesPending = false; queueMicrotask(importSavedPages); }
   return executed;
 }
-ui.stop.addEventListener('click', () => { stopping = true; controller?.abort(); ui.stop.disabled = true; ui.status.textContent = 'Stopping…'; });
+ui.stop.addEventListener('click', () => { stopping = true; if (activeFeedback) publishDownloadFeedback('download-feedback-progress', { phase: 'stopping' }); controller?.abort(); ui.stop.disabled = true; ui.status.textContent = 'Stopping…'; });
+let activeFeedback = null;
+async function publishDownloadFeedback(type, patch = {}) {
+  if (!activeFeedback || resetting) return;
+  const { runId, total, visited, ownerTabId } = activeFeedback;
+  const selected = entries.filter(entry => visited.has(entry.url));
+  const wasCancelled = entry => entry.record.outcome === 'cancelled' || entry.record.processingIncomplete;
+  const cancelled = selected.filter(wasCancelled).length;
+  const usable = selected.filter(entry => !wasCancelled(entry) && entry.doc?.extraction.status === 'ok').length;
+  const failed = selected.length - usable - cancelled;
+  const flagged = selected.filter(entry => !wasCancelled(entry) && entry.doc?.extraction.status === 'ok' && hasLanguageWarning(entry.doc.extraction)).length;
+  const processed = visited.size;
+  try {
+    await ext.runtime?.sendMessage?.({ type, projectId, runId, ownerTabId, total, processed, usable, failed, cancelled, flagged, skipped: processed - selected.length, ...patch });
+  } catch { /* Optional attention feedback never changes the download result. */ }
+}
 ui.start.addEventListener('click', async () => {
   if (!ready || running || downloading || resetting) return;
   downloading = true; updateControls(); let acquired = false;
@@ -462,6 +478,10 @@ ui.start.addEventListener('click', async () => {
       await storage.saveBatch(projectId, { startedAt, state: 'running', processed: 0, total: urls.length }, await readCollections());
       metadataRevision++; state.batch = { ...state.batch, startedAt, state: 'running', total: urls.length, processed: 0 };
       ui.progress.max = urls.length; ui.progress.value = 0; let processed = 0;
+      let owner;
+      try { owner = await ext.tabs?.getCurrent?.(); } catch { /* Optional ownership hint. */ }
+      activeFeedback = { runId: crypto.randomUUID(), ownerTabId: owner?.id, total: urls.length, visited: new Set() };
+      await publishDownloadFeedback('download-feedback-start');
       for (const url of urls) {
         if (stopping || resetting) break;
         const completed = await documentWork(url, async () => {
@@ -471,6 +491,7 @@ ui.start.addEventListener('click', async () => {
             if (target.entry) remember(target.entry, { keepPreview: true }); return;
           }
           ui.status.textContent = `Downloading ${processed + 1} of ${urls.length}…`;
+          await publishDownloadFeedback('download-feedback-progress', { phase: 'downloading' });
           const active = controller = new AbortController(); let timedOut = false, downloaded = false;
           const timer = setTimeout(() => { timedOut = true; active.abort(); }, settings.downloadSeconds * 1000);
           try {
@@ -478,6 +499,7 @@ ui.start.addEventListener('click', async () => {
             if (resetting) return;
             const index = await storage.allocateFileIndex(projectId);
             const filename = filenameFor(url, extractionContentType(response.bytes, response.contentType), index);
+            await publishDownloadFeedback('download-feedback-progress', { phase: 'extracting' });
             const extraction = await extractionQueue.run(() => {
               if (resetting) return;
               return extractDownloadedDocument(response.bytes, response.contentType, { settings, extractor, sourceURL: response.finalURL || url, signal: active.signal });
@@ -495,8 +517,10 @@ ui.start.addEventListener('click', async () => {
           } finally { clearTimeout(timer); if (controller === active) controller = null; }
         }, { wait: true, propagate: true });
         if (resetting) return;
+        activeFeedback.visited.add(url);
         processed++; ui.progress.value = processed;
         await storage.saveBatch(projectId, { processed }); metadataRevision++; state.batch.processed = processed;
+        await publishDownloadFeedback('download-feedback-progress', { phase: stopping ? 'stopping' : 'downloading' });
         if (!completed) { stopping = true; break; }
         if (!stopping) await new Promise(resolve => setTimeout(resolve, 500));
       }
@@ -505,11 +529,12 @@ ui.start.addEventListener('click', async () => {
         const message = completionMessage(stopping);
         await storage.saveBatch(projectId, { state: stopping ? 'stopped' : 'idle', processed, lastStatus: message });
         metadataRevision++; state.batch.state = stopping ? 'stopped' : 'idle'; ui.status.textContent = message;
+        await publishDownloadFeedback('download-feedback-finish', { state: stopping ? 'stopped' : 'finished' });
       }
     });
     if (!acquired && !resetting) ui.status.textContent = 'Another BootCaT window is already downloading or processing this project.';
-  } catch (error) { report(error); }
-  finally { downloading = false; ui.stop.disabled = true; if (!resetting) { await notifyWorkspace(); await refreshActivity(); updateControls(); searchUI?.flush(); } }
+  } catch (error) { report(error); await publishDownloadFeedback('download-feedback-finish', { state: 'interrupted' }); }
+  finally { activeFeedback = null; downloading = false; ui.stop.disabled = true; if (!resetting) { await notifyWorkspace(); await refreshActivity(); updateControls(); searchUI?.flush(); } }
 });
 async function storeCapture({ url, finalURL, bytes, contentType, source, capturedAt, captureId, settings }) {
   const index = await storage.allocateFileIndex(projectId), filename = filenameFor(url, contentType, index);
@@ -707,6 +732,7 @@ portableUI = initPortableUI({
     searchUI = initSearchUI({ onCollectionsChange: invalidateArchive, isRunning: () => running, seenCollectionIds: state.draft.seenCollections, getProjectId: () => projectId, onChange: patch => { queueDraft(patch); warnURLs(); } });
     if (state.draft.engine) ui.engine.value = state.draft.engine;
     seedsUI = initSeedsUI({ minimumSeeds: currentSettings.minimumSeeds, draft: state.draft, onChange: queueDraft, getLanguage: () => projectUI.snapshot()?.language || 'none', getProjectId: () => projectId, onOpeningChange: value => projectTabsUI?.setOpening(value) });
+    downloadFeedbackUI = initDownloadFeedbackUI({ getProjectId: () => projectId });
     engineDefaultUI = initEngineDefaultUI({ getProjectId: () => projectId });
     projectTabsUI = initProjectTabsUI({ getProjectId: () => projectId, onState: value => seedsUI?.updateTabState(value) });
     updateControls(); await refreshActivity(); await importSavedPages();

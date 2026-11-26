@@ -9,6 +9,7 @@
 </head>
 <body id="top">
   <a class="skip-link" href="#seeds-section">Skip to content</a>
+  <div class="workspace-header">
   <div class="topbar">
     <div class="topbar-inner">
       <a class="brand" href="#top"><img src="icons/BootCaT.svg" width="56" height="56" alt=""><span>BootCaT</span></a>
@@ -23,6 +24,10 @@
       </nav>
     </div>
   </div>
+  <aside id="download-feedback-strip" class="download-feedback-strip" aria-label="Download progress and completion" hidden>
+    <div class="download-feedback-inner"><div class="download-feedback-content"><p id="download-feedback-summary" role="status" aria-live="polite" aria-atomic="true"></p><progress id="header-download-progress" max="1" value="0" aria-label="Download URLs processed"></progress></div>
+    <a id="download-feedback-link" href="#review-section">View downloads</a><button id="dismiss-download-feedback" type="button" class="secondary" hidden>Dismiss</button></div>
+  </aside></div>
   <main>
     <header><span id="app-version" class="badge">BootCaT</span><h1>Create corpora from the web</h1>
       <p>Find pages. Extract useful text. Build a corpus.</p></header>
@@ -124,6 +129,7 @@
       <p id="download-activity" class="hint" role="status"></p>
       <p id="status" role="status" aria-live="polite"></p>
       <progress hidden id="progress" value="0" max="1" aria-label="URLs processed"></progress>
+      <p id="download-completion-summary" class="download-completion-summary" hidden></p>
       <p id="saved-status" role="status" aria-live="polite"></p>
       <input id="import-document-picker" type="file" aria-label="Choose a downloaded document for the selected failed URL" hidden>
       <p id="document-import-status" role="status" aria-live="polite"></p>

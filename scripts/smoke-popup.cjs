@@ -524,6 +524,64 @@ const assert = require('node:assert/strict');
         assert.equal(await workspace.evaluate(() => document.querySelector('#text-review-dialog').scrollWidth > document.querySelector('#text-review-dialog').clientWidth), false, `${name}: mobile dialog overflow`);
         await workspace.click('#text-review-close');
         assert.equal(await workspace.locator('#text-review-dialog[open]').count(), 0);
+        // Native sticky progress and completion in both browser engines. The
+        // real background feedback controller is exercised with local fixtures.
+        const feedbackPage = await browser.newPage({ viewport: { width: 1050, height: 850 } });
+        await feedbackPage.route('**/settings-ui.js', route => route.fulfill({ contentType: 'text/javascript', body: '' }));
+        await feedbackPage.route('**/app.js', route => route.fulfill({ contentType: 'text/javascript', body: `
+          import { initWorkspaceSections } from './workspace-sections.js';
+          import { createDownloadFeedback } from './download-feedback.js';
+          import { initDownloadFeedbackUI } from './download-feedback-ui.js';
+          initWorkspaceSections();
+          for (const panel of document.querySelectorAll('.workspace-panel')) panel.open = true;
+          const data = {}, listeners = [], badge = globalThis.feedbackBadge = {};
+          let tail = Promise.resolve(), service;
+          const api = globalThis.chrome = { runtime: { sendMessage: async message => ({ ok: true, ...(message.type === 'get-download-feedback' ? { feedback: await service.sync() } : await service.handle(message)) }) },
+            storage: { local: { get: async key => ({ [key]: structuredClone(data[key]) }), set: async patch => {
+              Object.assign(data, structuredClone(patch)); for (const [key, newValue] of Object.entries(patch)) for (const fn of listeners) fn({ [key]: { newValue } }, 'local');
+            } }, onChanged: { addListener(fn) { listeners.push(fn); } } },
+            action: { setBadgeText: async value => { badge.text = value.text; }, setTitle: async value => { badge.title = value.title; } } };
+          service = createDownloadFeedback({ ext: api, getProject: async () => ({ id: 'progress' }), batchActive: async () => true,
+            serialize: task => { const next = tail.then(task); tail = next.catch(() => {}); return next; } });
+          globalThis.feedbackUI = initDownloadFeedbackUI({ getProjectId: () => 'progress' });
+          globalThis.feedbackSignal = async (type, patch = {}) => api.runtime.sendMessage({ type: 'download-feedback-' + type, projectId: 'progress', runId: 'run', ...patch });
+          globalThis.feedbackReady = true;
+        ` }));
+        await feedbackPage.goto(`http://127.0.0.1:${server.address().port}/downloader.html`);
+        await feedbackPage.waitForFunction(() => globalThis.feedbackReady);
+        for (const width of [1050, 390]) {
+          await feedbackPage.setViewportSize({ width, height: 850 });
+          await feedbackPage.evaluate(async () => { await feedbackSignal('start', { total: 2 }); await feedbackSignal('progress', { phase: 'extracting' }); });
+          assert.equal(await feedbackPage.locator('#header-download-progress').evaluate(bar => bar.value), 0, `${name}: extraction still pending`);
+          assert.match(await feedbackPage.locator('#download-feedback-summary').innerText(), /Extracting text 1 of 2/);
+          await feedbackPage.evaluate(() => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'instant' }));
+          await feedbackPage.waitForFunction(() => {
+            const header = document.querySelector('.workspace-header').getBoundingClientRect();
+            const nav = document.querySelector('.topbar').getBoundingClientRect(), strip = document.querySelector('#download-feedback-strip').getBoundingClientRect();
+            return Math.abs(header.top) < 1 && Math.abs(strip.top - nav.bottom) < 1 && parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) >= header.height + 15;
+          });
+          assert.equal(await feedbackPage.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `${name}: sticky progress overflow at ${width}px`);
+          await feedbackPage.evaluate(() => feedbackSignal('finish', { state: 'finished', processed: 2, usable: 1, failed: 1 }));
+          assert.equal(await feedbackPage.locator('#header-download-progress').isVisible(), false);
+          assert.match(await feedbackPage.title(), /Finished with issues/);
+          assert.equal(await feedbackPage.evaluate(() => feedbackBadge.text), '!');
+          assert.match(await feedbackPage.locator('#download-completion-summary').innerText(), /1 failed/);
+          await feedbackPage.locator('#download-feedback-link').click();
+          await feedbackPage.waitForFunction(() => document.querySelector('#review-section').getBoundingClientRect().top >= document.querySelector('.workspace-header').getBoundingClientRect().bottom);
+          await feedbackPage.locator('#dismiss-download-feedback').click();
+          assert.equal(await feedbackPage.locator('#download-feedback-strip').isVisible(), false);
+          assert.equal(await feedbackPage.evaluate(() => feedbackBadge.text), '');
+          assert.equal(await feedbackPage.title(), 'BootCaT · Corpus workspace');
+          assert.match(await feedbackPage.locator('#download-completion-summary').innerText(), /1 failed/);
+          await feedbackPage.evaluate(async () => { await feedbackSignal('start', { total: 2 }); await feedbackSignal('finish', { state: 'stopped', processed: 1, cancelled: 1 }); });
+          assert.equal(await feedbackPage.evaluate(() => feedbackBadge.text), 'STOP');
+          assert.match(await feedbackPage.title(), /Downloads stopped/);
+          await feedbackPage.evaluate(async () => { await feedbackSignal('start', { total: 1 }); await feedbackSignal('finish', { state: 'finished', processed: 1, usable: 1 }); });
+          assert.equal(await feedbackPage.evaluate(() => feedbackBadge.text), '✓');
+          assert.match(await feedbackPage.title(), /Downloads finished/);
+        }
+        await feedbackPage.close();
+        console.log(`${name}: sticky progress, extraction timing, completion, failure counts, dismissal, stopped and clean badges passed.`);
         await workspace.close();
         console.log(`${name}: conditional popup actions, confirmations, advanced disclosure keyboard handling and responsive overflow passed.`);
       } finally { await browser.close(); }

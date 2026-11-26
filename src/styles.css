@@ -216,3 +216,16 @@ section { scroll-margin-top: 0; }
 .engine-selection-row select { flex: 1 1 220px; min-width: 0; max-width: 560px; }
 .engine-selection-row button { flex: 0 0 auto; }
 #engine-default-status { margin: 8px 0 0; }
+
+.workspace-header { position: sticky; top: 0; z-index: 10; }
+.workspace-header .topbar { position: static; }
+.download-feedback-strip { border-bottom: 1px solid #a6c7da; background: #edf6fb; color: #163e55; }
+.download-feedback-inner { max-width: var(--workspace-width); margin: auto; padding: 10px var(--workspace-padding); display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; }
+.download-feedback-content { flex: 1 1 350px; min-width: 0; }
+.download-feedback-content p { margin: 0; font-size: .85rem; overflow-wrap: anywhere; }
+.download-feedback-content progress { height: 8px; margin: 6px 0 0; }
+.download-feedback-inner a { color: inherit; font-size: .85rem; font-weight: 650; }
+.download-feedback-inner button { padding: 5px 10px; font-size: .85rem; }
+.download-feedback-strip[data-state="finished"] { background: #ecfdf3; border-color: #a6d7b5; color: #14532d; }
+.download-feedback-strip[data-state="attention"] { background: #fff6df; border-color: #d5b976; color: #73520c; }
+.download-completion-summary { padding: 12px; border: 1px solid #c4d8e7; border-radius: 8px; background: #f4f8fb; }
