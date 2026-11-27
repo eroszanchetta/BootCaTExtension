@@ -43,7 +43,7 @@ const { execFileSync } = require('node:child_process');
       }
       if (request.url.startsWith('/search-fixture')) {
         const query = new URL(request.url, 'http://fixture').searchParams.get('q') || '';
-        const body = query === 'captcha' && !resolvedQueries.has(query) ? '<h1>CAPTCHA required</h1>' : `<a data-testid="result-title-a" href="https://corpus.test/search?q=${encodeURIComponent(query)}">Local result</a>${query === 'partial' ? '<a data-testid="result-title-a" href="https://duckduckgo.com/l/?opaque=1">Unresolved link</a>' : ''}`;
+        const body = query === 'manual-empty' ? '<title>Empty search fixture</title><p>No results found</p>' : query === 'captcha' && !resolvedQueries.has(query) ? '<h1>CAPTCHA required</h1>' : `<a data-testid="result-title-a" href="https://corpus.test/search?q=${encodeURIComponent(query)}">Local result</a>${query === 'partial' ? '<a data-testid="result-title-a" href="https://duckduckgo.com/l/?opaque=1">Unresolved link</a>' : ''}`;
         response.writeHead(200, { 'Content-Type': 'text/html' });
         if (['delayed', 'close while loading'].includes(query)) {
           response.write('<!doctype html><title>Loading search fixture</title>');
@@ -1094,6 +1094,39 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     await dynamicHost.waitFor({state:'hidden'});
     await dynamicDDG.evaluate(() => { history.pushState({},'',location.href+'&s=10'); document.body.append(document.createElement('p')); });
     await dynamicHost.waitFor(); await dynamicDDG.close();
+    // An empty page stays unresolved until a user explicitly records the outcome.
+    await page.locator('nav a[href="#seeds-section"]').click(); await page.fill('#tuples','manual-empty');
+    await page.click('#prepare-queries'); await page.selectOption('#engine','duckduckgo');
+    const emptyCreated=context.waitForEvent('page'); await clickConfirmed('#open-all-queries'); const emptyTab=await emptyCreated;
+    await emptyTab.waitForLoadState('domcontentloaded'); await waitProjectTabsReady(1);
+    await page.click('#collect-project-tabs');
+    await page.getByRole('button',{name:'Mark as no results',exact:true}).waitFor();
+    assert.equal(emptyTab.isClosed(),false); await page.getByRole('button',{name:'Mark as no results',exact:true}).click();
+    await page.locator('.query-tab-status[data-status="no-results"]').waitFor();
+    assert.equal(await page.locator('#open-all-queries').isDisabled(),true);
+    assert.equal(await page.evaluate(async projectId => (await (globalThis.browser??chrome).runtime.sendMessage({type:'get-project-search-tabs',projectId})).count,currentProject),0);
+    const emptyPopup=await popupFor(emptyTab); await emptyPopup.locator('#rerun-no-results').waitFor();
+    assert.match(await emptyPopup.locator('#feedback').innerText(),/No results \(marked manually\)/);
+    const rerunCreated=context.waitForEvent('page'); await emptyPopup.click('#rerun-no-results'); const rerunTab=await rerunCreated;
+    await rerunTab.waitForLoadState('domcontentloaded'); assert.notEqual(rerunTab,emptyTab); assert.equal(emptyTab.isClosed(),false);
+    await page.waitForFunction(async () => !(await (globalThis.browser??chrome).storage.local.get('collections')).collections.some(item=>item.status==='no-results' && item.query==='manual-empty'));
+    await rerunTab.close(); await emptyTab.close();
+    // Also exercise the real content-script mark action on an untracked page.
+    await context.route('https://duckduckgo.com/?q=manual-floating-empty',route=>route.fulfill({contentType:'text/html',body:'<title>Empty search fixture</title><p>No results found</p>'}));
+    const floatingEmpty=await context.newPage(); await floatingEmpty.goto('https://duckduckgo.com/?q=manual-floating-empty');
+    const emptyHost=floatingEmpty.locator('[data-bootcat-floating-control]'); await emptyHost.waitFor();
+    const emptyBox=await emptyHost.boundingBox(); await floatingEmpty.mouse.click(emptyBox.x+55,emptyBox.y+20);
+    const emptyAX=await context.newCDPSession(floatingEmpty);
+    for(let attempt=0;attempt<100;attempt++) {
+      const tree=await emptyAX.send('Accessibility.getFullAXTree');
+      if(tree.nodes.some(node=>node.role?.value==='button'&&node.name?.value==='Mark as no results')) break;
+      if(attempt===99) assert.fail('empty floating collection must offer a manual outcome');
+      await new Promise(resolve=>setTimeout(resolve,100));
+    }
+    await floatingEmpty.keyboard.press('Tab'); await floatingEmpty.keyboard.press('Tab'); await floatingEmpty.keyboard.press('Tab'); await floatingEmpty.keyboard.press('Enter');
+    await page.waitForFunction(async () => (await (globalThis.browser??chrome).storage.local.get('collections')).collections.some(item=>item.status==='no-results'&&item.query==='manual-floating-empty'));
+    assert.equal(floatingEmpty.isClosed(),false); await emptyHost.waitFor({state:'hidden'}); await emptyAX.detach(); await floatingEmpty.close();
+    console.log('Manual empty outcome, batch skipping, persisted query status, popup rerun and floating action passed.');
     await setCollectionControls({closeCollectedTab:true});
     console.log('DDG live-DOM replay, same-URL additions, popup/floating agreement, partial acceptance and pagination passed.');
     const floatingKeep = await context.newPage(); await floatingKeep.goto('https://corpus.test/floating-keep');

@@ -12,10 +12,12 @@ function remember(data, record, status, reason = '') {
   data.history.push({ projectId: record.projectId, engine: record.engine, query: record.query, ...(record.languageFilter ? { languageFilter: record.languageFilter } : {}), status, reason });
 }
 function rememberClosed(data, record) {
+  if (record.noResults) return;
   const collected = record.status === 'collected';
   remember(data, record, collected ? 'collected' : 'closed', collected ? 'Results saved; tab closed.' : 'Tab closed without collecting.');
 }
 function updateLoading(record, tab) {
+  record.currentURL = tab.pendingUrl || tab.url || record.currentURL;
   record.unloaded = !!tab.discarded;
   if (tab.discarded) { record.status = 'attention'; record.reason = 'Tab was unloaded by the browser. Open it to reload, then retry.'; return; }
   if (record.challenge) { record.status = 'attention'; return; }
@@ -73,12 +75,12 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
     const { collections = [] } = await ext.storage.local?.get('collections') || {};
     const history = new Map((data.history || []).map(item => [JSON.stringify([item.projectId, queryKey(item.engine, item.query, item.languageFilter)]), item]));
     for (const collection of collections) {
-      if (typeof collection.query !== 'string' || !collection.engine || (collection.unresolved && !collection.acceptedPartial) || !collection.results?.length) continue;
-      const item = { projectId, engine: collection.engine, query: collection.query, ...(languageFilterFromURL(collection.engine, collection.pageURL) ? { languageFilter: languageFilterFromURL(collection.engine, collection.pageURL) } : {}), status: 'collected', reason: 'Results saved in this project.' };
+      if (typeof collection.query !== 'string' || !collection.engine || (collection.unresolved && !collection.acceptedPartial) || (!collection.results?.length && collection.status !== 'no-results')) continue;
+      const item = { projectId, engine: collection.engine, query: collection.query, ...(languageFilterFromURL(collection.engine, collection.pageURL) ? { languageFilter: languageFilterFromURL(collection.engine, collection.pageURL) } : {}), status: collection.status === 'no-results' ? 'no-results' : 'collected', reason: collection.status === 'no-results' ? 'No results (marked manually).' : 'Results saved in this project.' };
       const key = JSON.stringify([projectId, queryKey(item.engine, item.query, item.languageFilter)]);
       // Browser storage may reorder object fields. Compare the actual completion
       // value, rather than JSON object order, to avoid an onChanged refresh loop.
-      if (history.get(key)?.status === 'collected') continue;
+      if (history.get(key)?.status === 'collected' || history.get(key)?.status === item.status) continue;
       history.set(key, item); changed = true;
     }
     if (changed) { data.history = [...history.values()]; await write(data); }
@@ -100,6 +102,17 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
       if (!Number.isInteger(tab?.id)) throw new Error('The browser did not return a search tab ID.');
       const record = { tabId: tab.id, token: crypto.randomUUID(), projectId, engine, query, ...(effectiveFilter ? { languageFilter: effectiveFilter } : {}), createdURL: url, revision: 0 };
       updateLoading(record, tab); data.tabs.push(record);
+      // Explicitly opening a query reruns a manual empty outcome. Keep the old
+      // tab open but excluded from batch collection; only the new tab is active.
+      if (!onlyMissing) {
+        const { collections = [] } = await ext.storage.local.get('collections');
+        const same = item => queryKey(item.engine, item.query, item.languageFilter || languageFilterFromURL(item.engine, item.pageURL)) === queryKey(engine, query, effectiveFilter);
+        const next = collections.filter(item => item.status !== 'no-results' || !same(item));
+        if (next.length !== collections.length) {
+          await ext.storage.local.set({ collections: next });
+        }
+        data.history = data.history.filter(item => item.status !== 'no-results' || !same(item));
+      }
       try { await write(data); }
       catch (error) { throw new Error(`The search tab opened but could not be tracked. Collect it manually. (${error.message})`); }
       return { tabId: tab.id, opened: true, ...(onlyMissing ? status(data, projectId) : {}) };
@@ -107,8 +120,8 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
   }
   function status(data, projectId) {
     const batch = data.batch?.projectId === projectId ? data.batch : null;
-    const tabs = data.tabs.filter(record => record.projectId === projectId && !record.acceptedPartial).map(record => ({
-      tabId: record.tabId, engine: record.engine, query: record.query, ...(record.languageFilter ? { languageFilter: record.languageFilter } : {}), status: record.status || 'loading', reason: record.reason || '', ...(record.challenge ? { challenge: true } : {}), unloaded: !!record.unloaded,
+    const tabs = data.tabs.filter(record => record.projectId === projectId && !record.acceptedPartial && !record.noResults).map(record => ({
+      tabId: record.tabId, engine: record.engine, query: record.query, ...(record.languageFilter ? { languageFilter: record.languageFilter } : {}), status: record.status || 'loading', pageURL: record.currentURL || record.createdURL, canMarkNoResults: !!record.canMarkNoResults, reason: record.reason || '', ...(record.challenge ? { challenge: true } : {}), unloaded: !!record.unloaded,
       slow: record.status === 'loading' && Date.now() - record.loadingSince >= SLOW_TAB_MS
     }));
     return { revision: data.revision || 0, count: tabs.length, loaded: tabs.filter(tab => tab.status !== 'loading' && !tab.unloaded && !tab.challenge).length, blocked: tabs.filter(tab => tab.challenge).length,
@@ -207,7 +220,7 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
         data.tabs = data.tabs.filter(item => item !== record);
       } else {
         if (change.url || change.status === 'loading') {
-          delete record.acceptedPartial;
+          delete record.acceptedPartial; delete record.canMarkNoResults;
           record.revision++; record.status = 'loading'; record.loadingSince = Date.now(); record.reason = '';
         }
         updateLoading(record, { ...tab, ...(change.status ? { status: change.status } : {}), ...(change.discarded !== undefined ? { discarded: change.discarded } : {}) });
@@ -232,7 +245,7 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
         data.tabs = data.tabs.filter(item => item !== record); await write(data);
         return { outcome: 'skipped', reason: 'Tab moved to another page or query; left open.' };
       }
-      if (record.challenge || record.acceptedPartial) return { outcome: 'skipped', reason: record.reason };
+      if (record.challenge || record.acceptedPartial || record.noResults) return { outcome: 'skipped', reason: record.reason };
       if (tab.discarded || tab.status !== 'complete') return { outcome: 'skipped', reason: 'Tab is loading or unloaded; open it and retry collection.' };
       return { record: { ...record }, url: canonical(tab.url), navigation: navigation.get(record.tabId) || 0 };
     });
@@ -266,7 +279,7 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
     try {
       for (const record of records) {
         if (run.stopped) break;
-        let outcome = 'failed', saved = false, complete = false, reason;
+        let outcome = 'failed', saved = false, complete = false, reason, canMarkNoResults = false;
         try {
           const snap = await snapshot(run.projectId, record);
           if (!snap.record) { outcome = snap.outcome; reason = snap.reason; }
@@ -278,11 +291,11 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
               else { const closed = await closeSaved(run.projectId, snap, run); outcome = closed.closed ? 'closed' : 'saved'; reason = closed.reason; }
             }
           }
-        } catch (error) { reason = `${saved ? 'Results saved, but tab could not be closed: ' : ''}${error.message}`; }
+        } catch (error) { canMarkNoResults = error.code === 'no-results-collected'; reason = `${saved ? 'Results saved, but tab could not be closed: ' : ''}${error.message}`; }
         const exists = await updateBatch(run, (batch, data) => {
           if (saved && complete) remember(data, record, 'collected', 'Results saved in this project.');
           const current = data.tabs.find(item => item.token === record.token);
-          if (current && outcome !== 'closed') { current.status = current.status === 'loading' ? 'loading' : 'attention'; current.reason = reason || 'Inspect this tab, then retry collection.'; }
+          if (current && outcome !== 'closed') { current.canMarkNoResults = canMarkNoResults; current.status = current.status === 'loading' ? 'loading' : 'attention'; current.reason = reason || 'Inspect this tab, then retry collection.'; }
           batch.processed++; if (saved) batch.saved++;
           if (outcome === 'closed') batch.closed++; else if (outcome === 'skipped') batch.skipped++; else batch.leftOpen++;
         });
@@ -301,7 +314,7 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
       const state = status(data, projectId);
       if (state.loading && !loadedOnly) throw new Error('Wait for search tabs to finish loading, or close stuck tabs.');
       if (loadedOnly && state.loading && !state.tabs.some(tab => tab.slow)) throw new Error('Search tabs are still loading. Please wait.');
-      const records = data.tabs.filter(record => record.projectId === projectId && !record.acceptedPartial && (!loadedOnly || (record.status !== 'loading' && !record.unloaded)));
+      const records = data.tabs.filter(record => record.projectId === projectId && !record.acceptedPartial && !record.noResults && (!loadedOnly || (record.status !== 'loading' && !record.unloaded)));
       if (!records.length) throw new Error('No loaded project search tabs to collect.');
       const run = { id: crypto.randomUUID(), projectId, stopped: false };
       data.batch = { id: run.id, projectId, workerToken, running: true, total: records.length, processed: 0, saved: 0, closed: 0, skipped: 0, leftOpen: 0 };
@@ -342,6 +355,12 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
         record: record ? { ...record } : null, navigation: navigation.get(tabId) || 0 };
     });
   }
+  async function assertMarkerInQueue(marker) {
+    const data = await read(), expected = marker.record;
+    const record = data.tabs.find(item => item.projectId === marker.projectId && item.tabId === marker.tabId);
+    if ((expected && (!record || record.token !== expected.token || record.revision !== expected.revision)) ||
+        (!expected && record) || (navigation.get(marker.tabId) || 0) !== marker.navigation) throw new Error('The search tab changed. Check it and try again.');
+  }
   // Caller holds the background write queue and has durably saved the results.
   // Never assign ownership to a manually collected, otherwise untracked tab.
   async function markCollectedInQueue(marker, result) {
@@ -355,9 +374,9 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
     try { tab = await ext.tabs.get(marker.tabId); } catch { return; }
     const url = tab.pendingUrl || tab.url;
     if (!url || tab.status !== 'complete' || tab.discarded || canonical(url) !== marker.url || (navigation.get(marker.tabId) || 0) !== marker.navigation) return;
-    const status = result.unresolved ? 'attention' : 'collected';
-    const reason = result.unresolved ? 'Partial results saved. Some links could not be resolved; inspect this tab and retry.' : 'Results saved. This tab remains open.';
-    if (record) { record.status = status; record.reason = reason; }
+    const status = result.status === 'no-results' ? 'no-results' : result.unresolved ? 'attention' : 'collected';
+    const reason = result.status === 'no-results' ? 'No results (marked manually).' : result.unresolved ? 'Partial results saved. Some links could not be resolved; inspect this tab and retry.' : 'Results saved. This tab remains open.';
+    if (record) { record.status = status; record.reason = reason; record.noResults = status === 'no-results'; record.canMarkNoResults = false; }
     remember(data, { projectId: marker.projectId, engine: marker.engine, query: marker.query, languageFilter: marker.languageFilter }, status, reason);
     await write(data);
   }
@@ -371,5 +390,5 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
     }
     await restoreCollected(data, projectId); await write(data);
   }
-  return { open, getState, start, stop, focus, collectionMarker, markCollectedInQueue, acceptCollectedInQueue, resetInQueue };
+  return { assertMarkerInQueue, open, getState, start, stop, focus, collectionMarker, markCollectedInQueue, acceptCollectedInQueue, resetInQueue };
 }

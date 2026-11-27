@@ -26,7 +26,7 @@
   </div>
   <aside id="download-feedback-strip" class="download-feedback-strip" aria-label="Download progress and completion" hidden>
     <div class="download-feedback-inner"><div class="download-feedback-content"><p id="download-feedback-summary" role="status" aria-live="polite" aria-atomic="true"></p><progress id="header-download-progress" max="1" value="0" aria-label="Download URLs processed"></progress></div>
-    <a id="download-feedback-link" href="#review-section">View downloads</a><button id="dismiss-download-feedback" type="button" class="secondary" hidden>Dismiss</button></div>
+    <a id="download-feedback-link" href="#review-section">View downloads</a><button id="dismiss-download-feedback" type="button" class="secondary download-feedback-close" aria-label="Close download feedback" title="Close download feedback" hidden><span aria-hidden="true">×</span></button></div>
   </aside></div>
   <main>
     <header><span id="app-version" class="badge">BootCaT</span><h1>Create corpora from the web</h1>
@@ -60,7 +60,7 @@
       <div class="actions"><button id="generate-tuples" type="button" disabled>Generate tuples</button><button id="stop-tuples" type="button" class="secondary" hidden>Stop generation</button></div>
       <p class="hint">Generating again replaces the tuples below.</p>
       <p id="tuple-status" role="status" aria-live="polite"></p>
-      <label for="tuples">Tuples (editable, one per line)</label>
+      <label id="tuples-label" for="tuples">Tuples (editable, one per line)</label>
       <textarea id="tuples" spellcheck="false" disabled placeholder="Generate tuples above, then edit them here."></textarea>
       <p class="hint">Each tuple will become a query to the selected search engine</p>
       <button id="prepare-queries" type="button" disabled>Create search queries</button>

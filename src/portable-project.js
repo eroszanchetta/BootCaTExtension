@@ -52,6 +52,7 @@ export function validateProjectSnapshot(snapshot) {
   if (!Array.isArray(collections)) fail('invalid search results.');
   for (const c of collections) {
     if (!object(c) || !['id', 'engine', 'query', 'pageURL'].every(key => string(c[key])) || !web(c.pageURL) || !Array.isArray(c.results) || !integer(c.unresolved)) fail('invalid search collection.');
+    if (c.status === 'no-results' && (c.manual !== true || c.results.length || c.unresolved)) fail('invalid manual no-results outcome.');
     for (const r of c.results) if (!object(r) || !web(r.url) || !string(r.title) || !integer(r.positionOnPage)) fail('invalid search result.');
   }
   const files = new Map(snapshot.stores.files.map(r => [r.name, r])), texts = new Map(snapshot.stores.texts.map(r => [r.url, r]));

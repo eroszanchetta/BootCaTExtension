@@ -7,13 +7,14 @@
   const previous = globalThis.__bootcatFloatingControl;
   if (previous) { previous.refresh(); return; }
   let host, root, primary, feedback, tooltip, current, busy = false, flash = false, note = '', refreshRevision = 0, generation = 0, flashTimer;
-  let documentURL = location.href, collectionResult = null, collectionFailed = false;
+  let documentURL = location.href, collectionResult = null, collectionFailed = false, canMarkNoResults = false, markedNoResults = false;
   const readResults = null; // Shared collector embedded by the build.
-  const ddgAdapter = null;
+  const ENGINES = null;
+  const pageAdapter = null;
   let observedKey, observedURL = location.href, refreshTimer;
   function pageKey() {
-    if (!/^(www\.|html\.)?duckduckgo\.com$/.test(location.hostname)) return '';
-    return readResults(ddgAdapter)?.resultSetKey || '';
+    const adapter = pageAdapter(location.href);
+    return adapter ? readResults(adapter)?.resultSetKey || '' : '';
   }
   function watchPage() {
     if (!current?.enabled || refreshTimer) return;
@@ -23,7 +24,7 @@
       const key = pageKey();
       if (location.href !== observedURL || key !== observedKey) {
         observedURL = location.href; observedKey = key;
-        generation++; busy = flash = false; note = ''; collectionResult = null; collectionFailed = false; clearTimeout(flashTimer);
+        generation++; busy = flash = false; note = ''; collectionResult = null; collectionFailed = canMarkNoResults = markedNoResults = false; clearTimeout(flashTimer);
         refresh();
       } else if (host && !host.isConnected) render();
     }, 200);
@@ -89,7 +90,7 @@
     label(primary, busy ? 'Saving…' : flash || current.saved ? 'Saved in BootCaT' : current.action === 'collect' ? `Add URLs from this tab to corpus${current.closeAfterSuccess ? ' and close tab' : ''}` : `Add this page to corpus${current.closeAfterSuccess ? ' and close tab' : ''}`);
     feedback.replaceChildren();
     const text = document.createElement('div'); text.textContent = note; feedback.append(text);
-    if (note && current.action === 'collect') {
+    if (note && current.action === 'collect' && !markedNoResults) {
       const choices = document.createElement('div'); choices.className = 'choices';
       const review = document.createElement('button'); review.type = 'button';
       review.textContent = collectionResult?.unresolved ? 'Continue with collected URLs' : collectionFailed ? 'Return to BootCaT' : 'Review URLs';
@@ -99,9 +100,21 @@
         catch (error) { note = error.message; render(); }
       });
       choices.append(review);
+      if (canMarkNoResults) {
+        const mark = document.createElement('button'); mark.type = 'button'; mark.textContent = 'Mark as no results';
+        mark.addEventListener('click', async event => {
+          if (!event.isTrusted || mark.disabled || busy) return; event.stopPropagation(); mark.disabled = true;
+          const token = generation; busy = true; primary.disabled = true;
+          try {
+            await send('floating-mark-no-results'); if (token !== generation) return; busy = false; canMarkNoResults = collectionFailed = false; markedNoResults = true;
+            note = 'Marked as no results.'; flash = true; render();
+            clearTimeout(flashTimer); flashTimer = setTimeout(() => { note = ''; flash = false; refresh(); }, 1600);
+          } catch(error) { if (token === generation) { busy = false; note = error.message; render(); } }
+        }); choices.append(mark);
+      }
       if (collectionResult?.unresolved || collectionFailed) {
         const dismiss = document.createElement('button'); dismiss.type = 'button'; dismiss.textContent = 'Review search tab';
-        dismiss.addEventListener('click', event => { if (event.isTrusted) { event.stopPropagation(); note = ''; collectionResult = null; collectionFailed = false; render(); } }); choices.append(dismiss);
+        dismiss.addEventListener('click', event => { if (event.isTrusted) { event.stopPropagation(); note = ''; collectionResult = null; collectionFailed = canMarkNoResults = markedNoResults = false; render(); } }); choices.append(dismiss);
       }
       feedback.append(choices);
     }
@@ -110,7 +123,7 @@
   }
   async function send(type, extra = {}) {
     const result = await ext.runtime.sendMessage({ type, projectId: current?.projectId, ...extra, pageURL: location.href });
-    if (!result?.ok) throw new Error(result?.error || 'BootCaT could not complete this action.');
+    if (!result?.ok) throw Object.assign(new Error(result?.error || 'BootCaT could not complete this action.'), {code:result?.code});
     return result;
   }
   async function command(type) {
@@ -120,7 +133,7 @@
   }
   async function perform() {
     if (busy || current?.saved || !current?.enabled) return;
-    const token = generation; busy = true; flash = false; note = ''; collectionResult = null; collectionFailed = false; render();
+    const token = generation; busy = true; flash = false; note = ''; collectionResult = null; collectionFailed = canMarkNoResults = markedNoResults = false; render();
     try {
       const result = await send(current.action === 'collect' ? 'floating-collect' : 'floating-save-page');
       if (token !== generation) return;
@@ -129,7 +142,7 @@
       note = [collectionResult ? summarize(result) : 'Saved in BootCaT', result.closeWarning || result.workspaceWarning || result.linkWarning || ''].filter(Boolean).join(' ');
       render(); clearTimeout(flashTimer);
       if (current.action !== 'collect' && !result.closeWarning && !result.workspaceWarning && !result.unresolved) flashTimer = setTimeout(() => { flash = false; note = ''; refresh(); }, 1600);
-    } catch (error) { if (token === generation) { busy = false; flash = false; collectionFailed = true; note = error.message.slice(0, 400); render(); } }
+    } catch (error) { if (token === generation) { busy = false; flash = false; collectionFailed = true; canMarkNoResults = error.code === 'no-results-collected'; note = error.message.slice(0, 400); render(); } }
   }
   async function refresh() {
     const request = ++refreshRevision, requestURL = location.href, requestKey = pageKey();
@@ -143,7 +156,7 @@
       if (!reply?.ok) { current = { enabled: false }; remove(); return; }
       const next = reply.state;
       const key = pageKey();
-      if (location.href !== documentURL || current?.projectId !== next?.projectId || (observedKey !== undefined && key !== observedKey)) { generation++; busy = flash = false; note = ''; collectionResult = null; collectionFailed = false; clearTimeout(flashTimer); documentURL = location.href; }
+      if (location.href !== documentURL || current?.projectId !== next?.projectId || (observedKey !== undefined && key !== observedKey)) { generation++; busy = flash = false; note = ''; collectionResult = null; collectionFailed = canMarkNoResults = markedNoResults = false; clearTimeout(flashTimer); documentURL = location.href; }
       current = next; observedURL = location.href; observedKey = key; render();
     } catch { current = { enabled: false }; remove(); }
   }

@@ -10,7 +10,7 @@ const el = id => document.getElementById(id);
 const collect = el('collect'), savePage = el('save-page');
 const feedback = el('feedback'), pageFeedback = el('page-feedback'), status = el('popup-status');
 let project, activeTab, engine, initialized = false, reloading = false;
-let collectedResult = null, acceptedPartial = false;
+let collectedResult = null, acceptedPartial = false, canMarkNoResults = false;
 let collecting = false, savingPage = false, alreadyCollected = false, unresolved = 0;
 let pageState = 'checking', pageRevision = 0, collectionRevision = 0, projectRevision = 0;
 let pageError = '', collectionError = '', generalError = '', pageWarning = '', collectionWarning = '';
@@ -56,7 +56,7 @@ function render() {
   savePage.textContent = savingPage ? 'Saving…' : 'Add this page to corpus';
   message(feedback, ''); message(pageFeedback, '');
   el('collection-choices').hidden = true;
-  for (const id of ['review-urls', 'continue-collected', 'review-search-tab', 'return-workspace']) el(id).hidden = true;
+  for (const id of ['review-urls', 'continue-collected', 'review-search-tab', 'return-workspace', 'mark-no-results', 'rerun-no-results']) el(id).hidden = true;
   if (reloading) { message(status, 'Project changed. Refreshing…'); return; }
   if (generalError) { message(status, generalError); return; }
   if (!initialized) { message(status, 'Checking project and current tab…'); return; }
@@ -66,6 +66,10 @@ function render() {
   el('close-collected-option').hidden = !engine;
   el('close-captured-option').hidden = !!engine;
   if (engine) {
+    if (collectedResult?.status === 'no-results') {
+      el('rerun-no-results').disabled = collecting;
+      message(feedback, ['No results (marked manually).', collectionError].filter(Boolean).join(' '), true); el('collection-choices').hidden = false; el('rerun-no-results').hidden = false; return;
+    }
     const partial = alreadyCollected && unresolved && !acceptedPartial;
     if (alreadyCollected && (!unresolved || acceptedPartial) && !collecting) {
       message(feedback, [collectionSummary(collectedResult), collectionWarning].filter(Boolean).join(' '), true);
@@ -76,6 +80,7 @@ function render() {
     }
     if (!collecting && (alreadyCollected || collectionError)) {
       el('collection-choices').hidden = false;
+      el('mark-no-results').hidden = !canMarkNoResults;
       el('review-urls').hidden = !alreadyCollected || !!partial;
       el('continue-collected').hidden = !partial;
       el('review-search-tab').hidden = !partial && !collectionError;
@@ -111,9 +116,10 @@ async function refreshPageState() {
 function updateCollectionState(collections) {
   const saved = engine && matchingCollection(collections, engine.id, activeTab?.url);
   applyCollectionState(saved);
-  if (engine?.id === 'duckduckgo') refreshSearchCollection();
+  if (engine?.id === 'duckduckgo' || collections.some(item => item.status === 'no-results' && item.engine === engine?.id)) refreshSearchCollection();
 }
 function applyCollectionState(saved) {
+  canMarkNoResults = false;
   alreadyCollected = !!saved; unresolved = saved?.unresolved || 0; collectedResult = saved; acceptedPartial = !!saved?.acceptedPartial;
   if (!collecting) { collectionError = ''; collectionWarning = saved?.acceptedPartial ? '' : collectionLinkWarning(saved); }
   render();
@@ -175,7 +181,8 @@ collect.addEventListener('click', async () => {
   try {
     const result = await ext.runtime.sendMessage({ type: 'collect', projectId, tabId: activeTab.id });
     if (reloading || project.id !== projectId) return;
-    if (!result?.ok) throw new Error(result?.error || 'Collection failed. Try again.');
+    if (!result?.ok) { canMarkNoResults = result?.code === 'no-results-collected'; throw new Error(result?.error || 'Collection failed. Try again.'); }
+    canMarkNoResults = false;
     alreadyCollected = true; collectedResult = result; acceptedPartial = false; unresolved = result.unresolved || 0; collectionWarning = result.closeWarning || result.workspaceWarning || result.linkWarning || '';
   } catch (error) { if (!reloading && project.id === projectId) collectionError = error.message; }
   finally { collecting = false; render(); }
@@ -204,6 +211,27 @@ async function reviewURLs(acceptPartial = false) {
     window.close();
   } catch (error) { collectionError = error.message; render(); }
 }
+el('mark-no-results').addEventListener('click', async () => {
+  if (!canMarkNoResults || collecting || reloading) return;
+  const projectId = project.id; collecting = true; render();
+  try {
+    const reply = await ext.runtime.sendMessage({type:'mark-search-no-results',projectId,tabId:activeTab.id,pageURL:activeTab.url});
+    if (reloading || project.id !== projectId) return;
+    if (!reply?.ok) throw new Error(reply?.error || 'Could not mark this query.');
+    applyCollectionState(reply.collection);
+  } catch(error) { if (!reloading && project.id === projectId) collectionError = error.message; }
+  finally { collecting = false; render(); }
+});
+el('rerun-no-results').addEventListener('click', async () => {
+  if (collecting || reloading || collectedResult?.status !== 'no-results') return;
+  collecting = true; render();
+  try {
+    const reply = await ext.runtime.sendMessage({type:'open-project-search',projectId:project.id,engine:engine.id,query:collectedResult.query,active:true});
+    if (!reply?.ok) throw new Error(reply?.error || 'Could not rerun this query.');
+    window.close();
+  } catch(error) { collectionError = error.message; }
+  finally { collecting = false; render(); }
+});
 el('review-urls').addEventListener('click', () => reviewURLs());
 el('continue-collected').addEventListener('click', () => reviewURLs(true));
 el('review-search-tab').addEventListener('click', async () => {

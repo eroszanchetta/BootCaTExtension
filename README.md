@@ -108,6 +108,8 @@ npm run dev:firefox
 5. Choose Readability (default) or Defuddle before starting the batch.
 6. Download, review text previews and inclusion checkboxes, then Save ZIP.
 
+If a collection finds nothing, check the search tab and use **Mark as no results** to record an empty query manually. **No results** is distinct from **Collected**: it skips subsequent batch runs, keeps the tab open, survives portable saves, and offers **Rerun query**. No provider-message heuristic automatically marks a query empty.
+
 Google, DuckDuckGo and Ecosia use separate adapters. DuckDuckGo collection excludes Related Searches and recognizes new results added at the same page address; partial results stay available for review. See [2.2 investigation and boundaries](docs/DUCKDUCKGO-2.2.md). In the Google layouts tested so far, sign-in was necessary to expose usable destination URLs. Opaque redirects are skipped with a warning. Switching providers retains earlier collections and provenance.
 
 The ZIP retains originals in `pages/`, selected UTF-8 texts in `corpus/`, raw PDF extractions in `raw-pdf/`, and `results.json`, `extraction.json` and `searches.json`. Raw PDF text is separate from corpus text so it does not duplicate the selected corpus. Project drafts, originals, extracted texts, review metadata and inclusion decisions persist locally in this browser. Reopen the workspace to restore them; export a ZIP backup before clearing browser data or uninstalling the extension. PDF and DOCX extraction is included; see document-format notes below.

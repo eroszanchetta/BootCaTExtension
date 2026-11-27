@@ -21,5 +21,5 @@ export function addCollection(collections, incoming, settings = DEFAULT_SETTINGS
 export function matchingCollection(collections, engine, pageURL, snapshot) {
   const canonical = value => { try { const url = new URL(value); url.hash = ''; return url.href; } catch { return null; } };
   return collections.find(item => item.engine === engine && canonical(item.pageURL) === canonical(pageURL) &&
-    (engine !== 'duckduckgo' || (snapshot?.resultSetKey && item.resultSetKey === snapshot.resultSetKey))) || null;
+    (engine !== 'duckduckgo' && item.status !== 'no-results' || (snapshot?.resultSetKey && item.resultSetKey === snapshot.resultSetKey))) || null;
 }

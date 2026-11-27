@@ -80,3 +80,19 @@ test('a failed replacement rolls back clears and writes in every project store',
     assert.equal((await store.snapshotStoredProject(snapshot.project)).stores.pages.length, 1);
   } finally { delete globalThis.indexedDB; }
 });
+
+test('portable projects preserve a manual no-results outcome without inventing URLs or documents', async () => {
+  globalThis.indexedDB=new IDBFactory();
+  try {
+    const snapshot=await projectFixture();
+    const searches=snapshot.stores.meta.find(item=>item.key==='searches');
+    const empty={id:'manual-empty',engine:'duckduckgo',query:'gynoecium corolla',pageURL:'https://duckduckgo.com/?q=gynoecium+corolla',status:'no-results',manual:true,unresolved:0,results:[],resultSetKey:'[[],0,[]]'};
+    searches.collections.push(empty);
+    const restored=await openProjectArchive(await makeProjectArchive(snapshot));
+    assert.deepEqual(restored.stores.meta.find(item=>item.key==='searches').collections.at(-1),empty);
+    const count=snapshot.stores.documents.length;
+    assert.equal(restored.stores.documents.length,count);
+    empty.results.push({url:'https://example.org/',title:'Not empty',positionOnPage:1});
+    await assert.rejects(makeProjectArchive(snapshot),/invalid manual no-results/);
+  } finally {delete globalThis.indexedDB;}
+});

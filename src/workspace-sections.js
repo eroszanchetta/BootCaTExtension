@@ -34,3 +34,10 @@ export function setProjectSectionState(active) {
   const panel = document.getElementById('project-section')?.querySelector('details.workspace-panel');
   if (panel) panel.open = true;
 }
+
+export function scrollWorkspaceTarget(id) {
+  const target = document.getElementById(id);
+  const reveal = () => { if (target && target.isConnected !== false) target.scrollIntoView({block:'start',behavior:'instant'}); };
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => requestAnimationFrame(reveal));
+  else reveal();
+}

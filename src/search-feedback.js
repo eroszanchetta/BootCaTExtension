@@ -11,10 +11,11 @@ export function collectionLinkWarning(result) {
 export function collectionFailure(result) {
   if (result.challenge) return challengeMessage(result.engine);
   if (result.engine === 'google' && result.unreadableGoogle && result.unreadableGoogle === result.unresolved) return GOOGLE_LINK_MESSAGE;
-  return 'No search results could be collected. Open the tab to check the page, or switch to a different search engine.';
+  return 'No results collected. Check the search tab.';
 }
 
 export function collectionSummary(result) {
+  if (result?.status === 'no-results') return 'No results (marked manually).';
   const count = result?.added ?? result?.results?.length ?? result?.count ?? 0;
   const duplicates = result?.duplicates || 0;
   return `${count.toLocaleString()} URL${count === 1 ? '' : 's'} added to your project.${duplicates ? ` ${duplicates.toLocaleString()} already in your project.` : ''}`;
