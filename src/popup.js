@@ -177,7 +177,7 @@ async function initialize() {
 collect.addEventListener('click', async () => {
   if (collect.disabled || reloading || !namedProject() || !engine) return;
   const projectId = project.id;
-  collecting = true; collectionError = collectionWarning = ''; render();
+  searchRead++; collecting = true; collectionError = collectionWarning = ''; render();
   try {
     const result = await ext.runtime.sendMessage({ type: 'collect', projectId, tabId: activeTab.id });
     if (reloading || project.id !== projectId) return;
@@ -213,7 +213,7 @@ async function reviewURLs(acceptPartial = false) {
 }
 el('mark-no-results').addEventListener('click', async () => {
   if (!canMarkNoResults || collecting || reloading) return;
-  const projectId = project.id; collecting = true; render();
+  const projectId = project.id; searchRead++; collecting = true; render();
   try {
     const reply = await ext.runtime.sendMessage({type:'mark-search-no-results',projectId,tabId:activeTab.id,pageURL:activeTab.url});
     if (reloading || project.id !== projectId) return;
@@ -224,7 +224,7 @@ el('mark-no-results').addEventListener('click', async () => {
 });
 el('rerun-no-results').addEventListener('click', async () => {
   if (collecting || reloading || collectedResult?.status !== 'no-results') return;
-  collecting = true; render();
+  searchRead++; collecting = true; render();
   try {
     const reply = await ext.runtime.sendMessage({type:'open-project-search',projectId:project.id,engine:engine.id,query:collectedResult.query,active:true});
     if (!reply?.ok) throw new Error(reply?.error || 'Could not rerun this query.');
