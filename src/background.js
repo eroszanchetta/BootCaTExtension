@@ -1,3 +1,4 @@
+import { languageFilterFromURL } from './search-language.js';
 import { createDownloadFeedback } from './download-feedback.js';
 import { collectionFailure, collectionLinkWarning } from './search-feedback.js';
 import { stageProject, readStagedProject, removeStagedProject } from './project-transfer.js';
@@ -91,7 +92,7 @@ async function collectPage(tabId, projectId, expected, expectedURL) {
   if (expectedURL && result?.pageURL && canonicalURL(result.pageURL) !== canonicalURL(expectedURL)) throw new Error('The tab changed during collection. Collect the current page again.');
   if (!result || result.error) throw new Error(result?.error || 'Could not read this results page.');
   if (expected && (!matchesProjectSearch(expected.record, result.pageURL) || new URL(result.pageURL).href.split('#')[0] !== expected.url)) throw new Error('The tab changed during collection; left open.');
-  if (!result.results.length) throw new Error(collectionFailure(result));
+  if (!result.results.length) throw Object.assign(new Error(collectionFailure(result)), { code: !result.challenge && !result.unresolved ? 'no-results-collected' : 'search-unreadable' });
   return serialize(async () => {
     await assertProject(projectId);
     const { collections = [] } = await ext.storage.local.get('collections');
@@ -105,6 +106,32 @@ async function collectPage(tabId, projectId, expected, expectedURL) {
     const notice = await workspaceNotice();
     return { count: result.results.length, added, duplicates, collectionId: collection.id, resultSetKey: result.resultSetKey, unresolved: result.unresolved, engine: adapter.name, linkWarning: collectionLinkWarning(result), ...notice };
   });
+}
+async function markNoResults(message) {
+  const project = await serialize(requireProject);
+  if (project.id !== message.projectId) throw new Error('The project changed.');
+  const tab = await ext.tabs.get(message.tabId), adapter = adapterForURL(tab.url);
+  if (!adapter || !message.pageURL || canonicalURL(message.pageURL) !== canonicalURL(tab.url) || tab.status !== 'complete' || tab.discarded) throw new Error('The search tab changed or is loading. Check it and try again.');
+  let changed = false;
+  const watch = (id, change) => { if (id === tab.id && (change.url || change.status === 'loading')) changed = true; };
+  ext.tabs.onUpdated?.addListener(watch);
+  try {
+    const marker = await searchTabs.collectionMarker(project.id, tab.id, tab.url);
+    const result = (await ext.scripting.executeScript({ target: { tabId: tab.id }, func: extractResults, args: [adapter] }))[0]?.result;
+    if (!result || result.error || result.challenge || result.unresolved || result.results?.length !== 0 || canonicalURL(result.pageURL) !== canonicalURL(tab.url)) throw new Error('Check the search tab. Results or unreadable links may still be present.');
+    return await serialize(async () => {
+      await assertProject(project.id);
+      const current = await ext.tabs.get(tab.id);
+      if (changed || current.status !== 'complete' || current.discarded || canonicalURL(current.pendingUrl || current.url) !== canonicalURL(tab.url)) throw new Error('The search tab changed. Check it and try again.');
+      const { collections = [] } = await ext.storage.local.get('collections');
+      if (collections.some(item => item.results.length && matchesProjectSearch({engine:adapter.id,query:result.query,languageFilter:languageFilterFromURL(adapter.id,tab.url)},item.pageURL))) throw new Error('This query already has saved results. Review them before marking an empty outcome.');
+      await searchTabs.assertMarkerInQueue(marker);
+      const collection = { ...result, id: crypto.randomUUID(), status: 'no-results', manual: true, collectedAt: new Date().toISOString() };
+      await ext.storage.local.set({ collections: addCollection(collections, collection, await readSettings(ext.storage.local)) });
+      await searchTabs.markCollectedInQueue(marker, collection);
+      return { collection };
+    });
+  } finally { ext.tabs.onUpdated?.removeListener?.(watch); }
 }
 searchTabs = createProjectSearchTabs({ ext, serialize, assertProject, collectPage });
 
@@ -153,14 +180,14 @@ async function runPageAction(message) {
 async function currentCollection(tab) {
   const engine = adapterForURL(tab.url);
   if (!engine) return null;
+  const { collections = [] } = await ext.storage.local.get('collections');
   let snapshot;
-  if (engine.id === 'duckduckgo') {
+  if (engine.id === 'duckduckgo' || collections.some(item => item.status === 'no-results' && item.engine === engine.id && canonicalURL(item.pageURL) === canonicalURL(tab.url))) {
     try {
       snapshot = (await ext.scripting.executeScript({ target: { tabId: tab.id }, func: extractResults, args: [engine] }))[0]?.result;
       if (!snapshot || canonicalURL(snapshot.pageURL) !== canonicalURL(tab.url)) return null;
     } catch { return null; } // Unreadable pages must keep the retry action available.
   }
-  const { collections = [] } = await ext.storage.local.get('collections');
   return matchingCollection(collections, engine.id, tab.url, snapshot);
 }
 async function floatingState(tabId) {
@@ -193,6 +220,7 @@ async function handleFloating(message, sender) {
     const preferences = await serialize(() => saveCollectionControls(ext.storage.local, { floatingEnabled: false }));
     await floatingControls.sync(); return { preferences };
   }
+  if (message.type === 'floating-mark-no-results') return markNoResults({ ...message, tabId: tab.id });
   if (message.type === 'floating-open-workspace') return handle({ type: 'open-workspace' });
   if (message.type === 'floating-review-urls') {
     if (message.acceptPartial) await handle({ type: 'accept-collected-results', projectId: message.projectId, pageURL: tab.url });
@@ -222,6 +250,7 @@ async function handle(message) {
     const current = await readSettingsState(ext.storage.local);
     return { settings: await saveSettings(ext.storage.local, { ...current.values, defaultEngine: message.engine }, current.revision) };
   });
+  if (message.type === 'mark-search-no-results') return markNoResults(message);
   if (message.type === 'open-project-search') return searchTabs.open(message);
   if (message.type === 'get-project-search-tabs') return searchTabs.getState(message.projectId);
   if (message.type === 'collect-project-search-tabs') return searchTabs.start(message.projectId, { loadedOnly: message.loadedOnly === true });
@@ -334,9 +363,9 @@ async function handle(message) {
 ext.runtime.onMessage.addListener((message, sender, respond) => {
   if (sender.id !== ext.runtime.id || message?.type === 'bootcat-review-urls') return;
   const ownUI = sender.url?.startsWith(ext.runtime.getURL(''));
-  const floatingTypes = new Set(['get-floating-state', 'floating-hide', 'floating-open-workspace', 'floating-review-urls', 'floating-collect', 'floating-save-page']);
+  const floatingTypes = new Set(['get-floating-state', 'floating-mark-no-results', 'floating-hide', 'floating-open-workspace', 'floating-review-urls', 'floating-collect', 'floating-save-page']);
   const content = !ownUI && sender.frameId === 0 && Number.isInteger(sender.tab?.id) && /^https?:\/\//.test(sender.url || '') && floatingTypes.has(message?.type);
   if (!ownUI && !content) return;
-  (content ? handleFloating(message, sender) : handle(message)).then(data => respond({ ok: true, ...data }), error => respond({ ok: false, error: error.message }));
+  (content ? handleFloating(message, sender) : handle(message)).then(data => respond({ ok: true, ...data }), error => respond({ ok: false, error: error.message, ...(error.code ? { code: error.code } : {}) }));
   return true; // Keep the asynchronous reply channel open.
 });

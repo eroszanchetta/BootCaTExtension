@@ -4,7 +4,7 @@ import { queryKey, queryPlan } from './query-lifecycle.js';
 import { getExtensionAPI } from './extension-api.js';
 import { confirmAction } from './dialogs.js';
 import { SEARCH_FILE_TYPES, DEFAULT_EXCLUDED_SITES, normalizeSearchFilters } from './search-filters.js';
-import { openWorkspaceSection } from './workspace-sections.js';
+import { openWorkspaceSection, scrollWorkspaceTarget } from './workspace-sections.js';
 import { openProjectSearch } from './search-tabs-client.js';
 import { ENGINES, searchURL, buildSearchQuery } from './engines.js';
 import { parseSeeds, parseQueries, generateTuples, combinationCount } from './tuples.js';
@@ -54,7 +54,7 @@ export function initSeedsUI({ minimumSeeds = DEFAULT_SETTINGS.minimumSeeds, draf
     const plan = queryPlan(prepared, engineID(), tabState, languageFilter()), button = el('open-all-queries');
     button.disabled = busy() || pendingOpens > 0 || !tabStateReady || filterPending || !filtersValid || !plan.missing.length;
     button.textContent = opening ? 'Opening queries…' : prepared.length && !tabStateReady ? 'Checking query tabs…' : prepared.length && !plan.missing.length ? 'No queries to open' : plan.started ? `Run missing queries (${plan.missing.length.toLocaleString()})` : 'Run all queries';
-    el('query-run-hint').textContent = !prepared.length ? '' : !tabStateReady ? 'Checking search tabs…' : !plan.missing.length ? (plan.open ? 'All queries are open or collected.' : 'All search results have been collected.') : plan.started ? '' : 'Queries already open or collected will be skipped.';
+    el('query-run-hint').textContent = !prepared.length ? '' : !tabStateReady ? 'Checking search tabs…' : !plan.missing.length ? (plan.open ? 'All queries are open or completed.' : 'All queries are completed.') : plan.started ? '' : 'Queries already open or completed will be skipped.';
     el('stop-tuples').hidden = !generating; el('stop-query-tabs').hidden = !opening;
     el('engine').disabled = opening;
     el('tuple-length').disabled = busy() || !parseSeeds(el('seeds').value).length;
@@ -86,12 +86,15 @@ export function initSeedsUI({ minimumSeeds = DEFAULT_SETTINGS.minimumSeeds, draf
       const loading = tabs.filter(tab => tab.status === 'loading').length;
       const attention = tabs.filter(tab => tab.status === 'attention');
       const status = loading ? 'loading' : attention.length ? 'attention' : tabs.length ? (tabs.every(tab => tab.status === 'collected') ? 'collected' : 'loaded') : previous?.status || 'unopened';
-      const labels = { unopened: '○ Not opened', loading: '◌ Loading…', loaded: '● Loaded', attention: '⚠ Needs attention', collected: '✓ Collected', closed: '○ Closed without collecting' };
+      const labels = { unopened: '○ Not opened', loading: '◌ Loading…', loaded: '● Loaded', attention: '⚠ Needs attention', collected: '✓ Collected', 'no-results': '— No results', closed: '○ Closed without collecting' };
       row.badge.textContent = labels[status] + (tabs.length > 1 ? ` (${tabs.length} tabs; ${loading} loading)` : '');
       row.badge.dataset.status = status;
       row.badge.title = attention[0]?.reason || tabs.find(tab => tab.status === status)?.reason || previous?.reason || (status === 'loaded' ? 'Loading finished; results will be checked when collected.' : '');
       row.tabId = (attention[0] || tabs[0])?.tabId;
       row.inspect.hidden = !tabs.length;
+      row.mark.hidden = !attention.some(tab => tab.canMarkNoResults);
+      row.pageURL = attention[0]?.pageURL || tabs[0]?.pageURL;
+      row.rerun.hidden = status !== 'no-results';
     }
     controls();
   }
@@ -155,7 +158,11 @@ export function initSeedsUI({ minimumSeeds = DEFAULT_SETTINGS.minimumSeeds, draf
       for (const [key, value] of Object.entries({ viewBox: '0 0 24 24', width: '18', height: '18', fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' })) icon.setAttribute(key, value);
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttribute('d', 'M14 3h7v7M10 14 21 3M21 14v7H3V3h7'); icon.append(path); inspect.append(icon);
-      const row = { query, engine: engineID(), languageFilter: languageFilter(), badge, inspect, link }; queryRows.push(row);
+      const mark = document.createElement('button'), rerun = document.createElement('button');
+      mark.type = rerun.type = 'button'; mark.className = rerun.className = 'secondary query-tab-action';
+      mark.textContent = 'Mark as no results'; rerun.textContent = 'Rerun query';
+      rerun.addEventListener('click', open);
+      const row = { mark, rerun, query, engine: engineID(), languageFilter: languageFilter(), badge, inspect, link }; queryRows.push(row);
       inspect.addEventListener('click', async () => {
         if (!row.tabId || destroyed) return;
         try {
@@ -163,7 +170,17 @@ export function initSeedsUI({ minimumSeeds = DEFAULT_SETTINGS.minimumSeeds, draf
           if (!reply?.ok) throw new Error(reply?.error || 'Could not show this tab.');
         } catch (error) { if (!destroyed) el('query-status').textContent = error.message; }
       });
-      item.append(badge, inspect, link); body.append(item);
+      mark.addEventListener('click', async () => {
+        if (destroyed || !row.tabId || mark.disabled) return;
+        mark.disabled = true;
+        try {
+          const reply = await getExtensionAPI().runtime.sendMessage({type:'mark-search-no-results',projectId:getProjectId(),tabId:row.tabId,pageURL:row.pageURL});
+          if (!reply?.ok) throw new Error(reply?.error || 'Could not mark this query.');
+          await refreshQueryState();
+        } catch(error) { if (!destroyed) el('query-status').textContent = error.message; }
+        finally { mark.disabled = false; }
+      });
+      item.append(badge, inspect, link, mark, rerun); body.append(item);
     }
     body.scrollTop = scroll; updateTabState(tabState, { authoritative: false }); updateLinks();
     el('query-summary').textContent = prepared.length ? `${prepared.length.toLocaleString()} queries for ${engineName()}. Click a query to open its search in a new tab.` : 'No search queries prepared yet.';
@@ -208,6 +225,7 @@ export function initSeedsUI({ minimumSeeds = DEFAULT_SETTINGS.minimumSeeds, draf
       el('tuples').value = result.text; discardQueries('', { tuples: result.text });
       el('tuple-status').textContent = `${result.generated.toLocaleString()} unique tuples generated.${result.reduced ? ` Only ${BigInt(result.total).toLocaleString()} distinct combinations are possible with these settings.` : ''} Edit them below, then create search queries.`;
       el('query-status').textContent = ''; seedCount(); render();
+      openWorkspaceSection('seeds-section'); scrollWorkspaceTarget('tuples-label');
     } catch (error) {
       if (!destroyed) el('tuple-status').textContent = controller.signal.aborted ? 'Generation stopped. Previous tuples have been kept.' : error.message;
     } finally { generating = false; controller = null; if (!destroyed) controls(); }

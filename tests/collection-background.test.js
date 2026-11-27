@@ -8,7 +8,7 @@ import { adapterForURL } from '../src/engines.js';
 const event = () => ({ listeners: [], addListener(fn) { this.listeners.push(fn); }, emit(...args) { for (const fn of this.listeners) fn(...args); } });
 async function fixture(namespace, label) {
   globalThis.indexedDB = new IDBFactory();
-  let listener, nextId = 10, captures = 0, unresolved = 0, refuseClose = false;
+  let listener, nextId = 10, captures = 0, unresolved = 0, refuseClose = false, emptyResults = false, challenge = false;
   const local = {}, session = {}, removed = [], changed = event(), tabs = new Map([[1, { id: 1, url: 'https://example.org/article', status: 'complete' }], [2, { id: 2, url: 'https://other.test', status: 'complete' }]]);
   const origin = `${namespace === 'browser' ? 'moz' : 'chrome'}-extension://controls/`;
   const area = (values, name) => ({ get: async key => key === null ? structuredClone(values) : { [key]: structuredClone(values[key]) }, set: async patch => { const changes = {}; for (const [key, value] of Object.entries(patch)) changes[key] = { oldValue: values[key], newValue: value }; Object.assign(values, structuredClone(patch)); changed.emit(changes, name); }, remove: async keys => { for (const key of keys) delete values[key]; } });
@@ -27,14 +27,14 @@ async function fixture(namespace, label) {
     },
     scripting: { executeScript: async ({ target, func }) => {
       const tab = tabs.get(target.tabId);
-      if (func.name === 'extractResults') return [{ result: { engine: adapterForURL(tab.url).id, pageURL: tab.url, query: new URL(tab.url).searchParams.get('q'), unresolved, resultSetKey: JSON.stringify([tab.resultSuffix || '', unresolved]), results: [{ url: 'https://corpus.test/article', title: 'Article' }] } }];
+      if (func.name === 'extractResults') return [{ result: { engine: adapterForURL(tab.url).id, pageURL: tab.url, query: new URL(tab.url).searchParams.get('q'), unresolved, challenge, resultSetKey: JSON.stringify([tab.resultSuffix || '', unresolved, emptyResults]), results: emptyResults ? [] : [{ url: 'https://corpus.test/article', title: 'Article' }] } }];
       captures++; return [{ result: { url: tab.url, html: '<html><body><p>Safely stored original</p></body></html>', capturedAt: new Date().toISOString() } }];
     } }
   };
   await import(`../src/background.js?collection-controls=${namespace}-${label}`);
   const send = (message, sender = { id: 'controls', url: origin + 'popup.html' }) => new Promise(resolve => { if (listener(message, sender, resolve) !== true) resolve(undefined); });
   const content = (message, patch = {}) => send(message, { id: 'controls', url: tabs.get(1)?.url || 'https://example.org/article', tab: { id: 1 }, frameId: 0, ...patch });
-  return { send, content, tabs, local, removed, ext, captures: () => captures, setPartial(value) { unresolved = value; }, refuseClosing() { refuseClose = true; } };
+  return { send, content, tabs, local, removed, ext, captures: () => captures, setEmpty(value=true) { emptyResults = value; }, setChallenge(value) { challenge=value; }, setPartial(value) { unresolved = value; }, refuseClosing() { refuseClose = true; } };
 }
 for (const namespace of ['chrome', 'browser']) {
   test(`${namespace}: popup and floating actions share durable save/close preferences and distrust page-supplied tab IDs`, async () => {
@@ -147,4 +147,34 @@ for (const namespace of ['chrome','browser']) test(`${namespace}: DDG popup and 
     assert.equal((await app.content({type:'get-floating-state',pageURL:originalURL},{url:originalURL})).ok,false, 'stale action URL is rejected');
     assert.equal((await app.content({type:'get-floating-state',pageURL:app.tabs.get(1).url},{url:'https://other.test/'})).ok,false, 'cross-origin stale document is rejected');
   } finally { delete globalThis[namespace]; delete globalThis.indexedDB; }
+});
+
+for (const namespace of ['chrome','browser']) for (const engine of ['google','duckduckgo','ecosia']) test(`${namespace}: manual no-results for ${engine} persists, skips batches and reruns explicitly`, async () => {
+  const app = await fixture(namespace,`empty-${engine}`);
+  try {
+    const {project} = await app.send({type:'new-project',projectId:null,name:'Empty query'});
+    const opened=await app.send({type:'open-project-search',projectId:project.id,engine,query:'gynoecium corolla'});
+    const tab=app.tabs.get(opened.tabId); app.setEmpty();
+    const failed=await app.send({type:'collect',projectId:project.id,tabId:tab.id});
+    assert.equal(failed.code,'no-results-collected'); assert.equal(app.local.collections?.length || 0,0);
+    const mark=()=>app.send({type:'mark-search-no-results',projectId:project.id,tabId:tab.id,pageURL:tab.url});
+    const duplicate=await app.send({type:'open-project-search',projectId:project.id,engine,query:'gynoecium corolla'});
+    const marked=await mark(); assert.equal(marked.ok,true,JSON.stringify(marked)); assert.equal(marked.collection.status,'no-results'); assert.equal(marked.collection.manual,true);
+    assert.equal(app.tabs.has(tab.id),true); assert.equal(app.tabs.has(duplicate.tabId),true); assert.equal(marked.collection.results.length,0);
+    let state=await app.send({type:'get-project-search-tabs',projectId:project.id});
+    assert.equal(state.count,0); assert.equal(state.history[0].status,'no-results');
+    const skip=await app.send({type:'open-project-search',projectId:project.id,engine,query:'gynoecium corolla',onlyMissing:true}); assert.equal(skip.opened,false);
+    const batch=await app.send({type:'collect-project-search-tabs',projectId:project.id}); assert.equal(batch.ok,false);
+    // Recreate history after a worker/browser session restart from project metadata.
+    delete app.ext.storage.session;
+    // Restore the same session area through a fresh session record, not a new project.
+    const values={}; app.ext.storage.session={get:async key=>({[key]:values[key]}),set:async patch=>Object.assign(values,structuredClone(patch))};
+    state=await app.send({type:'get-project-search-tabs',projectId:project.id}); assert.equal(state.history[0].status,'no-results');
+    const fresh=await app.send({type:'open-project-search',projectId:project.id,engine,query:'gynoecium corolla'}); assert.equal(fresh.opened,true);
+    assert.equal(app.local.collections.length,0); state=await app.send({type:'get-project-search-tabs',projectId:project.id}); assert.equal(state.history.some(item=>item.status==='no-results'),false);
+    assert.equal(app.tabs.has(tab.id),true,'old search tab remains open');
+    app.setEmpty(false); assert.equal((await mark()).ok,false,'readable results prevent an empty mark');
+    app.setEmpty(); app.setChallenge(true); assert.equal((await mark()).ok,false,'challenge is never an empty mark');
+    app.setChallenge(false); app.setPartial(1); assert.equal((await mark()).ok,false,'unreadable candidate is never an empty mark');
+  } finally {delete globalThis[namespace];delete globalThis.indexedDB;}
 });

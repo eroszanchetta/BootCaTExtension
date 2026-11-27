@@ -11,7 +11,7 @@ function fixture(options = {}) {
   const assertProject = async id => { if (id !== currentProject) throw new Error('The project changed.'); return { language: options.language || 'none' }; };
   const ext = {
     runtime: { onStartup: event(), onInstalled: event() },
-    storage: { local: { get: async () => ({ collections: options.collections || [] }) }, session: {
+    storage: { local: { get: async () => ({ collections: options.collections || [] }), set: async patch => { options.collections = patch.collections; } }, session: {
       get: async key => ({ [key]: structuredClone(session[key]) }),
       set: async data => { if (options.write) await options.write(data); Object.assign(session, structuredClone(data)); }
     } },

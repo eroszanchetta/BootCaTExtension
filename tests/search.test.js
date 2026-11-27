@@ -113,7 +113,7 @@ for (const namespace of ['chrome', 'browser']) test(`${namespace}: background se
     assert.match(wrongAction.error, /Use Add URLs from this tab to corpus/);
     const failed = await request({ type: 'collect', tabId: 3 });
     assert.equal(failed.ok, false);
-    assert.match(failed.error, /No search results could be collected/);
+    assert.match(failed.error, /No results collected/);
     assert.equal(collections.length, 2);
     await request({ type: 'clear-collections', projectId: initial.project.id });
     assert.equal(collections.length, 0);

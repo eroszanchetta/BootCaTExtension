@@ -5,7 +5,7 @@ export const queryKey = (engine, query, languageFilter = '') => JSON.stringify([
 export function queryPlan(queries, engine, state, languageFilter = '') {
   const unique = [...new Map(queries.map(query => [queryKey(engine, query, languageFilter), query])).values()];
   const open = new Set((state.tabs || []).map(tab => queryKey(tab.engine, tab.query, tab.languageFilter)));
-  const completed = new Set((state.history || []).filter(item => item.status === 'collected').map(item => queryKey(item.engine, item.query, item.languageFilter)));
+  const completed = new Set((state.history || []).filter(item => ['collected', 'no-results'].includes(item.status)).map(item => queryKey(item.engine, item.query, item.languageFilter)));
   const previous = new Set((state.history || []).map(item => queryKey(item.engine, item.query, item.languageFilter)));
   return {
     missing: unique.filter(query => !open.has(queryKey(engine, query, languageFilter)) && !completed.has(queryKey(engine, query, languageFilter))),

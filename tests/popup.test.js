@@ -35,14 +35,17 @@ async function popup(state, url, fail = false) {
         actions.push(message);
         if (message.type === 'open-workspace') return { ok: true };
         if (message.type === 'accept-collected-results') { state.collections = state.collections.map(item => ({...item, acceptedPartial:true})); notify({ collections: {newValue:state.collections} }); return {ok:true}; }
-        if (message.type === 'get-search-collection-state') return { ok: true, projectId: 'current', collection: state.changedResults ? null : state.collections.find(item => item.pageURL === url) };
+        if (message.type === 'get-search-collection-state') { if(state.searchGate) await state.searchGate; return { ok: true, projectId: 'current', collection: state.changedResults ? null : state.collections.find(item => item.pageURL === url) }; }
         if (message.type === 'get-collection-controls') return { ok: true, preferences: state.preferences || DEFAULT_COLLECTION_CONTROLS };
         if (message.type === 'save-collection-controls') { state.preferences = { ...DEFAULT_COLLECTION_CONTROLS, ...state.preferences, ...message.patch }; notify({ [COLLECTION_CONTROLS_KEY]: { newValue: { version: 1, values: state.preferences } } }); return { ok: true, preferences: state.preferences }; }
+        if (message.type === 'mark-search-no-results') { const collection={id:'empty',engine:adapterForURL(url).id,query:'energy',pageURL:url,status:'no-results',manual:true,unresolved:0,results:[]}; state.collections=[collection]; notify({collections:{newValue:state.collections}}); return {ok:true,collection}; }
+        if (message.type === 'open-project-search') { state.rerun=true; return {ok:true}; }
         if (message.type === 'get-project') return { ok: true, project: state.project === undefined ? { id: 'current', name: 'Test corpus', nameConfirmed: true } : state.project };
         if (message.type === 'get-page-corpus-state') { if (state.pageGate) await state.pageGate; return { ok: true, projectId: 'current', saved: !!state.saved }; }
         if (message.type === 'save-page') { assert.equal(message.projectId, 'current'); if (state.saveGate) await state.saveGate; state.saved = true; return { ok: true }; }
         assert.equal(message.type, 'collect'); assert.equal(message.projectId, 'current'); requests++;
         if (state.collectGate) await state.collectGate;
+        if (state.empty) return {ok:false,code:'no-results-collected',error:'No results collected. Check the search tab.'};
         if (fail) return { ok: false, error: 'Please try again' };
         const engine = adapterForURL(url);
         state.collections = [...state.collections, { id: 'saved', engine: engine.id, pageURL: url, unresolved: state.partial ? 1 : 0, unreadableGoogle: state.partial ? 1 : 0, added: 2, results: [{url:'https://example.org/1'},{url:'https://example.org/2'}] }];
@@ -202,4 +205,22 @@ test('DDG popup offers collection again when results changed at the same URL', a
   const ui = await popup(state,url);
   assert.equal(ui.get('collect-action').hidden,false);
   assert.equal(ui.get('collect').disabled,false);
+});
+
+test('empty collection offers a manual outcome and distinct rerun control', async () => {
+  const state={collections:[],empty:true}; const ui=await popup(state,'https://duckduckgo.com/?q=energy');
+  assert.equal(ui.get('mark-no-results').hidden,true);
+  await ui.get('collect').handlers.click(); assert.equal(ui.get('mark-no-results').hidden,false);
+  await ui.get('mark-no-results').handlers.click();
+  assert.equal(ui.get('collect-action').hidden,true); assert.equal(ui.get('rerun-no-results').hidden,false);
+  assert.match(ui.get('feedback').textContent,/No results \(marked manually\)/);
+  await ui.get('rerun-no-results').handlers.click(); assert.equal(state.rerun,true);
+});
+
+test('a delayed pre-collection status read cannot erase the manual empty outcome action', async () => {
+  let release; const searchGate=new Promise(resolve=>{release=resolve});
+  const ui=await popup({collections:[],empty:true,searchGate},'https://duckduckgo.com/?q=energy');
+  await ui.get('collect').handlers.click(); assert.equal(ui.get('mark-no-results').hidden,false);
+  release(); await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(ui.get('mark-no-results').hidden,false); assert.match(ui.get('feedback').textContent,/No results collected/);
 });

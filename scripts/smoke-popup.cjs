@@ -161,9 +161,11 @@ const assert = require('node:assert/strict');
           const fixture = globalThis.floatingFixture = { state: { enabled: true, projectId: 'p', action: 'save-page', saved: false, position: 'top-right', closeAfterSuccess: false }, actions: 0, workspace: 0, listeners: [], partial: false, fail: false };
           globalThis[name === 'firefox' ? 'browser' : 'chrome'] = { runtime: { id: 'floating-fixture', onMessage: { addListener(fn) { fixture.listeners.push(fn); } }, sendMessage: async message => {
             if (message.type === 'get-floating-state') return { ok: true, state: structuredClone(fixture.state) };
+            if (message.type === 'floating-mark-no-results') { fixture.marked=(fixture.marked||0)+1; fixture.state.saved=true; return {ok:true}; }
             if (message.type === 'floating-hide') { fixture.state.enabled = false; return { ok: true }; }
             if (message.type === 'floating-open-workspace') { fixture.workspace++; return { ok: true }; }
             fixture.actions++;
+            if (fixture.empty) return {ok:false,code:'no-results-collected',error:'No results collected. Check the search tab.'};
             if (fixture.fail) return { ok: false, error: 'Save failed. ' + 'LongError'.repeat(70) };
             if (fixture.partial) return { ok: true, unresolved: 1 };
             fixture.state.saved = true; return { ok: true };
@@ -203,6 +205,12 @@ const assert = require('node:assert/strict');
         assert.equal(await host.isVisible(), true, 'successful collection retains Review URLs');
         await floating.evaluate(() => { floatingFixture.state.saved = false; floatingFixture.state.enabled = false; for (const listener of floatingFixture.listeners) listener({ type: 'bootcat-floating-refresh' }, { id: 'floating-fixture' }, () => {}); });
         assert.equal(await host.count(), 0);
+
+        await floating.evaluate(() => { floatingFixture.empty=true; floatingFixture.state={...floatingFixture.state,enabled:true,projectId:'empty',saved:false,action:'collect'}; for(const listener of floatingFixture.listeners) listener({type:'bootcat-floating-refresh'},{id:'floating-fixture'},()=>{}); });
+        await host.waitFor(); box=await host.boundingBox(); await floating.mouse.click(box.x+55,box.y+20);
+        await floating.waitForFunction(() => floatingFixture.actions===3);
+        await floating.keyboard.press('Tab'); await floating.keyboard.press('Tab'); await floating.keyboard.press('Tab'); await floating.keyboard.press('Enter');
+        await floating.waitForFunction(() => floatingFixture.marked===1); await host.waitFor({state:'hidden'});
         assert.deepEqual(floatingErrors, []); await floating.close();
         // Native nested disclosures and their real styles must also work in Firefox.
         // Only workspace startup is isolated here; the full Chromium extension suite
@@ -350,9 +358,24 @@ const assert = require('node:assert/strict');
         assert.equal(await workspace.evaluate(() => fixtureQueryOpens), 3);
         await workspace.evaluate(() => {
           fixtureQueryState.history = fixtureQueryState.tabs.map(tab => ({ ...tab, status: 'collected' })); fixtureQueryState.tabs = [];
-          testQueryUI.updateTabState(fixtureQueryState); testQueryUI.destroy();
+          testQueryUI.updateTabState(fixtureQueryState);
         });
-        assert.match(await workspace.locator('#query-run-hint').innerText(), /All search results have been collected/);
+        assert.match(await workspace.locator('#query-run-hint').innerText(), /All queries are completed/);
+        await workspace.evaluate(() => { fixtureQueryState.history[0].status='no-results'; testQueryUI.updateTabState(fixtureQueryState); });
+        assert.equal(await workspace.locator('.query-tab-status[data-status="no-results"]').count(),1);
+        assert.equal(await workspace.getByRole('button',{name:'Rerun query',exact:true}).filter({visible:true}).count(),1);
+        for (const width of [1050,390]) {
+          await workspace.setViewportSize({width,height:850});
+          await workspace.locator('nav a[href="#seeds-section"]').click();
+          await workspace.fill('#seeds','one\ntwo\nthree\nfour\nfive'); await workspace.fill('#tuple-count','2');
+          await workspace.click('#generate-tuples');
+          await workspace.waitForFunction(() => document.querySelector('#tuple-status').textContent.startsWith('2 unique tuples'));
+          await workspace.waitForFunction(() => { const box=document.querySelector('#tuples-label').getBoundingClientRect(), header=document.querySelector('.workspace-header').getBoundingClientRect(); return box.top>=header.bottom && box.top<header.bottom+40; });
+          assert.equal(await workspace.evaluate(() => document.documentElement.scrollWidth>innerWidth),false);
+        }
+        await workspace.evaluate(() => testQueryUI.destroy());
+        await workspace.setViewportSize({width:1050,height:850});
+
         await workspace.reload();
         assert.equal(await workspace.locator('#project-section .workspace-panel').evaluate(panel => panel.open), true);
         await workspace.locator('#project-section .workspace-panel > summary').focus(); await workspace.keyboard.press('Enter');
@@ -710,6 +733,7 @@ const assert = require('node:assert/strict');
         for (const width of [1050, 390]) {
           await feedbackPage.setViewportSize({ width, height: 850 });
           await feedbackPage.evaluate(async () => { await feedbackSignal('start', { total: 2 }); await feedbackSignal('progress', { phase: 'extracting' }); });
+          assert.equal(await feedbackPage.locator('#dismiss-download-feedback').isVisible(),false);
           assert.equal(await feedbackPage.locator('#header-download-progress').evaluate(bar => bar.value), 0, `${name}: extraction still pending`);
           assert.match(await feedbackPage.locator('#download-feedback-summary').innerText(), /Extracting text 1 of 2/);
           await feedbackPage.evaluate(() => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'instant' }));
@@ -726,7 +750,12 @@ const assert = require('node:assert/strict');
           assert.match(await feedbackPage.locator('#download-completion-summary').innerText(), /1 failed/);
           await feedbackPage.locator('#download-feedback-link').click();
           await feedbackPage.waitForFunction(() => document.querySelector('#review-section').getBoundingClientRect().top >= document.querySelector('.workspace-header').getBoundingClientRect().bottom);
-          await feedbackPage.locator('#dismiss-download-feedback').click();
+          const close = feedbackPage.getByRole('button',{name:'Close download feedback',exact:true});
+          assert.equal(await close.innerText(),'×');
+          const geometry=await close.evaluate(button=>({button:button.getBoundingClientRect().toJSON(),bar:button.closest('.download-feedback-inner').getBoundingClientRect().toJSON()}));
+          assert.ok(geometry.button.top>=geometry.bar.top && geometry.button.top<geometry.bar.top+12);
+          assert.ok(geometry.bar.right-geometry.button.right<40);
+          await close.focus(); await feedbackPage.keyboard.press('Enter');
           assert.equal(await feedbackPage.locator('#download-feedback-strip').isVisible(), false);
           assert.equal(await feedbackPage.evaluate(() => feedbackBadge.text), '');
           assert.equal(await feedbackPage.title(), 'BootCaT · Corpus workspace');

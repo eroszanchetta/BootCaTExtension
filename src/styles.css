@@ -251,3 +251,9 @@ section { scroll-margin-top: 0; }
 
 .file-drop-hint { display: block; margin-top: 3px; color: #536a79; font-size: .75rem; }
 .import-document-button.file-drop-active:not(:disabled) { outline: 2px solid #007aa6; outline-offset: 2px; background: #e7f2f8; }
+
+#tuples-label { scroll-margin-top: 0; }
+.query-tab-status[data-status="no-results"] { background: #e9edf2; color: #3d4b5c; }
+.download-feedback-inner { position: relative; padding-right: calc(var(--workspace-padding) + 36px); }
+.download-feedback-inner .download-feedback-close { position: absolute; top: 5px; right: var(--workspace-padding); width: 32px; height: 32px; padding: 0; border: 0; background: transparent; color: inherit; font-size: 1.5rem; line-height: 1; }
+.download-feedback-close:hover { background: #0000000d; }

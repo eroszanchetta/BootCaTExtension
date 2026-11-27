@@ -27,7 +27,7 @@ function fixture(options = {}) {
   const get = id => elements.get(id) || (elements.set(id, new Element()), elements.get(id));
   get('engine').value = 'google';
   const context = vm.createContext({
-    DEFAULT_SETTINGS, searchLanguageFilter, setTimeout, clearTimeout, queryKey, queryPlan, openWorkspaceSection() {}, combinationCount, SEARCH_FILE_TYPES, DEFAULT_EXCLUDED_SITES, normalizeSearchFilters,
+    DEFAULT_SETTINGS, searchLanguageFilter, setTimeout, clearTimeout, queryKey, queryPlan, openWorkspaceSection() {}, scrollWorkspaceTarget(id) { options.onScroll?.(id); }, combinationCount, SEARCH_FILE_TYPES, DEFAULT_EXCLUDED_SITES, normalizeSearchFilters,
     document: { getElementById: get, createElement: () => new Element(), createElementNS: () => new Element() },
     confirmAction: async ({ message }) => { confirmations.push(message); return options.confirm ? options.confirm(message) : confirmed; },
     getExtensionAPI: () => ({ runtime: { sendMessage: async message => message.type === 'get-project-search-tabs' ? (options.stateReply ? options.stateReply(stateReply()) : stateReply()) : options.saveDefaults ? options.saveDefaults(message) : { ok: true } }, tabs: { create: async value => { if (options.open) await options.open(value, opened.length); opened.push(value); } } }),
@@ -295,7 +295,7 @@ test('restored workspaces wait for authoritative state and ignore an older openi
   assert.equal(app.get('open-all-queries').disabled, false);
   app.setState({ revision: 4, tabs: [], history: [{ engine: 'google', query: 'first', status: 'collected' }] });
   assert.equal(app.get('open-all-queries').disabled, true);
-  assert.match(app.get('query-run-hint').textContent, /All search results have been collected/);
+  assert.match(app.get('query-run-hint').textContent, /All queries are completed/);
 });
 
 test('a tab opened in another window during confirmation is skipped by the background request', async () => {
@@ -346,4 +346,17 @@ test('project language updates Google links and completion badges while leaving 
   app.get('engine').value = 'duckduckgo'; language = 'ita'; app.get('engine').handlers.change();
   assert.equal(url().searchParams.has('lr'), false); assert.equal(url().searchParams.has('kl'), false);
   assert.equal(app.get('tuples').value, 'energy');
+});
+
+test('successful tuple generation reveals Tuples, while no-results queries offer rerun and are skipped in batches', async () => {
+  const scrolls=[]; const app=fixture({onScroll:id=>scrolls.push(id)});
+  app.get('seeds').value='one\ntwo\nthree\nfour\nfive'; app.get('tuple-length').value='3'; app.get('tuple-count').value='2';
+  await app.get('generate-tuples').handlers.click(); assert.deepEqual(scrolls,['tuples-label']);
+  app.get('tuples').value='empty query'; app.get('prepare-queries').handlers.click();
+  app.ui.updateTabState({tabs:[],history:[{engine:'google',query:'empty query',status:'no-results'}]});
+  const row=app.get('prepared-queries').children[0];
+  assert.equal(row.children[0].dataset.status,'no-results'); assert.equal(row.children[4].hidden,false);
+  assert.equal(app.get('open-all-queries').disabled,true);
+  await row.children[4].handlers.click({type:'click',button:0,preventDefault(){}});
+  assert.equal(app.opened.length,1);
 });

@@ -24,7 +24,7 @@ Persistent personal engine default; Make default action beside engine selection;
 
 ## WP3 — Download progress and completion (implemented; readiness determined by PR validation)
 
-Persistent progress strip below navigation while processing; visible counts and failures; completion summary, workspace title and toolbar badge without new permissions. Keep completion feedback until Dismiss, a new download run or project replacement/closure; focusing a tab does not clear it. The receipt is browser-local and excluded from portable projects. Processed counts advance after extraction and durable saving; download/extraction failures, cancellation and language warnings remain distinct. Closing the runner or losing its batch lock marks an unfinished run interrupted. System notifications requiring permission are outside this package.
+Persistent progress strip below navigation while processing; visible counts and failures; completion summary, workspace title and toolbar badge without new permissions. Keep completion feedback until its close control is used, a new download run or project replacement/closure; focusing a tab does not clear it. The receipt is browser-local and excluded from portable projects. Processed counts advance after extraction and durable saving; download/extraction failures, cancellation and language warnings remain distinct. Closing the runner or losing its batch lock marks an unfinished run interrupted. System notifications requiring permission are outside this package.
 
 ## Recovery-feedback follow-up before WP4 (authorized)
 
@@ -56,3 +56,9 @@ Collect actual failures and comparison examples early. Evaluate sampling/uncerta
 - Bing support, with a reserved teal accent distinct from Google blue and Ecosia green. This is a design reservation, not an implemented adapter or engine choice.
 
 Suggested delivery order: WP1 through WP7, gathering WP7 examples early. WP1, WP2 and WP3 are authorized for implementation.
+
+## Manual empty-query follow-up and small interface changes (authorized 27 November 2026)
+
+After a collection finds no readable or unresolved candidates, offer Mark as no results in the popup/floating feedback and, for a tracked batch failure, the query row. This is a manual assertion, not automatic detection of provider wording. Recheck that the search page is loaded, unchanged and free of detected results/challenges/unreadable candidates. Save an explicit manual no-results outcome with no invented document/URL; preserve it in portable projects and restore query history after restart. Keep the source tab open and exclude this completed query from batch opening and collection. Show a separate No results badge and explicit Rerun query action; opening that query explicitly clears its manual empty outcome and creates a fresh tracked search tab. Existing saved results for that query must not be overwritten by an empty outcome. A changed result set can be collected normally.
+
+On successful Generate tuples, open Seeds and scroll the Tuples label below the sticky header after layout settles, without changing keyboard focus. Failed/stopped generation keeps previous tuples and does not perform that scroll. Replace the completed-download Dismiss button with a keyboard-accessible × control at the top right; active progress remains visible.
