@@ -53,6 +53,13 @@ test('both visible lists keep URL order when issues are resolved in reverse orde
     const english = 'Renewable energy requires careful planning and reliable electricity networks. Technical terminology describes generation capacity, storage systems and distribution. '.repeat(8);
     const app = await workspace('visible-order', { language: 'ita', extractor: async () => extracted(english) });
     await app.input('urls', urls.join('\n')); await app.click('start');
+    // Reproduce an older project with no stored order or per-row positions.
+    await transaction(['meta', 'documents'], 'readwrite', tx => {
+      tx.objectStore('meta').delete('documentOrder');
+      const docs = tx.objectStore('documents'), request = docs.getAll();
+      request.onsuccess = () => { for (const entry of request.result) { delete entry.listPosition; docs.put(entry); } };
+    });
+    await app.focus();
     const visible = id => app.get(id).children.map(row => row.children[1].children[0].href);
     assert.deepEqual(visible('problem-results'), urls);
     for (const index of [2, 0, 1]) {

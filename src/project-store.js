@@ -187,7 +187,7 @@ export function setIncluded(projectId, url, included) {
       if (next !== entry.doc.extraction.included) entry.doc.manualInterventions = [...new Set([...manualActions(entry), 'inclusion-change'])];
       entry.doc.extraction.included = next;
       if (entry.doc.extraction.languageCheck && !hasLanguageWarning(entry.doc.extraction)) entry.doc.extraction.languageCheck.inclusionBeforeCheck = included;
-      store.put(entry);
+      saveOrderedEntry(tx, entry);
     };
   });
 }
@@ -202,7 +202,7 @@ export function saveLanguageCheck(projectId, url, filename, languageCheck, inclu
       if (languageCheck?.accepted) entry.doc.manualInterventions = [...new Set([...manualActions(entry), 'language-override'])];
       entry.doc.extraction.languageCheck = languageCheck;
       entry.doc.extraction.included = entry.doc.extraction.status === 'ok' && included;
-      store.put(entry); done(entry);
+      saveOrderedEntry(tx, entry); done(entry);
     };
   });
 }
@@ -293,7 +293,7 @@ export function saveEditedText(projectId, url, expected, text, extraction) {
         entry.doc.editRevision = (entry.doc.editRevision || 0) + 1;
         entry.doc.editedAt = new Date().toISOString();
         entry.doc.originalTextFilename ||= entry.doc.filename.replace(/^pages\//, 'raw-text/').replace(/\.[^.]+$/, '.txt');
-        documents.put(entry); done(entry);
+        saveOrderedEntry(tx, entry); done(entry);
       };
     };
   });
