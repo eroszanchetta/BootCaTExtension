@@ -10,7 +10,7 @@ export function collectionLinkWarning(result) {
 }
 export function collectionFailure(result) {
   if (result.challenge) return challengeMessage(result.engine);
-  if (result.engine === 'google' && result.unreadableGoogle && result.unreadableGoogle === result.unresolved) return GOOGLE_LINK_MESSAGE;
+  if (result.engine === 'google' && result.unreadableGoogle) return GOOGLE_LINK_MESSAGE;
   return 'No results collected. Check the search tab.';
 }
 

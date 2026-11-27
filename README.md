@@ -408,3 +408,6 @@ If extraction still fails or a language warning remains, the document stays in D
 
 
 When a retained document has no usable extracted text, open **Details → Edit** to paste text from the original page or document. Save checks the text and language, preserves the original and earlier extraction diagnostics, and marks the text as manually recovered. Manual edits survive portable saves and cannot be overwritten by a retry. Failed requests with no saved document still use browser capture or **Import downloaded file**. See [the 2.2 extraction investigation](docs/EXTRACTION-2.2.md) for the supplied examples and limits.
+
+
+Resolved document issues now share compact feedback and row highlighting, including **Include anyway**. The finished-download strip and badge turn green when the current issue list is empty; **Download details** retains the original run counts. A small hand beside a document URL explains manual intervention in its tooltip and survives portable saves. See [the follow-up notes](docs/RESOLUTION-FEEDBACK-2.2.md), including the signed-out Google `/goto` regression.

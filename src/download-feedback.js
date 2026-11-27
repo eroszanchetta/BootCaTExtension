@@ -1,8 +1,11 @@
+import { hasLanguageWarning } from './language-detection.js';
 export const DOWNLOAD_FEEDBACK_KEY = 'downloadFeedback';
 export const DEFAULT_ACTION_TITLE = 'BootCaT: collect results or open workspace';
 const terminal = new Set(['finished', 'stopped', 'interrupted']);
-export function feedbackIssues(value) { return value.failed + value.cancelled + value.flagged; }
+const originalIssues = value => value.failed + value.cancelled + value.flagged;
+export function feedbackIssues(value) { return value.state === 'finished' && Number.isSafeInteger(value.remainingIssues) ? value.remainingIssues : originalIssues(value); }
 export function downloadSummary(value) {
+  if (value.state === 'finished' && Number.isSafeInteger(value.remainingIssues)) return `${value.remainingIssues ? 'Finished with issues.' : (value.hadIssues || originalIssues(value)) ? 'All issues resolved.' : 'Finished.'} ${value.processed} of ${value.total} URLs processed.${value.remainingIssues ? ` ${value.remainingIssues} issue${value.remainingIssues === 1 ? '' : 's'} remaining.` : ''}`;
   const counts = [`${value.processed} of ${value.total} URLs processed`, `${value.usable} usable text${value.usable === 1 ? '' : 's'}`];
   for (const [key, label] of [['failed', 'failed'], ['cancelled', 'cancelled'], ['flagged', 'language warning'], ['skipped', 'skipped']]) {
     if (value[key]) counts.push(`${value[key]} ${label}${key === 'flagged' && value[key] !== 1 ? 's' : ''}`);
@@ -27,7 +30,7 @@ function counters(input, total) {
 }
 // This browser-local receipt is deliberately separate from portable project data.
 // All changes and badge updates share the background's serialization queue.
-export function createDownloadFeedback({ ext, getProject, serialize, batchActive = async projectId => {
+export function createDownloadFeedback({ ext, getProject, serialize, getEntries = null, batchActive = async projectId => {
   if (!globalThis.navigator?.locks?.query) return null;
   return (await navigator.locks.query()).held.some(lock => lock.name === `bootcat:${projectId}:batch`);
 } }) {
@@ -42,6 +45,13 @@ export function createDownloadFeedback({ ext, getProject, serialize, batchActive
       await ext.action?.setTitle?.({ title: look.title });
     } catch { /* Badge availability must never change download outcomes. */ }
   }
+  async function reconcile(value) {
+    if (value?.state !== 'finished' || !getEntries) return value;
+    const entries = await getEntries(value.projectId);
+    const remainingIssues = entries.filter(entry => !entry.doc || entry.doc.extraction.status !== 'ok' || hasLanguageWarning(entry.doc.extraction)).length;
+    const hadIssues = !!(value.hadIssues || originalIssues(value) || remainingIssues);
+    return value.remainingIssues === remainingIssues && value.hadIssues === hadIssues ? value : { ...value, remainingIssues, hadIssues };
+  }
   async function read() {
     let value = (await ext.storage.local.get(DOWNLOAD_FEEDBACK_KEY))[DOWNLOAD_FEEDBACK_KEY];
     if (!value) return { project: null, value: null };
@@ -51,7 +61,9 @@ export function createDownloadFeedback({ ext, getProject, serialize, batchActive
       value = { ...value, state: 'interrupted', phase: null };
       await ext.storage.local.set({ [DOWNLOAD_FEEDBACK_KEY]: value });
     }
-    return { project, value };
+    const current = await reconcile(value);
+    if (current !== value) await ext.storage.local.set({ [DOWNLOAD_FEEDBACK_KEY]: current });
+    return { project, value: current };
   }
   async function sync() { return serialize(async () => { const { value } = await read(); await paint(value); return value; }); }
   async function handle(message) {
@@ -80,12 +92,13 @@ export function createDownloadFeedback({ ext, getProject, serialize, batchActive
           value = { ...value, ...counts, state, phase: state === 'running' ? message.phase : null };
         }
       }
+      value = await reconcile(value);
       await ext.storage.local.set({ [DOWNLOAD_FEEDBACK_KEY]: value }); await paint(value);
       return { feedback: value };
     });
   }
   ext.storage.onChanged?.addListener((changes, area) => {
-    if (area === 'local' && (changes.project || (changes[DOWNLOAD_FEEDBACK_KEY] && changes[DOWNLOAD_FEEDBACK_KEY].newValue === undefined))) sync().catch(() => {});
+    if (area === 'local' && (changes.project || changes.workspaceRevision || (changes[DOWNLOAD_FEEDBACK_KEY] && changes[DOWNLOAD_FEEDBACK_KEY].newValue === undefined))) sync().catch(() => {});
   });
   ext.tabs?.onRemoved?.addListener(id => {
     if (id === ownerTabId) setTimeout(() => sync().catch(() => {}), 250);

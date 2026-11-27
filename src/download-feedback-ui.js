@@ -3,6 +3,7 @@ import { getExtensionAPI } from './extension-api.js';
 export function initDownloadFeedbackUI({ getProjectId }) {
   const ext = getExtensionAPI(), el = id => document.getElementById(id);
   const strip = el('download-feedback-strip'), summary = el('download-feedback-summary'), progress = el('header-download-progress');
+  const details = el('download-run-details');
   const receipt = el('download-completion-summary'), dismiss = el('dismiss-download-feedback');
   let current = null, destroyed = false, changed = false;
   function render(value) {
@@ -18,7 +19,8 @@ export function initDownloadFeedbackUI({ getProjectId }) {
     if (current) { el('progress').max = progress.max; el('progress').value = progress.value; }
     dismiss.hidden = !current || current.state === 'running';
     receipt.hidden = !current || current.state === 'running';
-    receipt.textContent = receipt.hidden ? '' : downloadSummary(current);
+    details.hidden = receipt.hidden;
+    receipt.textContent = receipt.hidden ? '' : 'Original download: ' + downloadSummary({ ...current, remainingIssues: undefined });
   }
   dismiss.addEventListener('click', async () => {
     if (!current || current.state === 'running') return;

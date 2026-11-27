@@ -1,4 +1,4 @@
-import { hasLanguageWarning, languageMessage } from './language-detection.js';
+import { hasLanguageWarning } from './language-detection.js';
 import { openWorkspaceSection } from './workspace-sections.js';
 
 export function preserveRecoveryInclusion(extraction, previous) {
@@ -9,11 +9,10 @@ export function preserveRecoveryInclusion(extraction, previous) {
 export function recoveryOutcome(entry, format) {
   const extraction = entry.doc?.extraction;
   if (extraction?.status !== 'ok') {
-    const reason = extraction?.warnings?.join(' ') || 'No usable text was extracted.';
-    return { tone: 'warning', message: `${format} imported. Original file saved, but text recovery failed. ${reason} The document remains in Documents with issues.` };
+    return { tone: 'warning', message: 'File imported · text still unavailable' };
   }
-  if (hasLanguageWarning(extraction)) return { tone: 'warning', message: `${format} imported. Text recovered, but it still needs review. ${languageMessage(extraction)} The document remains in Documents with issues.` };
-  return { tone: 'success', message: 'Text recovered successfully' };
+  if (hasLanguageWarning(extraction)) return { tone: 'warning', message: 'File imported · language review needed' };
+  return { tone: 'success', message: 'Download recovered' };
 }
 
 export function initRecoveryFeedback({ getRow, isBlocked }) {
@@ -51,17 +50,20 @@ export function initRecoveryFeedback({ getRow, isBlocked }) {
       const offset = parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0;
       const top = target.getBoundingClientRect().top;
       if (top < offset) window.scrollBy({ top: top - offset, behavior: 'instant' });
-      const highlight = { tone: item.tone, expires: Date.now() + 2000 };
-      highlights.set(item.url, highlight); apply(target, item.url);
-      later(() => {
-        if (highlights.get(item.url) !== highlight) return;
-        highlights.delete(item.url);
-        const current = getRow(item.url); current?.classList.remove('recovery-success', 'recovery-attention');
-      }, 2000);
+      for (const url of new Set(item.urls || [item.url])) {
+        const current = getRow(url); if (!current) continue;
+        const highlight = { tone: item.tone, expires: Date.now() + 2000 };
+        highlights.set(url, highlight); apply(current, url);
+        later(() => {
+          if (highlights.get(url) !== highlight) return;
+          highlights.delete(url);
+          getRow(url)?.classList.remove('recovery-success', 'recovery-attention');
+        }, 2000);
+      }
     };
     requestAnimationFrame(() => requestAnimationFrame(reveal));
   }
-  function show(item) { latest = item; pending = item; showButton.hidden = false; flush(); }
+  function show(item) { latest = item; pending = item; showButton.hidden = false; showButton.textContent = item.urls?.length > 1 ? 'Show documents' : 'Show document'; flush(); }
   showButton.addEventListener('click', () => { if (latest) { pending = latest; flush(); } });
   document.addEventListener('close', flush, true);
   return { show, apply, flush, forget(url) { highlights.delete(url); if (latest?.url === url) { latest = pending = null; revision++; showButton.hidden = true; } }, begin() { latest = pending = null; revision++; showButton.hidden = true; },

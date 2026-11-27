@@ -231,7 +231,7 @@ async function handleFloating(message, sender) {
   return runPageAction({ type: action, projectId: state.projectId, tabId: tab.id });
 }
 
-const downloadFeedback = createDownloadFeedback({ ext, getProject: ensureProject, serialize });
+const downloadFeedback = createDownloadFeedback({ ext, getProject: ensureProject, serialize, getEntries: async id => (await loadWorkspace(id)).entries });
 
 async function handle(message) {
   if (message.type === 'get-download-feedback') return { feedback: await downloadFeedback.sync() };

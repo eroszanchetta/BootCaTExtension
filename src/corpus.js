@@ -6,6 +6,6 @@ export function corpusFiles(documents) {
 export function extractionMetadata(documents) {
   return documents.map(doc => {
     const { text, rawText, ...metadata } = doc.extraction;
-    return { url: doc.url, ...(doc.source ? { source: doc.source, captureId: doc.captureId, capturedAt: doc.capturedAt } : {}), ...(doc.originalTextFilename ? { originalTextFilename: doc.originalTextFilename } : {}), ...(doc.editedAt ? { editedAt: doc.editedAt, editRevision: doc.editRevision } : {}), ...(doc.rawTextFilename ? { rawTextFilename: doc.rawTextFilename } : {}), originalFilename: doc.filename, textFilename: metadata.status === 'ok' && metadata.included ? doc.textFilename : null, ...metadata };
+    return { url: doc.url, ...(doc.manualInterventions?.length ? { manualInterventions: doc.manualInterventions } : {}), ...(doc.source ? { source: doc.source, captureId: doc.captureId, capturedAt: doc.capturedAt } : {}), ...(doc.originalTextFilename ? { originalTextFilename: doc.originalTextFilename } : {}), ...(doc.editedAt ? { editedAt: doc.editedAt, editRevision: doc.editRevision } : {}), ...(doc.rawTextFilename ? { rawTextFilename: doc.rawTextFilename } : {}), originalFilename: doc.filename, textFilename: metadata.status === 'ok' && metadata.included ? doc.textFilename : null, ...metadata };
   });
 }

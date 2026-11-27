@@ -64,3 +64,11 @@ After a collection finds no readable or unresolved candidates, offer Mark as no 
 On successful Generate tuples, open Seeds and scroll the Tuples label below the sticky header after layout settles, without changing keyboard focus. Failed/stopped generation keeps previous tuples and does not perform that scroll. Replace the completed-download Dismiss button with a keyboard-accessible × control at the top right; active progress remains visible.
 
 The main-window Mark as no results action is placed immediately after the query status badge and before Open search tab (maintainer adjustment, 27 November 2026).
+
+## Resolution-feedback follow-up (authorized 27 November 2026)
+
+- Recognize the observed signed-out Google /goto result redirect alongside /url. Opaque destinations remain unresolved, show sign-in/switch-engine guidance, and never offer Mark as no results. Do not guess or follow opaque destinations.
+- Completed-run feedback and its badge/title follow the active project's current unresolved documents. Show All issues resolved when the last issue is cleared; unchecked usable documents are not issues. Preserve the original run counters under Download details. Dismissed feedback stays dismissed; stopped/interrupted runs keep their outcome.
+- A small outlined hand indicates any manual intervention: browser capture, file import, pasted/edited text, accepted language warning, explicit language recheck or changed inclusion. Tooltips name applicable actions. Retain known actions through rechecks, edits, portable saves and corpus metadata; infer older stored provenance where possible.
+- All explicit operations moving a document from issues to usable text share reveal/green-highlight feedback, including Include anyway, rechecking, text edits, captures and imports. Passive refreshes never repeat navigation. Bulk operations report once and highlight affected rows, scrolling once; open editors defer the reveal. Remaining issues use amber feedback.
+- Use a compact status line with brief action-specific text: Download recovered, Text recovered, Language warning accepted, Language check passed, or Language review cleared. Keep technical download errors under Details and shorten the main recovery instructions.

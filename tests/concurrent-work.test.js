@@ -25,7 +25,7 @@ test('completed text editing, inclusion and manual recovery work while another U
     await waitFor(() => app.fetched.includes(urls[2]));
     assert.equal(app.state().downloading, true); assert.equal(app.get('export').disabled, true);
     assert.equal(app.get('attention-section').open, false);
-    assert.equal(rowFor(app, urls[1], true).children[1].children[1].disabled, false);
+    assert.equal(rowFor(app, urls[1], true).children[1].children.find(item => item.className === 'secondary import-document-button').disabled, false);
     await rowFor(app, urls[0]).children[2].children[1].handlers.click(); await app.click('text-review-edit');
     await app.input('preview-text', 'My edited corpus text.');
     await savePage({ id: 'failed-recovery', url: urls[1], html: '<p>Recovered body</p>' }, 'concurrent');
@@ -116,7 +116,7 @@ test('manual file import works during a batch, and Stop downloads does not cance
     } });
     await app.input('urls', url + '\nhttps://upload.test/blocked'); active = app.click('start');
     await waitFor(() => app.fetched.length === 2);
-    await rowFor(app, url, true).children[1].children[1].handlers.click();
+    await rowFor(app, url, true).children[1].children.find(item => item.className === 'secondary import-document-button').handlers.click();
     app.get('import-document-picker').files = [new Blob([pdfFixture()], { type: 'application/pdf' })];
     imported = app.get('import-document-picker').handlers.change(); await extracting.promise;
     await app.click('stop'); await active;

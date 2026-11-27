@@ -765,7 +765,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     await page.waitForFunction(()=>document.querySelector('#text-review-dialog').open && !document.querySelector('#text-review-edit').disabled);
     assert.equal(await page.locator('#text-review-edit').isEnabled(),true);
     await page.click('#text-review-edit'); await page.fill('#preview-text','Manually recovered café 中文 🐱 corpus text.'); await page.click('#text-review-save');
-    await page.waitForFunction(()=>document.querySelector('#text-review-status').textContent==='Text recovered successfully');
+    await page.waitForFunction(()=>document.querySelector('#text-review-status').textContent==='Text recovered');
     assert.equal(await page.locator('#problem-results tr').count(),0); assert.equal(await page.locator('#results tr').count(),1);
     assert.match(await page.locator('#results').innerText(),/Manually recovered/);
     const manualRecovery=await page.evaluate(async()=>{
@@ -789,7 +789,10 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.match(await page.locator('#status').innerText(), /^Finished\.$/);
     await openIssues();
     assert.equal(await page.locator('#review-lists .import-document-button').count(), 1, 'failed downloads offer generic import');
-    assert.match(await page.locator('#review-lists td').nth(2).innerText(), /Add this page to corpus.*\(HTTP 403[^)]*\)$/);
+    assert.match(await page.locator('#review-lists td').nth(2).innerText(), /Could not download page/);
+    assert.doesNotMatch(await page.locator('#review-lists td').nth(2).innerText(),/HTTP 403/);
+    await page.locator('.download-error-details > summary').click();
+    assert.match(await page.locator('.download-error-details').innerText(),/HTTP 403/);
     assert.equal(await page.locator('#review-lists a').getAttribute('href'), 'https://corpus.test/blocked');
     await search.goto('https://corpus.test/blocked');
     await search.evaluate(() => {
@@ -865,8 +868,10 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     await localRow.locator('.preview-button').waitFor();
     await page.waitForFunction(() => !document.querySelector('#urls').disabled && !document.querySelector('#open-project').disabled);
     assert.match(await localRow.innerText(), /Imported PDF/);
+    assert.match(await localRow.locator('.manual-intervention').getAttribute('title'),/Imported file/);
+    assert.equal(await localRow.locator('.manual-intervention').isVisible(),true);
     await page.waitForFunction(() => document.querySelector('#document-import-feedback').dataset.state === 'success');
-    assert.match(await localRow.locator('.document-import-feedback').innerText(), /Text recovered successfully/);
+    assert.match(await localRow.locator('.document-import-feedback').innerText(), /Download recovered/);
     await page.locator('#show-imported-document').click();
     await page.waitForFunction(url => {
       const row = [...document.querySelectorAll('#results tr')].find(row => row.querySelector('a')?.href === url);
@@ -905,7 +910,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     let retryChooser = page.waitForEvent('filechooser'); await retryRow.locator('.import-document-button').click();
     await (await retryChooser).setFiles({ name: 'scan.pdf', mimeType: 'application/pdf', buffer: Buffer.from(pdfFixture({ empty: true })) });
     await page.waitForFunction(() => document.querySelector('#document-import-feedback').dataset.state === 'warning');
-    assert.match(await page.locator('#document-import-status').innerText(), /Original file saved, but text recovery failed/);
+    assert.match(await page.locator('#document-import-status').innerText(), /text still unavailable/);
     assert.equal(await retryRow.locator('.preview-button').innerText(), 'Details');
     assert.equal(await page.locator('#results tr').count(), 0);
     await deleteAllRows();
@@ -918,7 +923,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
       row.querySelector('.import-document-button').dispatchEvent(new DragEvent('drop', { dataTransfer: transfer, bubbles: true, cancelable: true }));
     }, { url: pdfOrigin + '/always-blocked.pdf', bytes: Array.from(Buffer.from(pdfFixture())) });
     await page.waitForFunction(() => document.querySelector('#document-import-feedback').dataset.state === 'success');
-    assert.equal(await page.locator('#document-import-status').innerText(), 'Text recovered successfully');
+    assert.equal(await page.locator('#document-import-status').innerText(), 'Download recovered');
     assert.equal(await page.locator('#results tr').count(), 1); assert.equal(await page.locator('#problem-results tr').count(), 0);
     const dropped = await page.evaluate(async url => {
       const store = await import('./project-store.js'), projectId = await store.storedProjectId();
@@ -934,7 +939,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     retryChooser = page.waitForEvent('filechooser'); await retryRow.locator('.import-document-button').click();
     await (await retryChooser).setFiles({ name: 'english.pdf', mimeType: 'application/pdf', buffer: Buffer.from(pdfFixture()) });
     await page.waitForFunction(() => document.querySelector('#document-import-feedback').dataset.state === 'warning');
-    assert.match(await page.locator('#document-import-status').innerText(), /Text recovered, but it still needs review/);
+    assert.match(await page.locator('#document-import-status').innerText(), /language review needed/);
     assert.match(await retryRow.innerText(), /language|Detected/i);
     assert.equal(await page.locator('#results tr').count(), 0);
     await deleteAllRows(); await page.selectOption('#project-language', 'none');
@@ -982,6 +987,11 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     await page.click('#problem-results .accept-language');
     await page.waitForFunction(() => document.querySelectorAll('#results tr').length === 1 && !document.querySelector('#recheck-language').disabled);
     assert.equal(await page.locator('#attention-section').isVisible(), false);
+    await page.waitForFunction(()=>document.querySelector('#document-import-status').textContent==='Language warning accepted');
+    await page.waitForFunction(()=>document.querySelector('#results tr')?.classList.contains('recovery-success') && document.querySelector('#download-feedback-strip').dataset.state==='finished');
+    assert.match(await page.locator('#results .manual-intervention').getAttribute('title'),/Language warning accepted/);
+    assert.match(await page.locator('#download-feedback-summary').innerText(),/All issues resolved/);
+    assert.equal(await page.evaluate(async()=>await (globalThis.browser??chrome).action.getBadgeText({})),'✓');
     await page.click('#recheck-language');
     await page.waitForFunction(() => document.querySelector('#language-status').textContent.startsWith('1 of 1 saved texts rechecked') && !document.querySelector('#urls').disabled && !document.querySelector('#open-project').disabled);
     assert.equal(await page.locator('#results tr').count(), 1, 'manual override must survive recheck');
@@ -1285,11 +1295,11 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     console.log('Google-only language URLs, language-specific collection history and live project-language changes passed.');
     // Unreadable Google links use identical guidance through popup and floating actions.
     const googleMessage = 'BootCaT can’t read Google’s result links. Try signing in to Google and running the search again, or switch to a different search engine.';
-    await context.route('https://www.google.com/search**', route => route.fulfill({ contentType: 'text/html', body: '<div id="search">' + Array.from({ length: 8 }, (_, i) => `<a href="/url?opaque=${i}"><h3>Unreadable result</h3></a>`).join('') + '</div>' }));
+    await context.route('https://www.google.com/search**', route => route.fulfill({ contentType: 'text/html', body: '<div id="search">' + Array.from({ length: 8 }, (_, i) => `<a href="/goto?url=opaque-${i}"><h3>Unreadable result</h3></a>`).join('') + '</div>' }));
     await setCollectionControls({ floatingEnabled: true, closeCollectedTab: false });
     const opaquePage = await context.newPage(); await opaquePage.goto('https://www.google.com/search?q=bootcat-opaque');
     const opaquePopup = await popupFor(opaquePage); await opaquePopup.click('#collect');
-    await opaquePopup.waitForFunction(message => document.querySelector('#feedback').textContent === message, googleMessage); await opaquePopup.close();
+    await opaquePopup.waitForFunction(message => document.querySelector('#feedback').textContent === message, googleMessage); assert.equal(await opaquePopup.locator('#mark-no-results').isVisible(),false); await opaquePopup.close();
     await opaquePage.bringToFront(); const opaqueHost = opaquePage.locator('[data-bootcat-floating-control]'); await opaqueHost.waitFor();
     const opaqueBox = await opaqueHost.boundingBox(); await opaquePage.mouse.click(opaqueBox.x + 55, opaqueBox.y + 20);
     const accessibility = await context.newCDPSession(opaquePage);
