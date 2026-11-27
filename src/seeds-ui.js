@@ -180,7 +180,7 @@ export function initSeedsUI({ minimumSeeds = DEFAULT_SETTINGS.minimumSeeds, draf
         } catch(error) { if (!destroyed) el('query-status').textContent = error.message; }
         finally { mark.disabled = false; }
       });
-      item.append(badge, inspect, link, mark, rerun); body.append(item);
+      item.append(badge, mark, inspect, link, rerun); body.append(item);
     }
     body.scrollTop = scroll; updateTabState(tabState, { authoritative: false }); updateLinks();
     el('query-summary').textContent = prepared.length ? `${prepared.length.toLocaleString()} queries for ${engineName()}. Click a query to open its search in a new tab.` : 'No search queries prepared yet.';

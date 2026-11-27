@@ -62,15 +62,17 @@ async function extractPDF(bytes, { signal, settings = DEFAULT_SETTINGS, loadPDF 
         rawPages.push(rawText); pageMetadata.push({ page: pageNumber, characters: Array.from(text).length, rawCharacters: Array.from(rawText).length, joinedLines: formatted.joinedLines });
       } finally { page.cleanup(); }
     }
-    const metadata = await abortable(doc.getMetadata(), signal);
+    let metadata = { info: {} }; const warnings = [];
+    try { metadata = await abortable(doc.getMetadata(), signal); }
+    catch { signal.throwIfAborted(); warnings.push('PDF metadata could not be read. Text was recovered.'); }
     const empty = pageMetadata.filter(page => !page.characters).length;
     const formatted = formatPDFText(rawPages.join('\n\n'));
     return {
       text: formatted.text, rawText: formatted.rawText,
       formatting: { version: '2', rules: ['normalize-whitespace', 'replace-newlines-unless-preceded-by-dot'], joinedLines: formatted.joinedLines, hyphenation: 'preserved' },
-      title: String(metadata.info?.Title || ''),
+      title: String(metadata?.info?.Title || ''),
       pageCount: doc.numPages, pages: pageMetadata,
-      warnings: empty ? [`${empty} page(s) contain no extractable text; scans may require OCR.`] : []
+      warnings: [...warnings, ...(empty ? [`${empty} page(s) contain no extractable text; scans may require OCR.`] : [])]
     };
   } finally {
     if (task) {
@@ -88,6 +90,9 @@ export async function extractDownloadedDocument(bytes, contentType, options = {}
     extractorVersion: format === 'pdf' ? PDFJS_VERSION : '2', format,
     encoding: 'unicode', title: '', language: '', characters: 0, included: false, warnings: [], text: ''
   };
+  if (format === 'pdf' && !new TextDecoder('latin1').decode(bytes.subarray(0, 1024)).includes('%PDF-') && /^\s*(?:<!doctype\s+html|<html\b|<head\b|<body\b|<script\b)/i.test(new TextDecoder().decode(bytes.subarray(0, 1024)))) {
+    return { ...meta, failureKind: 'html-instead-of-pdf', warnings: ['The server labelled this response as PDF, but returned HTML. Open the URL in your browser and download the actual PDF. Original response retained.'] };
+  }
   const settings = options.settings || DEFAULT_SETTINGS;
   const inputLimit = fileLimit(settings);
   if (bytes.length > inputLimit) return { ...meta, warnings: [`Document exceeds the ${inputLimit / 1024 / 1024} MiB extraction limit. Original file retained.`] };

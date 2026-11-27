@@ -74,7 +74,14 @@ const projectUI = initProjectUI({
 });
 textReview = initTextReview({ root: document, confirm: confirmAction, run: (task, { url }) => documentWork(url, task),
   getSettings: () => readSettings(ext.storage.local), getProjectId: () => projectId, getLanguage: () => projectUI.snapshot()?.language || 'none', isRunning: url => isDocumentBusy(url),
-  onSaved: entry => remember(entry, { keepPreview: true }),
+  onSaved: (entry, { recovered = false } = {}) => {
+    if (recovered) {
+      const warning = hasLanguageWarning(entry.doc.extraction);
+      documentImportMessage(entry.url, warning ? 'Text recovered. Review the language warning.' : 'Text recovered successfully', warning ? 'warning' : 'success');
+    }
+    remember(entry, { keepPreview: true });
+    if (recovered) recoveryFeedback?.show({ url: entry.url, tone: hasLanguageWarning(entry.doc.extraction) ? 'warning' : 'success' });
+  },
   onSelect: doc => { previewURL = doc?.url || null; previewFilename = doc?.filename || null; updatePreviewSelection(); },
   onClosed: url => {
     rows.get(url)?.querySelector('.preview-button')?.focus();
@@ -130,7 +137,7 @@ function queueDraft(patch) {
 }
 async function flushWrites() { await writes; if (writeError) throw writeError; }
 function pendingURLs() {
-  const complete = new Set(entries.filter(entry => ['downloaded', 'captured'].includes(entry.record.outcome) && !entry.record.processingIncomplete).map(entry => entry.url));
+  const complete = new Set(entries.filter(entry => ['downloaded', 'captured'].includes(entry.record.outcome) && (entry.doc?.editRevision > 0 || !entry.record.processingIncomplete)).map(entry => entry.url));
   return parseURLs(ui.urls.value).urls.filter(url => !complete.has(url));
 }
 function updateControls() {
@@ -243,7 +250,7 @@ function renderRow(entry) {
     });
     selection.append(checkbox);
     const origin = record.source === 'local-file' ? `Imported ${formatByMIME(record.contentType)?.label || 'document'}` : record.source === 'browser-session' ? 'PDF saved using browser session' : record.outcome === 'captured' ? 'Saved from browser tab' : 'Downloaded';
-    result.append(document.createTextNode(`${origin} · ${e.status === 'ok' ? `${e.characters.toLocaleString()} characters` : e.status === 'unsupported' ? 'Unsupported extraction format' : 'Extraction failed'}`));
+    result.append(document.createTextNode(`${origin}${e.recovery ? ' · Manually recovered' : ''} · ${e.status === 'ok' ? `${e.characters.toLocaleString()} characters` : e.status === 'unsupported' ? 'Unsupported extraction format' : 'Extraction failed'}`));
     const button = document.createElement('button'); button.className = 'secondary preview-button'; button.textContent = e.status === 'ok' ? 'Preview text' : 'Details';
     button.addEventListener('click', () => preview(doc)); result.append(button);
     const warnings = fileWarnings(e);
@@ -476,7 +483,7 @@ async function publishDownloadFeedback(type, patch = {}) {
   if (!activeFeedback || resetting) return;
   const { runId, total, visited, ownerTabId } = activeFeedback;
   const selected = entries.filter(entry => visited.has(entry.url));
-  const wasCancelled = entry => entry.record.outcome === 'cancelled' || entry.record.processingIncomplete;
+  const wasCancelled = entry => entry.record.outcome === 'cancelled' || (entry.record.processingIncomplete && !entry.doc?.editRevision);
   const cancelled = selected.filter(wasCancelled).length;
   const usable = selected.filter(entry => !wasCancelled(entry) && entry.doc?.extraction.status === 'ok').length;
   const failed = selected.length - usable - cancelled;
@@ -497,7 +504,7 @@ ui.start.addEventListener('click', async () => {
       const parsed = parseURLs(ui.urls.value);
       if (parsed.errors.length || !parsed.urls.length) { ui.status.textContent = parsed.errors.join(' · ') || 'Please enter at least one URL.'; return; }
       const saved = await storage.loadWorkspace(projectId); state.batch = saved.batch;
-      const complete = new Set(saved.entries.filter(entry => entry.doc && ['downloaded', 'captured'].includes(entry.record.outcome) && !entry.record.processingIncomplete).map(entry => entry.url));
+      const complete = new Set(saved.entries.filter(entry => entry.doc && ['downloaded', 'captured'].includes(entry.record.outcome) && (entry.doc?.editRevision > 0 || !entry.record.processingIncomplete)).map(entry => entry.url));
       const queueRevision = saved.deleteRevision?.value || 0, urls = parsed.urls.filter(url => !complete.has(url)), extractor = ui.extractor.value;
       if (!urls.length) { ui.status.textContent = 'All listed pages are already saved. Add URLs to download more pages.'; return; }
       stopping = false; ui.stop.disabled = false;
@@ -514,7 +521,7 @@ ui.start.addEventListener('click', async () => {
         const completed = await documentWork(url, async () => {
           if (stopping || resetting) return;
           const target = await storage.readDownloadTarget(projectId, url);
-          if (target.deletedVersion > queueRevision || (target.entry?.doc && ['downloaded', 'captured'].includes(target.entry.record.outcome) && !target.entry.record.processingIncomplete)) {
+          if (target.deletedVersion > queueRevision || (target.entry?.doc && ['downloaded', 'captured'].includes(target.entry.record.outcome) && (target.entry.doc.editRevision > 0 || !target.entry.record.processingIncomplete))) {
             if (target.entry) remember(target.entry, { keepPreview: true }); return;
           }
           ui.status.textContent = `Downloading ${processed + 1} of ${urls.length}…`;
@@ -540,7 +547,7 @@ ui.start.addEventListener('click', async () => {
             if (resetting) return;
             if (downloaded || error.name === 'QuotaExceededError') throw error;
             const message = stopping ? 'Stopped by user' : timedOut ? `Timed out after ${settings.downloadSeconds} seconds` : error.message;
-            remember(await storage.saveFailure(projectId, { url, outcome: stopping ? 'cancelled' : 'error', error: message, ...(error.contentType ? { contentType: error.contentType } : {}), ...(error.finalURL ? { finalURL: error.finalURL } : {}), ...(error.code === 'DOWNLOAD_TOO_LARGE' ? { errorCode: error.code, limitBytes: error.limitBytes } : {}) }, { advance: false }));
+            remember(await storage.saveFailure(projectId, { url, outcome: stopping ? 'cancelled' : 'error', error: message, ...(error.httpStatus ? { httpStatus: error.httpStatus } : {}), ...(error.contentType ? { contentType: error.contentType } : {}), ...(error.finalURL ? { finalURL: error.finalURL } : {}), ...(error.code === 'DOWNLOAD_TOO_LARGE' ? { errorCode: error.code, limitBytes: error.limitBytes } : {}) }, { advance: false }));
           } finally { clearTimeout(timer); if (controller === active) controller = null; }
         }, { wait: true, propagate: true });
         if (resetting) return;

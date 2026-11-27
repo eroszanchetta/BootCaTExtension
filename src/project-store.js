@@ -115,10 +115,11 @@ export function saveDocument(projectId, record, document, original, { advance = 
   const { text, rawText, ...extraction } = document.extraction;
   const doc = { ...document, extraction, editRevision: 0, ...(extraction.status === 'ok' ? { originalTextFilename: document.filename.replace(/^pages\//, 'raw-text/').replace(/\.[^.]+$/, '.txt') } : {}), ...(typeof rawText === 'string' ? { rawTextFilename: document.filename.replace(/^pages\//, 'raw-pdf/').replace(/\.[^.]+$/, '.txt') } : {}) };
   const blob = original instanceof Blob ? original : new Blob([original]);
-  return projectTransaction(projectId, ['documents', 'files', 'texts'], 'readwrite', (tx, done) => {
+  return projectTransaction(projectId, ['documents', 'files', 'texts'], 'readwrite', (tx, done, fail) => {
     const documents = tx.objectStore('documents'), request = documents.get(record.url);
     request.onsuccess = () => {
       const previous = request.result;
+      if (previous?.doc?.editRevision > 0) { fail(new Error('This document has manual text edits. They were kept. Remove the document before replacing its original.')); return; }
       const entry = { url: record.url, record: { ...record }, doc, fileNames: [...(previous?.fileNames || []), record.filename], originalBytes: (previous?.originalBytes || 0) + blob.size };
       if (previous?.record) entry.record.previousAttempt = previous.record;
       documents.put(entry);
@@ -136,9 +137,10 @@ export function saveDocument(projectId, record, document, original, { advance = 
   });
 }
 export function saveFailure(projectId, record, { advance = true } = {}) {
-  return projectTransaction(projectId, ['documents'], 'readwrite', (tx, done) => {
+  return projectTransaction(projectId, ['documents'], 'readwrite', (tx, done, fail) => {
     const documents = tx.objectStore('documents'), request = documents.get(record.url);
     request.onsuccess = () => {
+      if (request.result?.doc?.editRevision > 0) { fail(new Error('This document has manual text edits. They were kept.')); return; }
       const entry = { url: record.url, record, doc: null, fileNames: request.result?.fileNames || [], originalBytes: request.result?.originalBytes || 0 };
       if (request.result?.record) entry.record.previousAttempt = request.result.record;
       documents.put(entry); done(entry);
