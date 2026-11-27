@@ -215,3 +215,11 @@ test('DDG saved state distinguishes appended results, pagination and unaccepted 
   const partial = {...saved,unresolved:1};
   assert.equal(matchingCollection([partial], 'duckduckgo', url, saved), partial, 'matching does not imply acceptance');
 });
+
+test('signed-out Google goto redirects are unreadable results, not navigation or empty searches', () => {
+  const result=extract('google','https://www.google.com/search?q=flowers',[{href:'/goto?url=opaque-result-one'},{href:'/goto?url=opaque-result-two'},{href:'/search?q=next'},{href:'javascript:void(0)'}]);
+  assert.equal(result.results.length,0); assert.equal(result.unreadableGoogle,2); assert.equal(result.unresolved,3);
+  assert.equal(collectionFailure(result),GOOGLE_LINK_MESSAGE);
+  const explicit=extract('google','https://www.google.com/search?q=flowers',[{href:'/goto?url=https%3A%2F%2Fexample.org%2Fpaper'}]);
+  assert.equal(explicit.results[0].url,'https://example.org/paper'); assert.equal(explicit.unresolved,0);
+});

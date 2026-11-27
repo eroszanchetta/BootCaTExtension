@@ -257,3 +257,12 @@ section { scroll-margin-top: 0; }
 .download-feedback-inner { position: relative; padding-right: calc(var(--workspace-padding) + 36px); }
 .download-feedback-inner .download-feedback-close { position: absolute; top: 5px; right: var(--workspace-padding); width: 32px; height: 32px; padding: 0; border: 0; background: transparent; color: inherit; font-size: 1.5rem; line-height: 1; }
 .download-feedback-close:hover { background: #0000000d; }
+
+.manual-intervention { display: inline-flex; vertical-align: middle; margin-left: 6px; color: #536a79; cursor: help; }
+.manual-intervention:focus-visible { outline: 2px solid #007aa6; outline-offset: 2px; border-radius: 3px; }
+.recovery-feedback { width: fit-content; max-width: 100%; display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; margin: 8px 0; padding: 5px 9px; border-radius: 4px; font-size: .82rem; }
+.recovery-feedback button { margin: 0; padding: 2px 5px; font-size: inherit; }
+.download-error-details { margin-top: 6px; font-size: .8rem; }
+.download-error-details p { overflow-wrap: anywhere; }
+
+.manual-indicator-space { display: inline-block; width: 22px; height: 16px; vertical-align: middle; }

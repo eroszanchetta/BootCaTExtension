@@ -133,7 +133,7 @@ test('manually selected PDF above 10 MiB imports and exports exact original', as
   app.get('import-document-picker').files = [new Blob([bytes])]; await app.get('import-document-picker').handlers.change();
   const entry = (await storage.loadWorkspace('large')).entries[0];
   assert.equal(entry.record.bytes, 15690948); assert.equal(entry.doc.extraction.status, 'ok');
-  assert.match(app.get('document-import-status').textContent, /Text recovered successfully/);
+  assert.match(app.get('document-import-status').textContent, /Download recovered/);
   assert.deepEqual(new Uint8Array(await (await storage.readOriginal('large', entry.doc.filename)).arrayBuffer()), bytes);
   await app.click('export'); assert.ok(app.archive().size > bytes.length);
 });
@@ -183,8 +183,8 @@ test('a saved import with failed extraction remains an issue and reports the act
   app.get('import-document-picker').files = [new Blob([pdf])]; await app.get('import-document-picker').handlers.change();
   assert.equal(app.get('results').children.length, 0);
   assert.equal(app.get('problem-results').children.length, 1);
-  assert.match(app.get('document-import-status').textContent, /Original file saved, but text recovery failed/);
-  assert.match(app.get('document-import-status').textContent, /No extractable text/);
+  assert.match(app.get('document-import-status').textContent, /text still unavailable/);
+  assert.match(app.get('problem-results').children[0].children[2].children.find(item => item.className === 'hint').textContent, /No extractable text/);
   assert.equal(feedback.at(-1).tone, 'warning');
   const entry = (await storage.loadWorkspace('import-still-failed')).entries[0];
   assert.deepEqual(new Uint8Array(await (await storage.readOriginal('import-still-failed', entry.doc.filename)).arrayBuffer()), pdf);
@@ -199,10 +199,10 @@ test('a successful import keeps its message on the moved corpus row', async () =
   app.get('import-document-picker').files = [new Blob([pdf])]; await app.get('import-document-picker').handlers.change();
   assert.equal(app.get('problem-results').children.length, 0);
   const message = app.get('results').children[0].children[1].children.find(item => item.className === 'hint document-import-feedback');
-  assert.match(message.textContent, /Text recovered successfully/);
+  assert.match(message.textContent, /Download recovered/);
   assert.equal(message.attributes['data-state'], 'success'); assert.equal(feedback.at(-1).tone, 'success');
   await app.focus();
-  assert.match(app.get('results').children[0].children[1].children.find(item => item.className === 'hint document-import-feedback').textContent, /Text recovered successfully/);
+  assert.match(app.get('results').children[0].children[1].children.find(item => item.className === 'hint document-import-feedback').textContent, /Download recovered/);
 });
 
 
@@ -221,7 +221,7 @@ test('dropped recovery files use the same durable import path and affect only th
   await button.handlers.drop(drop([new Blob([pdf])]));
   const entries = (await storage.loadWorkspace('drop-target')).entries;
   assert.equal(entries[0].doc, null); assert.equal(entries[1].record.source, 'local-file');
-  assert.equal(app.get('document-import-status').textContent, 'Text recovered successfully');
+  assert.equal(app.get('document-import-status').textContent, 'Download recovered');
   assert.deepEqual(new Uint8Array(await (await storage.readOriginal('drop-target', entries[1].doc.filename)).arrayBuffer()), pdf);
   // A stale button retained during a row rebuild cannot overwrite the recovered file.
   await button.handlers.drop(drop([new Blob([pdf])]));

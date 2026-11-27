@@ -182,7 +182,7 @@ test('Details recovers failed extraction text while preserving original bytes, b
     assert.equal(await (await storage.readOriginalText('manual-recovery',url)).text(),'');
     assert.equal(await (await storage.readRawText('manual-recovery',url)).text(),'Partial raw PDF stream');
     assert.equal(app.get('problem-results').children.length,0); assert.equal(app.get('results').children.length,1);
-    assert.equal(app.get('text-review-status').textContent,'Text recovered successfully');
+    assert.equal(app.get('text-review-status').textContent,'Text recovered');
     assert.equal(feedback.at(-1).tone,'success');
     await app.click('text-review-close'); await app.click('start'); assert.equal(app.fetched.length,1);
     await assert.rejects(storage.saveFailure('manual-recovery',{url,outcome:'error',error:'Late retry'}),/manual text edits/);

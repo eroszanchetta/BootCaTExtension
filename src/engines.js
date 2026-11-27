@@ -63,10 +63,10 @@ export function extractResults(adapter) {
     // Opaque tokens are reported, never guessed or followed in background.
     if (owned(url) && !contentURL(url)) {
       let target;
-      if (adapter.id === "google" && url.pathname === "/url") target = url.searchParams.get("q") || url.searchParams.get("url");
+      if (adapter.id === "google" && ["/url", "/goto"].includes(url.pathname)) target = url.searchParams.get("q") || url.searchParams.get("url");
       if (adapter.id === "duckduckgo" && url.pathname.startsWith("/l/")) target = url.searchParams.get("uddg");
       if (adapter.id === "ecosia" && ["/redirect", "/url"].includes(url.pathname)) target = url.searchParams.get("url");
-      if (!target) { if (adapter.id === 'google' && url.pathname === '/url') unreadableGoogle++; return null; }
+      if (!target) { if (adapter.id === 'google' && ['/url', '/goto'].includes(url.pathname)) unreadableGoogle++; return null; }
       try { url = new URL(target); } catch { if (adapter.id === 'google') unreadableGoogle++; return null; }
       if (adapter.id === 'google' && ((owned(url) && !contentURL(url)) || !['http:', 'https:'].includes(url.protocol))) { unreadableGoogle++; return null; }
     }
@@ -95,7 +95,7 @@ export function extractResults(adapter) {
     candidates++;
     const url = destination(anchor.getAttribute("href"));
     if (!url) {
-      let internal = false; try { const candidate = new URL(anchor.getAttribute('href'), page); internal = adapter.id === 'google' && owned(candidate) && candidate.pathname !== '/url' && !contentURL(candidate); } catch {}
+      let internal = false; try { const candidate = new URL(anchor.getAttribute('href'), page); internal = adapter.id === 'google' && owned(candidate) && !['/url', '/goto'].includes(candidate.pathname) && !contentURL(candidate); } catch {}
       if (!internal) unresolved++;
       diagnose(anchor, internal ? 'ignored' : 'unresolved', internal ? 'provider-navigation' : 'unreadable-destination'); continue;
     }

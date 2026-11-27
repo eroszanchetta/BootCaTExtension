@@ -1,3 +1,4 @@
+import { createManualIndicator, updateManualIndicator } from './manual-intervention.js';
 import { bindImportFileDrop, guardFileDropNavigation } from './import-file-drop.js';
 import { initRecoveryFeedback, recoveryOutcome, preserveRecoveryInclusion } from './recovery-feedback.js';
 import { initDownloadFeedbackUI } from './download-feedback-ui.js';
@@ -44,7 +45,7 @@ let projectId, state, entries = [], searchUI, seedsUI, projectTabsUI, archiveURL
 let exportSaved = false, exportRevision = 0;
 let writes = Promise.resolve(), pendingWrites = 0, writeError = null, capturesPending = false, refreshing = false;
 let pickingDocument = false, documentImportTarget = null, documentImportStatus = { url: null, message: '' };
-const documentImportMessages = new Map();
+const documentImportMessages = new Map(), pendingResolutions = new Map();
 const rows = new Map(), controls = new Map(), documentJobs = new Map(), inclusionJobs = new Set(), operationControllers = new Set();
 const coordinator = createProjectWork({ locks: navigator.locks, getProjectId: () => projectId });
 const extractionQueue = createExtractionQueue(navigator.locks);
@@ -64,7 +65,7 @@ const projectUI = initProjectUI({
   getBusy: () => portableBusy || running || isBatchActive() || importing || hasDocumentWork() || remoteActivity.exclusive,
   confirmReplacement: options => portableUI.confirmReplacement(options),
   onReset: () => {
-    resetting = true; ready = false; stopping = true; clearTimeout(activityTimer); controller?.abort(); for (const active of operationControllers) active.abort(); seedsUI?.destroy(); searchUI?.destroy(); projectTabsUI?.destroy(); engineDefaultUI?.destroy(); downloadFeedbackUI?.destroy(); recoveryFeedback?.destroy(); removeFileDropGuard?.(); documentImportMessages.clear(); running = downloading = importing = false; updateControls();
+    resetting = true; ready = false; stopping = true; clearTimeout(activityTimer); controller?.abort(); for (const active of operationControllers) active.abort(); seedsUI?.destroy(); searchUI?.destroy(); projectTabsUI?.destroy(); engineDefaultUI?.destroy(); downloadFeedbackUI?.destroy(); recoveryFeedback?.destroy(); removeFileDropGuard?.(); documentImportMessages.clear(); pendingResolutions.clear(); running = downloading = importing = false; updateControls();
     invalidateArchive(); ui.urls.value = ''; clearPreview();
     document.getElementById('project-name').value = '';
     entries = []; state = null; documentImportTarget = null; ui['import-document-picker'].value = '';
@@ -75,12 +76,11 @@ const projectUI = initProjectUI({
 textReview = initTextReview({ root: document, confirm: confirmAction, run: (task, { url }) => documentWork(url, task),
   getSettings: () => readSettings(ext.storage.local), getProjectId: () => projectId, getLanguage: () => projectUI.snapshot()?.language || 'none', isRunning: url => isDocumentBusy(url),
   onSaved: (entry, { recovered = false } = {}) => {
-    if (recovered) {
-      const warning = hasLanguageWarning(entry.doc.extraction);
-      documentImportMessage(entry.url, warning ? 'Text recovered. Review the language warning.' : 'Text recovered successfully', warning ? 'warning' : 'success');
-    }
     remember(entry, { keepPreview: true });
-    if (recovered) recoveryFeedback?.show({ url: entry.url, tone: hasLanguageWarning(entry.doc.extraction) ? 'warning' : 'success' });
+    if (recovered && needsAttention(entry)) {
+      documentImportMessage(entry.url, 'Text saved · language review needed', 'warning');
+      recoveryFeedback?.show({url:entry.url,tone:'warning'});
+    }
   },
   onSelect: doc => { previewURL = doc?.url || null; previewFilename = doc?.filename || null; updatePreviewSelection(); },
   onClosed: url => {
@@ -225,15 +225,23 @@ async function preview(doc) { await textReview.open(doc.url); }
 function errorTip(record) {
   if (record.errorCode === 'DOWNLOAD_TOO_LARGE') return record.error;
   if (record.outcome === 'cancelled') return 'Stopped by user. Click Resume downloads to try again.';
-  return `Could not download this page or file. Open its URL and complete any CAPTCHA or sign-in. Then use Add this page to corpus in the BootCaT popup, or download the file using your browser and choose Import downloaded file here. (${record.error || 'Download interrupted'})`;
+  return 'Could not download page. Open it manually, then use “Add this page to corpus” in the BootCaT popup, or download the file and choose “Import downloaded file”.';
 }
 function renderRow(entry) {
   const { url, record, doc } = entry;
   const tr = document.createElement('tr');
+  const manualIndicator = createManualIndicator(entry), manualSlot = document.createElement('span');
+  manualSlot.className = 'manual-indicator-space'; manualSlot.append(manualIndicator);
   const selection = document.createElement('td'), source = document.createElement('td'), result = document.createElement('td'), actions = document.createElement('td');
-  const link = document.createElement('a'); link.href = url; link.textContent = url; link.target = '_blank'; link.rel = 'noopener noreferrer'; source.append(link);
+  const link = document.createElement('a'); link.href = url; link.textContent = url; link.target = '_blank'; link.rel = 'noopener noreferrer'; source.append(link, manualSlot);
   let checkbox;
-  if (!doc) { selection.textContent = '—'; result.textContent = errorTip(record); tr.className = 'error'; }
+  if (!doc) {
+    selection.textContent = '—'; result.textContent = errorTip(record); tr.className = 'error';
+    const details = document.createElement('details'); details.className = 'download-error-details';
+    const summary = document.createElement('summary'); summary.textContent = 'Details';
+    const reason = document.createElement('p'); reason.textContent = record.error || (record.httpStatus ? `HTTP ${record.httpStatus}` : 'Download interrupted');
+    details.append(summary, reason); result.append(details);
+  }
   else {
     const e = doc.extraction;
     checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = entries.find(entry => entry.url === url)?.doc?.extraction.included || false;
@@ -261,12 +269,16 @@ function renderRow(entry) {
   let acceptLanguage;
   if (doc && hasLanguageWarning(doc.extraction)) {
     acceptLanguage = document.createElement('button'); acceptLanguage.type = 'button'; acceptLanguage.className = 'secondary accept-language'; acceptLanguage.textContent = 'Include anyway';
-    acceptLanguage.addEventListener('click', () => documentWork(url, async () => {
-      const current = (await storage.loadWorkspace(projectId)).entries.find(entry => entry.url === url);
-      if (!current?.doc || current.doc.extraction.status !== 'ok') return;
-      const check = { ...current.doc.extraction.languageCheck, accepted: true, acceptedAt: new Date().toISOString(), inclusionBeforeCheck: true };
-      remember(await storage.saveLanguageCheck(projectId, url, current.doc.filename, check, true)); updateControls();
-    }));
+    acceptLanguage.addEventListener('click', async () => {
+      const hadFocus = document.activeElement === acceptLanguage;
+      await documentWork(url, async () => {
+        const current = (await storage.loadWorkspace(projectId)).entries.find(entry => entry.url === url);
+        if (!current?.doc || current.doc.extraction.status !== 'ok') return;
+        const check = { ...current.doc.extraction.languageCheck, accepted: true, acceptedAt: new Date().toISOString(), inclusionBeforeCheck: true };
+        remember(await storage.saveLanguageCheck(projectId, url, current.doc.filename, check, true), { resolution: 'Language warning accepted' }); updateControls();
+      });
+      if (hadFocus && document.activeElement === document.body) rows.get(url)?.querySelector('.preview-button')?.focus({preventScroll:true});
+    });
     acceptLanguage.disabled = isDocumentBusy(url); result.append(acceptLanguage);
   }
   // A failed request cannot establish the format: inspect only selected file bytes.
@@ -308,7 +320,7 @@ function renderRow(entry) {
     if (!await confirmAction({ title: 'Delete document?', message: 'This removes the document and its text from the project.', confirmLabel: 'Delete document', destructive: true })) return;
     ui.urls.value = ui.urls.value.split(/\r?\n/).filter(line => parseURLs(line).urls[0] !== url).join('\n');
     await queueDraft({ urls: ui.urls.value }); await flushWrites(); await storage.removeDocument(projectId, url);
-    metadataRevision++; documentImportMessages.delete(url); recoveryFeedback?.forget(url);
+    metadataRevision++; documentImportMessages.delete(url); pendingResolutions.delete(url); recoveryFeedback?.forget(url);
     if (documentImportStatus.url === url) document.getElementById('document-import-feedback').hidden = true;
     entries = entries.filter(item => item.url !== url); rows.get(url)?.remove(); rows.delete(url); controls.delete(url);
     ui.urls.value = ui.urls.value.split(/\r?\n/).filter(line => parseURLs(line).urls[0] !== url).join('\n');
@@ -322,15 +334,20 @@ function renderRow(entry) {
   if (old?.parentNode === target) old.replaceWith(tr);
   else { old?.remove(); target.append(tr); }
   const activity = document.createElement('p'); activity.className = 'hint document-activity'; activity.setAttribute('role', 'status'); result.append(activity);
-  rows.set(url, tr); recoveryFeedback?.apply(tr, url); markPreviewRow(url, tr); controls.set(url, { activity, trash, checkbox, acceptLanguage, importDocument, importFeedback, failed: doc?.extraction.status !== 'ok' || hasLanguageWarning(doc?.extraction) });
+  rows.set(url, tr); recoveryFeedback?.apply(tr, url); markPreviewRow(url, tr); controls.set(url, { manualIndicator, activity, trash, checkbox, acceptLanguage, importDocument, importFeedback, failed: doc?.extraction.status !== 'ok' || hasLanguageWarning(doc?.extraction) });
   if (importDocument) importDocument.disabled = isDocumentBusy(url);
   trash.disabled = isDocumentBusy(url); if (checkbox) checkbox.disabled = isDocumentBusy(url) || doc.extraction.status !== 'ok' || hasLanguageWarning(doc.extraction);
 }
 function documentImportMessage(url, message, tone = 'hint') {
   documentImportStatus = { url, message, tone }; documentImportMessages.set(url, documentImportStatus);
   const banner = document.getElementById('document-import-feedback'); banner.hidden = false; banner.setAttribute('data-state', tone);
-  ui['document-import-status'].textContent = tone === 'success' ? message : `${url} · ${message}`;
-  const feedback = controls.get(url)?.importFeedback;
+  ui['document-import-status'].textContent = message;
+  const control = controls.get(url);
+  if (control && !control.importFeedback) {
+    const hint = document.createElement('p'); hint.className = 'hint document-import-feedback';
+    rows.get(url)?.children[1]?.append(hint); control.importFeedback = hint;
+  }
+  const feedback = control?.importFeedback;
   if (feedback) { feedback.textContent = message; feedback.setAttribute('data-state', tone); }
 }
 ui['import-document-picker'].addEventListener('cancel', () => {
@@ -370,12 +387,26 @@ async function importRecoveryFile(target, file) {
   }, { wait: true });
   if (!started && !resetting) documentImportMessage(target.url, 'File not imported: another operation is running. Choose the file again when it finishes.', 'warning');
 }
-function remember(entry, { keepPreview = false, updateRow = true } = {}) {
+function remember(entry, { keepPreview = false, updateRow = true, feedback = true, resolution } = {}) {
   metadataRevision++;
   const index = entries.findIndex(item => item.url === entry.url);
-  revealAddedDocument(entries[index], entry);
+  const previous = entries[index];
+  if (feedback && previous && needsAttention(previous) && !needsAttention(entry)) {
+    const message = resolution || (!previous.doc ? 'Download recovered' : previous.doc.extraction.status !== 'ok' ? 'Text recovered' : entry.doc.extraction.languageCheck?.outcome === 'disabled' ? 'Language review cleared' : 'Language check passed');
+    pendingResolutions.set(entry.url, message);
+  }
+  revealAddedDocument(previous, entry);
   if (index < 0) entries.push(entry); else entries[index] = entry;
-  if (previewURL === entry.url && !keepPreview && !textReview?.isDirty()) clearPreview(); if (updateRow) renderRow(entry); invalidateArchive(); updateCounts();
+  if (previewURL === entry.url && !keepPreview && !textReview?.isDirty()) clearPreview(); if (updateRow) renderRow(entry); else updateManualIndicator(controls.get(entry.url)?.manualIndicator, entry); invalidateArchive(); updateCounts();
+}
+function flushResolutions() {
+  if (resetting || running || downloading || importing || !pendingResolutions.size) return;
+  const items = [...pendingResolutions].filter(([url]) => { const entry = entries.find(item => item.url === url); return entry && !needsAttention(entry); });
+  pendingResolutions.clear(); if (!items.length) return;
+  const [url, message] = items[0];
+  const same = items.every(([, value]) => value === message);
+  documentImportMessage(url, items.length === 1 ? message : same ? `${message} (${items.length} documents)` : `${items.length} issues resolved`, 'success');
+  recoveryFeedback?.show({url, urls:items.map(([url])=>url), tone:'success'});
 }
 function renderEntries() {
   ui.results.replaceChildren(); ui['problem-results'].replaceChildren(); rows.clear(); controls.clear();
@@ -455,7 +486,7 @@ async function documentWork(url, task, { wait = false, propagate = false, inclus
       try { remoteActivity = await coordinator.activity(); } catch (error) { report(error); }
       inclusionJobs.delete(url);
     }
-    if (!resetting) { updateControls(); await notifyWorkspace(); refreshActivity(); }
+    if (!resetting) { updateControls(); await notifyWorkspace(); refreshActivity(); flushResolutions(); }
   }
   return executed && succeeded;
 }
@@ -472,7 +503,7 @@ async function work(task) {
   } catch (error) { report(error); }
   finally {
     controller = null; running = false;
-    if (!resetting) { updateControls(); searchUI?.flush(); await notifyWorkspace(); refreshActivity(); }
+    if (!resetting) { updateControls(); searchUI?.flush(); await notifyWorkspace(); refreshActivity(); flushResolutions(); }
   }
   if (capturesPending && !resetting) { capturesPending = false; queueMicrotask(importSavedPages); }
   return executed;
@@ -568,7 +599,7 @@ ui.start.addEventListener('click', async () => {
     });
     if (!acquired && !resetting) ui.status.textContent = 'Another BootCaT window is already downloading or processing this project.';
   } catch (error) { report(error); await publishDownloadFeedback('download-feedback-finish', { state: 'interrupted' }); }
-  finally { activeFeedback = null; downloading = false; ui.stop.disabled = true; if (!resetting) { await notifyWorkspace(); await refreshActivity(); updateControls(); searchUI?.flush(); } }
+  finally { activeFeedback = null; downloading = false; ui.stop.disabled = true; if (!resetting) { await notifyWorkspace(); await refreshActivity(); updateControls(); searchUI?.flush(); flushResolutions(); } }
 });
 async function storeCapture({ url, finalURL, bytes, contentType, source, capturedAt, captureId, settings }) {
   const index = await storage.allocateFileIndex(projectId), filename = filenameFor(url, contentType, index);
@@ -587,7 +618,7 @@ async function storeCapture({ url, finalURL, bytes, contentType, source, capture
     const record = { url, finalURL, outcome: 'captured', source, capturedAt, captureId, filename, contentType, bytes: bytes.length };
     if (!state.batch.startedAt) { const startedAt = new Date().toISOString(); await storage.saveBatch(projectId, { startedAt }, await readCollections()); state.batch.startedAt = startedAt; }
     const saved = await storage.saveDocument(projectId, record, doc, bytes);
-    remember(saved); return saved;
+    remember(saved, { feedback: source !== 'local-file' }); return saved;
   } finally { operationControllers.delete(active); }
 }
 async function importSavedPages() {
@@ -622,7 +653,7 @@ async function importSavedPages() {
     }
     if (count && !resetting) ui['saved-status'].textContent = `${count} saved page${count === 1 ? '' : 's'} added to the review list. Review the text before saving your corpus.`;
   } catch (error) { report(error); }
-  finally { importing = false; if (!resetting) { updateControls(); await notifyWorkspace(); refreshActivity(); if (captureSignal !== signal) queueMicrotask(importSavedPages); } }
+  finally { importing = false; if (!resetting) { updateControls(); await notifyWorkspace(); refreshActivity(); flushResolutions(); if (captureSignal !== signal) queueMicrotask(importSavedPages); } }
 }
 ui['project-language'].addEventListener('change', () => work(async () => {
   const value = ui['project-language'].value;
@@ -639,7 +670,7 @@ ui['recheck-language'].addEventListener('click', () => work(async () => {
       const blob = await storage.readText(projectId, entry.url);
       const result = await checkLanguage({ ...entry.doc.extraction, text: blob ? await blob.text() : '' }, target);
       if (resetting) return;
-      remember(await storage.saveLanguageCheck(projectId, entry.url, entry.doc.filename, result.languageCheck, result.included));
+      remember(await storage.saveLanguageCheck(projectId, entry.url, entry.doc.filename, result.languageCheck, result.included, {manualRecheck:true}));
       checked++; ui['language-status'].textContent = `Rechecked ${checked} of ${documents.length} saved texts…`;
       await new Promise(resolve => setTimeout(resolve, 0));
     }

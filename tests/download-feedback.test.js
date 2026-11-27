@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createDownloadFeedback, DOWNLOAD_FEEDBACK_KEY, feedbackAppearance, downloadSummary } from '../src/download-feedback.js';
-function fixture() {
+function fixture({entries} = {}) {
   const local = {}, listeners = [], action = { text: '', title: '' };
   let project = { id: 'p' }, active = true, tail = Promise.resolve(), rejectBadge = false;
   const ext = { runtime: {}, storage: { local: {
@@ -11,7 +11,7 @@ function fixture() {
     setBadgeText: async ({ text }) => { if (rejectBadge) throw new Error('Unavailable'); action.text = text; },
     setTitle: async ({ title }) => { action.title = title; }
   } };
-  const service = createDownloadFeedback({ ext, getProject: async () => project, batchActive: async () => active,
+  const service = createDownloadFeedback({ ext, getProject: async () => project, getEntries: entries ? async () => entries.current : null, batchActive: async () => active,
     serialize: task => { const next = tail.then(task); tail = next.catch(() => {}); return next; } });
   return { service, local, action, active: value => { active = value; }, project: value => { project = value; }, rejectBadge() { rejectBadge = true; },
     send: (type, patch = {}) => service.handle({ type: 'download-feedback-' + type, projectId: 'p', runId: 'run', ...patch }) };
@@ -58,4 +58,22 @@ test('clean completion and language warnings have distinct badges; badge API fai
   f.rejectBadge(); await f.send('start', { total: 1 });
   const reply = await f.send('finish', { state: 'interrupted' });
   assert.equal(reply.feedback.state, 'interrupted');
+});
+
+test('finished feedback follows current issues while keeping the original counts and dismissal', async () => {
+  const entries={current:[{url:'https://failed.test/',doc:null}]}; const f=fixture({entries}); await f.service.sync();
+  await f.send('start',{total:1}); await f.send('finish',{state:'finished',processed:1,failed:1});
+  assert.equal(f.action.text,'!'); assert.equal(f.local[DOWNLOAD_FEEDBACK_KEY].remainingIssues,1);
+  entries.current=[{doc:{extraction:{status:'ok',included:false}}}];
+  await f.service.sync(); let value=f.local[DOWNLOAD_FEEDBACK_KEY];
+  assert.equal(value.failed,1); assert.equal(value.remainingIssues,0); assert.equal(f.action.text,'✓');
+  assert.match(downloadSummary(value),/All issues resolved/); assert.doesNotMatch(downloadSummary(value),/1 failed/);
+  assert.match(downloadSummary({...value,remainingIssues:undefined}),/1 failed/);
+  entries.current.push({doc:{extraction:{status:'ok',languageCheck:{outcome:'mismatch',accepted:false}}}});
+  await f.service.sync(); assert.equal(f.action.text,'!');
+  await f.send('dismiss'); entries.current=[]; await f.service.sync(); assert.equal(f.action.text,''); assert.equal(f.local[DOWNLOAD_FEEDBACK_KEY].acknowledged,true);
+  await f.send('start',{total:1}); await f.send('finish',{state:'finished',processed:1,usable:1});
+  entries.current=[{doc:null}]; await f.service.sync(); assert.equal(f.action.text,'!');
+  entries.current=[]; await f.service.sync(); assert.match(downloadSummary(f.local[DOWNLOAD_FEEDBACK_KEY]),/All issues resolved/);
+  await f.send('start',{total:2}); await f.send('finish',{state:'stopped',processed:1,cancelled:1}); await f.service.sync(); assert.equal(f.action.text,'STOP');
 });

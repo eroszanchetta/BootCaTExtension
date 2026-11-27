@@ -153,6 +153,11 @@ const assert = require('node:assert/strict');
         collected = await ddg.evaluate(extractResults, ddgAdapter);
         assert.equal(collected.unresolved, 1); assert.ok(collected.candidateDiagnostics.some(item => item.href === '/l/?opaque=unresolved' && item.outcome === 'unresolved'));
         await ddg.close();
+        const google=await browser.newPage();
+        await google.route('https://www.google.com/**',route=>route.fulfill({contentType:'text/html',body:require('node:fs').readFileSync(resolve('tests/fixtures/google-goto.html'),'utf8')}));
+        await google.goto('https://www.google.com/search?q=flowers');
+        const opaque=await google.evaluate(extractResults,ENGINES.find(item=>item.id==='google'));
+        assert.equal(opaque.results.length,0); assert.equal(opaque.unreadableGoogle,2); assert.equal(opaque.unresolved,2); await google.close();
         console.log(`${name}: populated DDG result selectors, related-search diagnostics, appended results and genuine partial results passed.`);
         // Run the real, self-contained floating control in both native DOMs.
         const floating = await browser.newPage({ viewport: { width: 640, height: 600 } });
@@ -588,7 +593,7 @@ const assert = require('node:assert/strict');
           await workspace.click('#text-review-edit'); await workspace.fill('#preview-text','Cancelled recovery'); await workspace.click('#text-review-edit');
           assert.equal(await workspace.inputValue('#preview-text'),'');
           await workspace.click('#text-review-edit'); await workspace.fill('#preview-text','Pasted café 中文 🐱 text.'); await workspace.click('#text-review-save');
-          await workspace.waitForFunction(()=>document.querySelector('#text-review-status').textContent==='Text recovered successfully');
+          await workspace.waitForFunction(()=>document.querySelector('#text-review-status').textContent==='Text recovered');
           const recovered=await workspace.evaluate(async kind=>{
             const storage=await import('./project-store.js'), url='https://example.org/failed-'+kind;
             const entry=(await storage.readDownloadTarget('text-dialog',url)).entry;
@@ -600,6 +605,16 @@ const assert = require('node:assert/strict');
           assert.equal(await workspace.locator('#text-review-dialog').evaluate(dialog=>dialog.scrollWidth>dialog.clientWidth),false);
           await workspace.click('#text-review-close');
         }
+        await workspace.evaluate(async()=>{
+          const {createManualIndicator}=await import('./manual-intervention.js');
+          const indicator=createManualIndicator({record:{outcome:'captured',source:'local-file'},doc:{extraction:{languageCheck:{accepted:true}}}});
+          indicator.id='hand-fixture'; document.body.append(indicator);
+        });
+        const hand=workspace.locator('#hand-fixture');
+        assert.equal(await hand.getAttribute('title'),'Imported file; Language warning accepted');
+        await hand.focus(); assert.equal(await hand.evaluate(node=>document.activeElement===node),true);
+        const handSize=await hand.locator('svg').boundingBox(); assert.equal(handSize.width,16); assert.equal(handSize.height,16);
+        await hand.evaluate(node=>node.remove());
         console.log(`${name}: failed PDF/HTML and unsupported text recovery, cancellation, Unicode and original preservation passed.`);
         // Real recovery controller: nested table scrolling, disclosure layout,
         // retained messages, reduced motion and deferral behind a dirty editor.
@@ -688,7 +703,7 @@ const assert = require('node:assert/strict');
           const status = document.querySelector('#document-import-status'); document.querySelector('#document-import-feedback').hidden = false;
           const fixture = globalThis.dropFixture = { imports: 0, busy: false, name: '', bytes: 0 };
           bindImportFileDrop({ button, canImport: () => !fixture.busy, onError: message => { status.textContent = message; }, onFile: async file => {
-            const result = await readImportedDocument(file); fixture.imports++; fixture.name = result.format.id; fixture.bytes = result.bytes.length; status.textContent = 'Text recovered successfully';
+            const result = await readImportedDocument(file); fixture.imports++; fixture.name = result.format.id; fixture.bytes = result.bytes.length; status.textContent = 'Download recovered';
           } });
           guardFileDropNavigation({ root: window, onOutsideDrop: () => { status.textContent = 'Drop the file on an Import downloaded file button.'; } });
           fixture.transfer = mode => {
@@ -723,7 +738,7 @@ const assert = require('node:assert/strict');
         await dropPage.evaluate(() => { dropFixture.busy = false; dropFixture.event('drop', 'mixed'); });
         await dropPage.waitForFunction(() => dropFixture.imports === 1);
         assert.equal(await dropPage.evaluate(() => dropFixture.name), 'pdf', `${name}: actual bytes determine format`);
-        assert.equal(await dropPage.locator('#document-import-status').innerText(), 'Text recovered successfully');
+        assert.equal(await dropPage.locator('#document-import-status').innerText(), 'Download recovered');
         assert.equal(await dropPage.locator('#drop-import').evaluate(button => button.classList.contains('file-drop-active')), false);
         const dropURL = dropPage.url();
         assert.equal(await dropPage.evaluate(() => dropFixture.event('drop', 'file', true)), true);
@@ -742,14 +757,14 @@ const assert = require('node:assert/strict');
           import { initDownloadFeedbackUI } from './download-feedback-ui.js';
           initWorkspaceSections();
           for (const panel of document.querySelectorAll('.workspace-panel')) panel.open = true;
-          const data = {}, listeners = [], badge = globalThis.feedbackBadge = {};
+          const data = {}, listeners = [], badge = globalThis.feedbackBadge = {}; globalThis.feedbackEntries=[];
           let tail = Promise.resolve(), service;
           const api = globalThis.chrome = { runtime: { sendMessage: async message => ({ ok: true, ...(message.type === 'get-download-feedback' ? { feedback: await service.sync() } : await service.handle(message)) }) },
             storage: { local: { get: async key => ({ [key]: structuredClone(data[key]) }), set: async patch => {
               Object.assign(data, structuredClone(patch)); for (const [key, newValue] of Object.entries(patch)) for (const fn of listeners) fn({ [key]: { newValue } }, 'local');
             } }, onChanged: { addListener(fn) { listeners.push(fn); } } },
             action: { setBadgeText: async value => { badge.text = value.text; }, setTitle: async value => { badge.title = value.title; } } };
-          service = createDownloadFeedback({ ext: api, getProject: async () => ({ id: 'progress' }), batchActive: async () => true,
+          service = globalThis.feedbackService = createDownloadFeedback({ ext: api, getProject: async () => ({ id: 'progress' }), getEntries:async()=>globalThis.feedbackEntries, batchActive: async () => true,
             serialize: task => { const next = tail.then(task); tail = next.catch(() => {}); return next; } });
           globalThis.feedbackUI = initDownloadFeedbackUI({ getProjectId: () => 'progress' });
           globalThis.feedbackSignal = async (type, patch = {}) => api.runtime.sendMessage({ type: 'download-feedback-' + type, projectId: 'progress', runId: 'run', ...patch });
@@ -770,11 +785,17 @@ const assert = require('node:assert/strict');
             return Math.abs(header.top) < 1 && Math.abs(strip.top - nav.bottom) < 1 && parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) >= header.height + 15;
           });
           assert.equal(await feedbackPage.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `${name}: sticky progress overflow at ${width}px`);
-          await feedbackPage.evaluate(() => feedbackSignal('finish', { state: 'finished', processed: 2, usable: 1, failed: 1 }));
+          await feedbackPage.evaluate(() => { feedbackEntries=[{doc:null}]; return feedbackSignal('finish', { state: 'finished', processed: 2, usable: 1, failed: 1 }); });
           assert.equal(await feedbackPage.locator('#header-download-progress').isVisible(), false);
           assert.match(await feedbackPage.title(), /Finished with issues/);
           assert.equal(await feedbackPage.evaluate(() => feedbackBadge.text), '!');
+          await feedbackPage.locator('#download-run-details').evaluate(details=>{details.open=true});
           assert.match(await feedbackPage.locator('#download-completion-summary').innerText(), /1 failed/);
+          await feedbackPage.evaluate(async()=>{feedbackEntries=[{doc:{extraction:{status:'ok',included:false}}}]; await feedbackService.sync();});
+          await feedbackPage.waitForFunction(()=>document.querySelector('#download-feedback-strip').dataset.state==='finished');
+          assert.match(await feedbackPage.locator('#download-feedback-summary').innerText(),/All issues resolved/);
+          assert.doesNotMatch(await feedbackPage.locator('#download-feedback-summary').innerText(),/1 failed/);
+          assert.equal(await feedbackPage.evaluate(()=>feedbackBadge.text),'✓');
           await feedbackPage.locator('#download-feedback-link').click();
           await feedbackPage.waitForFunction(() => document.querySelector('#review-section').getBoundingClientRect().top >= document.querySelector('.workspace-header').getBoundingClientRect().bottom);
           const close = feedbackPage.getByRole('button',{name:'Close download feedback',exact:true});

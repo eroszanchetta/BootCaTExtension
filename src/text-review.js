@@ -123,7 +123,7 @@ export function initTextReview({ root = document, confirm, run, getProjectId, ge
       if (request === generation) status.textContent = `Text not saved: ${error.message}`;
     } finally { if (request === generation) { saving = false; controls(); } }
   });
-  function metadataView(recovered = false) { metadata(); status.textContent = recovered ? (hasLanguageWarning(current.entry.doc.extraction) ? 'Text recovered. Review the language warning.' : 'Text recovered successfully') : 'Text saved in this project. Save corpus to download the updated corpus.'; }
+  function metadataView(recovered = false) { metadata(); status.textContent = recovered ? (hasLanguageWarning(current.entry.doc.extraction) ? 'Text saved · language review needed' : 'Text recovered') : 'Text saved in this project. Save corpus to download the updated corpus.'; }
   close.addEventListener('click', requestClose);
   dialog.addEventListener('cancel', event => { event.preventDefault(); requestClose(); });
   dialog.addEventListener('close', () => { if (opened) clear(); });

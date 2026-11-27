@@ -1,3 +1,4 @@
+import { manualActions } from './manual-intervention.js';
 import { LEGACY_SEARCH_ENGINE } from './search-engine-options.js';
 import { DEFAULT_EXCLUDED_SITES } from './search-filters.js';
 import { hasLanguageWarning } from './language-detection.js';
@@ -122,6 +123,7 @@ export function saveDocument(projectId, record, document, original, { advance = 
       if (previous?.doc?.editRevision > 0) { fail(new Error('This document has manual text edits. They were kept. Remove the document before replacing its original.')); return; }
       const entry = { url: record.url, record: { ...record }, doc, fileNames: [...(previous?.fileNames || []), record.filename], originalBytes: (previous?.originalBytes || 0) + blob.size };
       if (previous?.record) entry.record.previousAttempt = previous.record;
+      entry.doc.manualInterventions = [...new Set([...manualActions(previous || {}), ...manualActions(entry)])];
       documents.put(entry);
       tx.objectStore('files').add({ name: record.filename, blob });
       const textBlob = new Blob([text || ''], { type: 'text/plain;charset=utf-8' });
@@ -155,19 +157,23 @@ export function setIncluded(projectId, url, included) {
     request.onsuccess = () => {
       if (!request.result?.doc) { fail(new Error('Document not found')); return; }
       const entry = request.result;
-      entry.doc.extraction.included = entry.doc.extraction.status === 'ok' && !hasLanguageWarning(entry.doc.extraction) && included;
+      const next = entry.doc.extraction.status === 'ok' && !hasLanguageWarning(entry.doc.extraction) && included;
+      if (next !== entry.doc.extraction.included) entry.doc.manualInterventions = [...new Set([...manualActions(entry), 'inclusion-change'])];
+      entry.doc.extraction.included = next;
       if (entry.doc.extraction.languageCheck && !hasLanguageWarning(entry.doc.extraction)) entry.doc.extraction.languageCheck.inclusionBeforeCheck = included;
       store.put(entry);
     };
   });
 }
 // Compare the original filename to avoid attaching a result to a replaced document.
-export function saveLanguageCheck(projectId, url, filename, languageCheck, included) {
+export function saveLanguageCheck(projectId, url, filename, languageCheck, included, { manualRecheck = false } = {}) {
   return projectTransaction(projectId, ['documents'], 'readwrite', (tx, done, fail) => {
     const store = tx.objectStore('documents'), request = store.get(url);
     request.onsuccess = () => {
       const entry = request.result;
       if (!entry?.doc || entry.doc.filename !== filename) { fail(new Error('Document changed. Recheck its language again.')); return; }
+      if (manualRecheck) entry.doc.manualInterventions = [...new Set([...manualActions(entry), 'language-recheck'])];
+      if (languageCheck?.accepted) entry.doc.manualInterventions = [...new Set([...manualActions(entry), 'language-override'])];
       entry.doc.extraction.languageCheck = languageCheck;
       entry.doc.extraction.included = entry.doc.extraction.status === 'ok' && included;
       store.put(entry); done(entry);
@@ -256,6 +262,7 @@ export function saveEditedText(projectId, url, expected, text, extraction) {
         if (!original.result?.blob) { fail(new Error('The saved document text is missing. Your edits have not been saved.')); return; }
         // Legacy records acquire their baseline atomically on the first edit.
         texts.put({ ...original.result, originalBlob: original.result.originalBlob || original.result.blob, blob: new Blob([text], { type: 'text/plain;charset=utf-8' }) });
+        entry.doc.manualInterventions = [...new Set([...manualActions(entry), entry.doc.extraction.status === 'ok' ? 'text-edit' : 'manual-text'])];
         entry.doc.extraction = extraction;
         entry.doc.editRevision = (entry.doc.editRevision || 0) + 1;
         entry.doc.editedAt = new Date().toISOString();
