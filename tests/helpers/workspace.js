@@ -27,8 +27,10 @@ class Element {
   querySelectorAll() { return []; }
   addEventListener(type, fn) { this.handlers[type] = fn; }
   setAttribute(name, value) { this.attributes[name] = value; }
+  getAttribute(name) { return this.attributes[name]; }
   get parentNode() { return this.parent; }
   append(...nodes) { for (const node of nodes) { node.parent = this; this.children.push(node); } }
+  insertBefore(node, next) { node.remove(); node.parent = this; const index = next ? this.children.indexOf(next) : this.children.length; this.children.splice(index, 0, node); }
   replaceChildren() { this.children = []; }
   replaceWith(node) { const index = this.parent.children.indexOf(this); this.parent.children[index] = node; node.parent = this.parent; }
   remove() { if (this.parent) this.parent.children = this.parent.children.filter(node => node !== this); }
