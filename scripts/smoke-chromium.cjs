@@ -366,9 +366,9 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
       throw error;
     }
     assert.equal(await page.locator('#prepared-queries li').first().evaluate(row =>
-      row.children[0].classList.contains('query-tab-status') && row.children[1].classList.contains('query-tab-action') && row.children[2].tagName === 'A'), true);
-    assert.equal(await page.locator('#prepared-queries .query-tab-action').first().getAttribute('aria-label'), 'Open search tab');
-    assert.equal(await page.locator('#prepared-queries .query-tab-action').first().innerText(), '');
+      row.children[0].classList.contains('query-tab-status') && row.children[1].textContent === 'Mark as no results' && row.children[2].getAttribute('aria-label') === 'Open search tab' && row.children[3].tagName === 'A'), true);
+    assert.equal(await page.locator('#prepared-queries [aria-label="Open search tab"]').first().getAttribute('aria-label'), 'Open search tab');
+    assert.equal(await page.locator('#prepared-queries [aria-label="Open search tab"]').first().innerText(), '');
     assert.equal(await page.locator('#prepared-queries .query-tab-action svg').count(), 2);
     await individual.close(); await page.bringToFront();
     await page.waitForFunction(() => document.querySelector('#project-tab-count').textContent.startsWith('0 of 0'));
@@ -456,7 +456,7 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     pendingSearchResponses.get('delayed')();
     await page.waitForFunction(() => !document.querySelector('#collect-project-tabs').disabled);
     assert.match(await page.locator('#prepared-queries li').first().innerText(), /Loaded/);
-    await page.locator('#prepared-queries .query-tab-action').first().click(); await page.bringToFront();
+    await page.locator('#prepared-queries [aria-label="Open search tab"]').first().click(); await page.bringToFront();
     await page.click('#collect-project-tabs');
     await page.waitForFunction(() => document.querySelector('#prepared-queries .query-tab-status').dataset.status === 'collected' && document.querySelector('#project-tab-status').textContent.startsWith('Finished.'));
     assert.equal(await page.locator('#collect-project-tabs').isDisabled(), true);
