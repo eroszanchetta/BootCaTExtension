@@ -643,12 +643,14 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.equal(corpusFetches.get('queued') || 0, 0, 'queued manual recoveries must not download again');
     assert.equal(corpusFetches.get('blocked'), 1);
     assert.equal(await page.locator('#results tr').count(), 5);
+    assert.deepEqual(await page.locator('#results tr td:nth-child(2) > a').evaluateAll(links=>links.map(a=>a.href)),concurrentURLs);
     assert.equal(await page.locator('#attention-section').isVisible(), false);
     await page.waitForFunction(() => document.title.startsWith('Downloads finished'));
     assert.equal(await page.evaluate(async () => (globalThis.browser ?? chrome).action.getBadgeText({})), '✓');
     await parallelWorkspace.waitForFunction(() => document.title.startsWith('Downloads finished'));
     await parallelWorkspace.reload();
-    await parallelWorkspace.waitForFunction(() => document.querySelector('#download-feedback-summary').textContent.startsWith('Finished.'));
+    await parallelWorkspace.waitForFunction(() => document.querySelector('#download-feedback-summary').textContent === 'Your corpus is ready to export.');
+    assert.deepEqual(await parallelWorkspace.locator('#results tr td:nth-child(2) > a').evaluateAll(links=>links.map(a=>a.href)),concurrentURLs);
     await parallelWorkspace.locator('#dismiss-download-feedback').click();
     await page.waitForFunction(() => document.querySelector('#download-feedback-strip').hidden);
     assert.equal(await page.evaluate(async () => (globalThis.browser ?? chrome).action.getBadgeText({})), '');
@@ -990,7 +992,9 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     await page.waitForFunction(()=>document.querySelector('#document-import-status').textContent==='Language warning accepted');
     await page.waitForFunction(()=>document.querySelector('#results tr')?.classList.contains('recovery-success') && document.querySelector('#download-feedback-strip').dataset.state==='finished');
     assert.match(await page.locator('#results .manual-intervention').getAttribute('title'),/Language warning accepted/);
-    assert.match(await page.locator('#download-feedback-summary').innerText(),/All issues resolved/);
+    assert.equal(await page.locator('#download-feedback-summary').innerText(),'Your corpus is ready to export.');
+    await page.locator('#download-feedback-link').click();
+    assert.equal(await page.locator('#export').evaluate(button=>button===document.activeElement),true);
     assert.equal(await page.evaluate(async()=>await (globalThis.browser??chrome).action.getBadgeText({})),'✓');
     await page.click('#recheck-language');
     await page.waitForFunction(() => document.querySelector('#language-status').textContent.startsWith('1 of 1 saved texts rechecked') && !document.querySelector('#urls').disabled && !document.querySelector('#open-project').disabled);

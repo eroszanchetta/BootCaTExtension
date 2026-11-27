@@ -193,6 +193,7 @@ function updateCounts() {
   if (!isBatchActive() && /^(Finished|Stopped)\./.test(ui.status.textContent)) ui.status.textContent = completionMessage(ui.status.textContent.startsWith('Stopped'));
 }
 function renderExportGuidance() {
+  downloadFeedbackUI?.refresh?.();
   const banner = document.getElementById('export-guidance');
   const busy = !ready || resetting || running || isBatchActive() || importing || hasDocumentWork() || remoteActivity.exclusive || portableBusy || pendingWrites || capturesPending || writeError;
   if (busy) {
@@ -209,13 +210,13 @@ function renderExportGuidance() {
   document.getElementById('export-guidance-issues').hidden = exportSaved || !entries.some(needsAttention);
   document.getElementById('go-to-export').hidden = exportSaved;
 }
-document.getElementById('go-to-export').addEventListener('click', event => {
-  event.preventDefault();
+function goToExport() {
   if (document.getElementById('export-guidance').hidden || ui.export.disabled) return;
   openWorkspaceSection('project-section');
   ui.export.scrollIntoView({ block: 'center' });
   ui.export.focus({ preventScroll: true });
-});
+}
+document.getElementById('go-to-export').addEventListener('click', event => { event.preventDefault(); goToExport(); });
 
 function completionMessage(stopped) {
   return stopped ? 'Stopped. You can resume downloads.' : 'Finished.';
@@ -330,9 +331,14 @@ function renderRow(entry) {
   }));
   actions.append(trash); tr.append(selection, source, result, actions);
   const target = needsAttention(entry) ? ui['problem-results'] : ui.results;
+  tr.setAttribute('data-document-position', entry.listPosition);
   const old = rows.get(url);
   if (old?.parentNode === target) old.replaceWith(tr);
-  else { old?.remove(); target.append(tr); }
+  else {
+    old?.remove();
+    const next = [...target.children].find(row => Number(row.getAttribute('data-document-position')) > entry.listPosition);
+    target.insertBefore(tr, next || null);
+  }
   const activity = document.createElement('p'); activity.className = 'hint document-activity'; activity.setAttribute('role', 'status'); result.append(activity);
   rows.set(url, tr); recoveryFeedback?.apply(tr, url); markPreviewRow(url, tr); controls.set(url, { manualIndicator, activity, trash, checkbox, acceptLanguage, importDocument, importFeedback, failed: doc?.extraction.status !== 'ok' || hasLanguageWarning(doc?.extraction) });
   if (importDocument) importDocument.disabled = isDocumentBusy(url);
@@ -397,6 +403,7 @@ function remember(entry, { keepPreview = false, updateRow = true, feedback = tru
   }
   revealAddedDocument(previous, entry);
   if (index < 0) entries.push(entry); else entries[index] = entry;
+  entries.sort((a, b) => a.listPosition - b.listPosition);
   if (previewURL === entry.url && !keepPreview && !textReview?.isDirty()) clearPreview(); if (updateRow) renderRow(entry); else updateManualIndicator(controls.get(entry.url)?.manualIndicator, entry); invalidateArchive(); updateCounts();
 }
 function flushResolutions() {
@@ -806,7 +813,9 @@ portableUI = initPortableUI({
       ui['document-import-status'].textContent = event.target?.closest?.('.import-document-button') ? 'Wait for this document to finish processing.' : 'Drop the file on an Import downloaded file button.';
     } });
     recoveryFeedback = initRecoveryFeedback({ getRow: url => rows.get(url), isBlocked: () => resetting || pickingDocument || !!document.querySelector('dialog[open]') });
-    downloadFeedbackUI = initDownloadFeedbackUI({ getProjectId: () => projectId });
+    downloadFeedbackUI = initDownloadFeedbackUI({ getProjectId: () => projectId, onExport: goToExport, getCorpusState: () => ({
+      included: entries.filter(entry => !needsAttention(entry) && entry.doc.extraction.included).length, exportSaved
+    }) });
     engineDefaultUI = initEngineDefaultUI({ getProjectId: () => projectId });
     projectTabsUI = initProjectTabsUI({ getProjectId: () => projectId, onState: value => seedsUI?.updateTabState(value) });
     updateControls(); await refreshActivity(); await importSavedPages();

@@ -6,6 +6,29 @@ import { transaction, STORES } from './storage-db.js';
 import { parseURLs } from './core.js';
 const initialDraft = (defaults = {}) => ({ key: 'draft', urls: '', query: '', engine: defaults.engine ?? LEGACY_SEARCH_ENGINE, extractor: 'readability', seenCollections: [], seeds: '', tupleLength: '3', tupleCount: '10', tuples: '', preparedQueries: [], preparedQueryBases: null, preparedFilters: null, searchFileType: '', searchSite: '', excludedSites: (defaults.excludedSites ?? DEFAULT_EXCLUDED_SITES).join('\n') });
 const initialBatch = () => ({ key: 'batch', startedAt: null, state: 'idle', processed: 0, total: 0, nextFileIndex: 0, storedBytes: 0, lastStatus: 'Ready when you are.' });
+// Reserve the whole URL list before the first result, so completion/recovery
+// timing cannot change document order. Later URLs always follow existing ones.
+function documentURLs(draft, entries, order) {
+  return [...new Set([...(order?.urls || []), ...parseURLs(draft?.urls || '').urls, ...entries.map(entry => entry.url)])];
+}
+function saveOrderedEntry(tx, entry) {
+  const meta = tx.objectStore('meta'), documents = tx.objectStore('documents');
+  const order = meta.get('documentOrder');
+  order.onsuccess = () => {
+    const position = order.result?.urls.indexOf(entry.url) ?? -1;
+    if (position >= 0) { entry.listPosition = position; documents.put(entry); return; }
+    const draft = meta.get('draft');
+    draft.onsuccess = () => {
+      const save = entries => {
+        const urls = documentURLs(draft.result, [...entries, entry], order.result);
+        entry.listPosition = urls.indexOf(entry.url);
+        documents.put(entry); meta.put({ key: 'documentOrder', urls });
+      };
+      if (order.result) save([]);
+      else { const existing = documents.getAll(); existing.onsuccess = () => save(existing.result); }
+    };
+  };
+}
 function seed(tx, projectId, defaults, project) {
   const store = tx.objectStore('meta');
   store.put({ key: 'active', projectId, ...(project ? { project } : {}) }); store.put(initialDraft(defaults)); store.put(initialBatch()); store.put({ key: 'searches', collections: [] });
@@ -50,12 +73,15 @@ function projectTransaction(projectId, names, mode, operation) {
 export function loadWorkspace(projectId) {
   return projectTransaction(projectId, ['documents'], 'readonly', (tx, done) => {
     const results = {};
-    for (const key of ['draft', 'batch', 'searches', 'corpusExport', 'deleteRevision']) {
+    for (const key of ['draft', 'batch', 'searches', 'corpusExport', 'deleteRevision', 'documentOrder']) {
       const request = tx.objectStore('meta').get(key);
       request.onsuccess = () => { results[key] = request.result; };
     }
     const docs = tx.objectStore('documents').getAll();
-    docs.onsuccess = () => { results.entries = docs.result; };
+    docs.onsuccess = () => {
+      const positions = new Map(documentURLs(results.draft, docs.result, results.documentOrder).map((url, index) => [url, index]));
+      results.entries = docs.result.map(entry => ({ ...entry, listPosition: positions.get(entry.url) })).sort((a, b) => a.listPosition - b.listPosition);
+    };
     done(results);
   });
 }
@@ -124,7 +150,7 @@ export function saveDocument(projectId, record, document, original, { advance = 
       const entry = { url: record.url, record: { ...record }, doc, fileNames: [...(previous?.fileNames || []), record.filename], originalBytes: (previous?.originalBytes || 0) + blob.size };
       if (previous?.record) entry.record.previousAttempt = previous.record;
       entry.doc.manualInterventions = [...new Set([...manualActions(previous || {}), ...manualActions(entry)])];
-      documents.put(entry);
+      saveOrderedEntry(tx, entry);
       tx.objectStore('files').add({ name: record.filename, blob });
       const textBlob = new Blob([text || ''], { type: 'text/plain;charset=utf-8' });
       tx.objectStore('texts').put({ url: record.url, blob: textBlob, ...(extraction.status === 'ok' ? { originalBlob: textBlob } : {}), ...(typeof rawText === 'string' ? { rawBlob: new Blob([rawText], { type: 'text/plain;charset=utf-8' }) } : {}) });
@@ -145,7 +171,7 @@ export function saveFailure(projectId, record, { advance = true } = {}) {
       if (request.result?.doc?.editRevision > 0) { fail(new Error('This document has manual text edits. They were kept.')); return; }
       const entry = { url: record.url, record, doc: null, fileNames: request.result?.fileNames || [], originalBytes: request.result?.originalBytes || 0 };
       if (request.result?.record) entry.record.previousAttempt = request.result.record;
-      documents.put(entry); done(entry);
+      saveOrderedEntry(tx, entry); done(entry);
       const meta = tx.objectStore('meta'), batch = meta.get('batch');
       batch.onsuccess = () => { const value = batch.result; if (advance) value.processed++; meta.put(value); };
     };

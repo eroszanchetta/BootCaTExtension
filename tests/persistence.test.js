@@ -286,7 +286,7 @@ with zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())) as z:
  print(json.dumps({'included':included,'excluded':excluded,'draft':draft}))
 `], { input: Buffer.from(await app.archive().arrayBuffer()), encoding: 'utf8' }));
   assert.deepEqual(result.included, ['https://manual.test/', 'https://included.test/']);
-  assert.deepEqual(result.excluded, ['https://unchecked.test/', 'https://failed.test/', 'https://pending.test/', 'https://bad-text.test/', 'https://manual-excluded.test/']);
+  assert.deepEqual(result.excluded, ['https://unchecked.test/', 'https://failed.test/', 'https://pending.test/', 'https://manual-excluded.test/', 'https://bad-text.test/']);
   assert.equal(result.draft, input);
   await storage.setIncluded(id, 'https://included.test/', false);
   await app.focus(); await app.click('export');
