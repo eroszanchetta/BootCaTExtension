@@ -762,6 +762,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.match(await page.locator('#review-lists').innerText(), /Extraction failed/);
     assert.equal(await page.locator('#review-lists .import-document-button').count(), 0, 'failed extraction uses manual text recovery from Details');
     await page.locator('#problem-results .preview-button').click();
+    await page.waitForFunction(()=>document.querySelector('#text-review-dialog').open && !document.querySelector('#text-review-edit').disabled);
     assert.equal(await page.locator('#text-review-edit').isEnabled(),true);
     await page.click('#text-review-edit'); await page.fill('#preview-text','Manually recovered café 中文 🐱 corpus text.'); await page.click('#text-review-save');
     await page.waitForFunction(()=>document.querySelector('#text-review-status').textContent==='Text recovered successfully');
