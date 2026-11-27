@@ -1,6 +1,6 @@
 import { DEFAULT_SETTINGS } from './settings.js';
 import * as storage from './project-store.js';
-import { checkLanguage, languageMessage } from './language-detection.js';
+import { checkLanguage, languageMessage, hasLanguageWarning } from './language-detection.js';
 import { fileWarnings } from './pdf-recovery.js';
 
 export const EDIT_TEXT_LIMIT = DEFAULT_SETTINGS.editCharacters;
@@ -10,10 +10,16 @@ export async function checkEditedText(extraction, text, language, settings = DEF
   let characters = 0; for (const char of text) characters++;
   // An acceptance applied to an earlier text must not silently approve newly
   // edited text in another language. Preserve deliberate inclusion/exclusion.
-  const previous = extraction.languageCheck;
+  const previous = extraction.status === 'ok' ? extraction.languageCheck : undefined;
   const languageCheck = previous ? { ...previous, accepted: false } : undefined;
   if (languageCheck) delete languageCheck.acceptedAt;
-  return checkLanguage({ ...extraction, text, characters, languageCheck }, language);
+  const recovering = extraction.status !== 'ok';
+  const { text: ignoredText, rawText: ignoredRaw, ...previousExtraction } = extraction;
+  const warnings = recovering ? [] : [...extraction.warnings];
+  if (recovering && characters < 200) warnings.push('Very little text entered (under 200 characters). Review before including.');
+  return checkLanguage({ ...extraction, status: 'ok', textSource: 'manual', text, characters, languageCheck,
+    included: recovering ? true : extraction.included, warnings,
+    ...(recovering ? { recovery: { method: 'manual-text', recoveredAt: new Date().toISOString(), previousExtraction } } : {}) }, language);
 }
 
 export function initTextReview({ root = document, confirm, run, getProjectId, getLanguage, isRunning, onSaved, onSelect = () => {}, onClosed = () => {}, getSettings = async () => DEFAULT_SETTINGS }) {
@@ -25,7 +31,7 @@ export function initTextReview({ root = document, confirm, run, getProjectId, ge
     edit.textContent = editing ? 'Cancel' : 'Edit';
     edit.classList.toggle('danger', editing);
     edit.classList.toggle('secondary', !editing);
-    edit.disabled = !current || loading || saving || (!editing && (isRunning(current?.entry.url) || current.entry.doc.extraction.status !== 'ok'));
+    edit.disabled = !current || loading || saving || (!editing && isRunning(current?.entry.url));
     save.disabled = loading || saving || isRunning(current?.entry.url) || !dirty(); close.disabled = saving || confirming;
     text.readOnly = !editing || saving;
     dialog.setAttribute('aria-busy', String(loading || saving));
@@ -35,7 +41,7 @@ export function initTextReview({ root = document, confirm, run, getProjectId, ge
     el('preview-title').textContent = extraction.title || 'Document text';
     el('preview-source').href = doc.url; el('preview-source').textContent = doc.url;
     const warnings = [...fileWarnings(extraction, { details: true }), languageMessage(extraction)].filter(Boolean);
-    el('preview-meta').textContent = `${extraction.extractor || 'Unsupported format'} · ${extraction.characters.toLocaleString()} characters${extraction.pageCount ? ` · ${extraction.pageCount} pages` : ''}${doc.editedAt ? ' · Manually edited' : ''}${warnings.length ? ` · ${warnings.join(' ')}` : ''}`;
+    el('preview-meta').textContent = `${extraction.recovery ? 'Manually recovered text · ' : ''}${extraction.extractor || 'Unsupported format'} · ${extraction.characters.toLocaleString()} characters${extraction.pageCount ? ` · ${extraction.pageCount} pages` : ''}${doc.editedAt ? ' · Manually edited' : ''}${warnings.length ? ` · ${warnings.join(' ')}` : ''}`;
   }
   function clear() {
     const wasOpen = opened, url = current?.entry.url;
@@ -70,7 +76,7 @@ export function initTextReview({ root = document, confirm, run, getProjectId, ge
       if (!snapshot.entry?.doc) throw new Error('This document is no longer in the project.');
       if (snapshot.entry.doc.extraction.status === 'ok' && !snapshot.blob) throw new Error('The saved document text is missing.');
       current = { id, entry: snapshot.entry }; baseText = value; text.value = value; metadata(); onSelect(snapshot.entry.doc);
-      status.textContent = snapshot.entry.doc.extraction.status === 'ok' ? 'Read only. Choose Edit to change the corpus text.' : 'No usable corpus text was extracted. The original file is retained; see the details above.';
+      status.textContent = snapshot.entry.doc.extraction.status === 'ok' ? 'Read only. Choose Edit to change the corpus text.' : 'No usable text was extracted. Choose Edit to paste text from the original page or document.';
     } catch (error) { if (request === generation) status.textContent = `Could not open text: ${error.message}`; }
     finally { if (request === generation) { loading = false; controls(); } }
   }
@@ -101,6 +107,7 @@ export function initTextReview({ root = document, confirm, run, getProjectId, ge
         try {
           const latest = await storage.readTextSnapshot(selected.id, selected.entry.url), doc = latest.entry?.doc;
           if (!doc || doc.filename !== selected.entry.doc.filename || (doc.editRevision || 0) !== (selected.entry.doc.editRevision || 0)) throw new Error('This document changed in another window. Copy your edits before closing, then reopen the document.');
+          const recovered = doc.extraction.status !== 'ok';
           const language = getLanguage(), extraction = await checkEditedText(doc.extraction, value, language, settings);
           if (request !== generation || selected.id !== getProjectId()) return;
           if (getLanguage() !== language) throw new Error('The project language changed. Please try Save again.');
@@ -108,7 +115,7 @@ export function initTextReview({ root = document, confirm, run, getProjectId, ge
           const entry = await storage.saveEditedText(selected.id, selected.entry.url, { filename: doc.filename, revision: doc.editRevision || 0 }, value, metadata);
           if (request !== generation) return;
           current = { id: selected.id, entry }; baseText = value; editing = false; committed = true;
-          onSaved(entry); onSelect(entry.doc); metadataView();
+          onSaved(entry, { recovered }); onSelect(entry.doc); metadataView(recovered);
         } catch (error) { failed = true; if (request === generation) status.textContent = `Text not saved: ${error.message}`; }
       }, { url: selected.entry.url });
       if (request === generation && !committed && !failed && !ran) status.textContent = 'Could not save now. Another BootCaT window may be processing this project. Try Save again.';
@@ -116,7 +123,7 @@ export function initTextReview({ root = document, confirm, run, getProjectId, ge
       if (request === generation) status.textContent = `Text not saved: ${error.message}`;
     } finally { if (request === generation) { saving = false; controls(); } }
   });
-  function metadataView() { metadata(); status.textContent = 'Text saved in this project. Save corpus to download the updated corpus.'; }
+  function metadataView(recovered = false) { metadata(); status.textContent = recovered ? (hasLanguageWarning(current.entry.doc.extraction) ? 'Text recovered. Review the language warning.' : 'Text recovered successfully') : 'Text saved in this project. Save corpus to download the updated corpus.'; }
   close.addEventListener('click', requestClose);
   dialog.addEventListener('cancel', event => { event.preventDefault(); requestClose(); });
   dialog.addEventListener('close', () => { if (opened) clear(); });

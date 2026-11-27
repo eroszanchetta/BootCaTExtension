@@ -760,7 +760,27 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     await waitForFinished();
     await openIssues();
     assert.match(await page.locator('#review-lists').innerText(), /Extraction failed/);
-    assert.equal(await page.locator('#review-lists .import-document-button').count(), 0, 'successful downloads with failed extraction must not offer recovery');
+    assert.equal(await page.locator('#review-lists .import-document-button').count(), 0, 'failed extraction uses manual text recovery from Details');
+    await page.locator('#problem-results .preview-button').click();
+    assert.equal(await page.locator('#text-review-edit').isEnabled(),true);
+    await page.click('#text-review-edit'); await page.fill('#preview-text','Manually recovered café 中文 🐱 corpus text.'); await page.click('#text-review-save');
+    await page.waitForFunction(()=>document.querySelector('#text-review-status').textContent==='Text recovered successfully');
+    assert.equal(await page.locator('#problem-results tr').count(),0); assert.equal(await page.locator('#results tr').count(),1);
+    assert.match(await page.locator('#results').innerText(),/Manually recovered/);
+    const manualRecovery=await page.evaluate(async()=>{
+      const store=await import('./project-store.js'), portable=await import('./portable-project.js');
+      const {project}=await (globalThis.browser??chrome).runtime.sendMessage({type:'get-project'});
+      const snapshot=await store.snapshotStoredProject(project);
+      const restored=await portable.openProjectArchive(await portable.makeProjectArchive(snapshot));
+      const entry=restored.stores.documents.find(entry=>entry.url==='https://corpus.test/empty.pdf');
+      return {extraction:entry.doc.extraction,revision:entry.doc.editRevision,original:(await restored.stores.files.find(file=>file.name===entry.doc.filename).blob.text()).slice(0,5),baseline:await restored.stores.texts.find(text=>text.url===entry.url).originalBlob.text()};
+    });
+    assert.equal(manualRecovery.extraction.textSource,'manual'); assert.equal(manualRecovery.extraction.recovery.previousExtraction.status,'failed');
+    assert.equal(manualRecovery.revision,1); assert.equal(manualRecovery.original,'%PDF-'); assert.equal(manualRecovery.baseline,'');
+    await page.click('#text-review-close');
+    await page.waitForFunction(()=>document.querySelector('#results tr')?.classList.contains('recovery-success'));
+    console.log('Manual text recovery from Details, corpus-row feedback and portable provenance/original preservation passed.');
+
     await deleteAllRows();
     await page.fill('#urls', 'https://corpus.test/blocked');
     await page.click('#start');
@@ -1102,7 +1122,9 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     await emptyTab.waitForLoadState('domcontentloaded'); await waitProjectTabsReady(1);
     await page.click('#collect-project-tabs');
     await page.getByRole('button',{name:'Mark as no results',exact:true}).waitFor();
-    assert.equal(emptyTab.isClosed(),false); await page.getByRole('button',{name:'Mark as no results',exact:true}).click();
+    assert.equal(emptyTab.isClosed(),false);
+    assert.equal(await page.getByRole('button',{name:'Mark as no results',exact:true}).evaluate(button=>button.previousElementSibling?.classList.contains('query-tab-status') && button.nextElementSibling?.getAttribute('aria-label')==='Open search tab'),true);
+    await page.getByRole('button',{name:'Mark as no results',exact:true}).click();
     await page.locator('.query-tab-status[data-status="no-results"]').waitFor();
     assert.equal(await page.locator('#open-all-queries').isDisabled(),true);
     assert.equal(await page.evaluate(async projectId => (await (globalThis.browser??chrome).runtime.sendMessage({type:'get-project-search-tabs',projectId})).count,currentProject),0);

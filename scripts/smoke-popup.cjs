@@ -574,6 +574,33 @@ const assert = require('node:assert/strict');
         assert.equal(await workspace.evaluate(() => document.querySelector('#text-review-dialog').scrollWidth > document.querySelector('#text-review-dialog').clientWidth), false, `${name}: mobile dialog overflow`);
         await workspace.click('#text-review-close');
         assert.equal(await workspace.locator('#text-review-dialog[open]').count(), 0);
+        // Failed/unsupported originals stay intact while pasted text becomes usable.
+        for (const [kind,width] of [['pdf',1050],['html',390],['unsupported',390]]) {
+          await workspace.setViewportSize({width,height:850});
+          await workspace.evaluate(async kind => {
+            const storage=await import('./project-store.js');
+            const url='https://example.org/failed-'+kind, filename='pages/failed-'+kind+'.bin';
+            await storage.saveDocument('text-dialog',{url,filename,outcome:'downloaded'}, {url,filename,textFilename:'corpus/failed-'+kind+'.txt',extraction:{status:kind==='unsupported'?'unsupported':'failed',included:false,text:'',characters:0,warnings:['Original extraction failed'],extractor:kind==='pdf'?'pdfjs':'fixture'}},new Blob(['Original '+kind]));
+            await testTextReview.open(url);
+          },kind);
+          await workspace.locator('#text-review-dialog[open]').waitFor();
+          assert.equal(await workspace.locator('#text-review-edit').isEnabled(),true);
+          await workspace.click('#text-review-edit'); await workspace.fill('#preview-text','Cancelled recovery'); await workspace.click('#text-review-edit');
+          assert.equal(await workspace.inputValue('#preview-text'),'');
+          await workspace.click('#text-review-edit'); await workspace.fill('#preview-text','Pasted café 中文 🐱 text.'); await workspace.click('#text-review-save');
+          await workspace.waitForFunction(()=>document.querySelector('#text-review-status').textContent==='Text recovered successfully');
+          const recovered=await workspace.evaluate(async kind=>{
+            const storage=await import('./project-store.js'), url='https://example.org/failed-'+kind;
+            const entry=(await storage.readDownloadTarget('text-dialog',url)).entry;
+            return {extraction:entry.doc.extraction,original:await(await storage.readOriginal('text-dialog',entry.doc.filename)).text(),baseline:await(await storage.readOriginalText('text-dialog',url)).text(),text:await(await storage.readText('text-dialog',url)).text()};
+          },kind);
+          assert.equal(recovered.extraction.status,'ok'); assert.equal(recovered.extraction.textSource,'manual');
+          assert.equal(recovered.extraction.recovery.previousExtraction.status,kind==='unsupported'?'unsupported':'failed');
+          assert.equal(recovered.original,'Original '+kind); assert.equal(recovered.baseline,''); assert.equal(recovered.text,'Pasted café 中文 🐱 text.');
+          assert.equal(await workspace.locator('#text-review-dialog').evaluate(dialog=>dialog.scrollWidth>dialog.clientWidth),false);
+          await workspace.click('#text-review-close');
+        }
+        console.log(`${name}: failed PDF/HTML and unsupported text recovery, cancellation, Unicode and original preservation passed.`);
         // Real recovery controller: nested table scrolling, disclosure layout,
         // retained messages, reduced motion and deferral behind a dirty editor.
         await workspace.evaluate(async () => {

@@ -50,3 +50,17 @@ test('PDF loading uses data-only parser options without viewer scripting', async
   assert.match(manifest.content_security_policy.extension_pages, /script-src 'self';/);
   assert.ok(!manifest.content_security_policy.extension_pages.includes("'unsafe-eval'"));
 });
+
+
+test('HTML falsely labelled PDF is diagnosed before PDF parsing', async () => {
+  let loaded=false;
+  const bytes=new TextEncoder().encode('<!doctype html><title>Sign in</title><body>Not a PDF</body>');
+  const result=await extractDownloadedDocument(bytes,'application/pdf',{loadPDF:async()=>{loaded=true;throw new Error('must not load')}});
+  assert.equal(result.status,'failed'); assert.equal(result.failureKind,'html-instead-of-pdf'); assert.equal(loaded,false);
+  assert.match(result.warnings.join(' '),/returned HTML/);
+});
+
+test('unreadable optional PDF metadata does not discard successfully recovered page text', async () => {
+  const result=await extractDownloadedDocument(pdfFixture(),'application/pdf',{loadPDF:async()=>({version:PDFJS_VERSION,getDocument:()=>({promise:Promise.resolve({numPages:1,getPage:async()=>({getTextContent:async()=>({items:[{str:'Readable PDF text.',hasEOL:true}]}),cleanup(){}}),getMetadata:async()=>{throw new Error('Broken optional metadata')}}),destroy:async()=>{}})})});
+  assert.equal(result.status,'ok'); assert.match(result.text,/Readable PDF text/); assert.match(result.warnings.join(' '),/metadata could not be read/);
+});

@@ -151,3 +151,63 @@ test('editing rechecks language, clears acceptance of the previous text, and pre
   original.included = false; original.languageCheck.inclusionBeforeCheck = false;
   assert.equal((await checkEditedText(original, english, 'eng')).included, false);
 });
+
+
+test('Details recovers failed extraction text while preserving original bytes, baseline, diagnostics and manual edits', async () => {
+  globalThis.indexedDB = new IDBFactory();
+  try {
+    const url='https://example.org/failed.pdf', feedback=[];
+    const failure={status:'failed',text:'',characters:0,included:false,extractor:'pdfjs',format:'pdf',warnings:['No extractable text found.'],rawText:'Partial raw PDF stream'};
+    const app=await workspace('manual-recovery',{extractor:async()=>failure,onRecoveryFeedback:value=>feedback.push(value)});
+    await app.input('urls',url); await app.click('start');
+    await transaction(['documents'],'readwrite',tx=>{const store=tx.objectStore('documents'),request=store.get(url); request.onsuccess=()=>{request.result.record.processingIncomplete=true;store.put(request.result);};});
+    const before=(await storage.loadWorkspace('manual-recovery')).entries[0];
+    await app.get('problem-results').children[0].children[2].children[1].handlers.click();
+    assert.equal(app.get('text-review-edit').disabled,false);
+    assert.match(app.get('text-review-status').textContent,/Choose Edit to paste/);
+    await edit(app,'   '); await app.click('text-review-save');
+    assert.match(app.get('text-review-status').textContent,/Enter some text/);
+    assert.equal((await storage.loadWorkspace('manual-recovery')).entries[0].doc.extraction.status,'failed');
+    await app.click('text-review-edit'); assert.equal(app.get('preview-text').value,'');
+    const manual='Copied café 中文 🐱 text.\nSecond paragraph.';
+    await edit(app,manual); await app.click('text-review-save');
+    let entry=(await storage.loadWorkspace('manual-recovery')).entries[0];
+    assert.equal(entry.doc.extraction.status,'ok'); assert.equal(entry.doc.extraction.included,true);
+    assert.equal(entry.doc.extraction.characters,Array.from(manual).length); assert.equal(entry.doc.extraction.textSource,'manual');
+    assert.equal(entry.doc.extraction.recovery.previousExtraction.status,'failed');
+    assert.deepEqual(entry.doc.extraction.recovery.previousExtraction.warnings,failure.warnings);
+    assert.equal(entry.doc.extraction.recovery.previousExtraction.text,undefined);
+    assert.deepEqual(entry.record,before.record); assert.deepEqual(entry.fileNames,before.fileNames);
+    assert.equal(await (await storage.readOriginal('manual-recovery',entry.doc.filename)).text(),'source');
+    assert.equal(await (await storage.readOriginalText('manual-recovery',url)).text(),'');
+    assert.equal(await (await storage.readRawText('manual-recovery',url)).text(),'Partial raw PDF stream');
+    assert.equal(app.get('problem-results').children.length,0); assert.equal(app.get('results').children.length,1);
+    assert.equal(app.get('text-review-status').textContent,'Text recovered successfully');
+    assert.equal(feedback.at(-1).tone,'success');
+    await app.click('text-review-close'); await app.click('start'); assert.equal(app.fetched.length,1);
+    await assert.rejects(storage.saveFailure('manual-recovery',{url,outcome:'error',error:'Late retry'}),/manual text edits/);
+    await assert.rejects(storage.saveDocument('manual-recovery',{url,filename:'pages/retry.pdf'}, {...entry.doc,filename:'pages/retry.pdf',extraction:{...failure}},new Blob(['replacement'])),/manual text edits/);
+    assert.equal(await (await storage.readText('manual-recovery',url)).text(),manual);
+    await app.click('export');
+    const exported=JSON.parse(execFileSync('python3',['-c',`
+import io,sys,json,zipfile
+with zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())) as z:
+ d=json.loads(z.read('extraction.json'))['documents'][0]
+ print(json.dumps({'meta':d,'text':z.read(d['textFilename']).decode(),'baseline':z.read(d['originalTextFilename']).decode(),'original':z.read(d['originalFilename']).decode()}))
+`],{input:Buffer.from(await app.archive().arrayBuffer()),encoding:'utf8'}));
+    assert.equal(exported.meta.textSource,'manual'); assert.equal(exported.meta.recovery.previousExtraction.status,'failed');
+    assert.equal(exported.text,manual+'\n'); assert.equal(exported.baseline,''); assert.equal(exported.original,'source');
+  } finally {delete globalThis.indexedDB;}
+});
+
+test('manual recovery checks language, clears failed-text decisions, and enforces the edit limit', async () => {
+  const english='Renewable energy requires careful planning and reliable electricity networks. Technical terminology describes generation capacity, storage systems and distribution. Translators need clear examples of these expressions in context. '.repeat(5);
+  const failure={status:'failed',included:false,characters:0,warnings:['Readability did not find main content'],languageCheck:{accepted:true,inclusionBeforeCheck:false}};
+  const match=await checkEditedText(failure,english,'eng');
+  assert.equal(match.status,'ok'); assert.equal(match.languageCheck.inclusionBeforeCheck,true); assert.equal(match.languageCheck.accepted,false);
+  assert.equal(match.included,match.languageCheck.outcome==='match');
+  assert.equal((await checkEditedText(failure,english,'none')).included,true);
+  const mismatch=await checkEditedText(failure,english,'ita');
+  assert.equal(mismatch.status,'ok'); assert.equal(mismatch.included,false); assert.ok(['mismatch','uncertain'].includes(mismatch.languageCheck.outcome));
+  await assert.rejects(checkEditedText(failure,english,'none',{editCharacters:5}),/character limit/);
+});

@@ -38,9 +38,9 @@ Live inspection reproduced ten readable documents plus two Related Searches anch
 
 Old DuckDuckGo collections without result-set metadata retain their URLs and allow one fresh collection. Current tests replay a minimized populated live DOM in Chromium/Firefox and exercise the full Chromium extension. The historical eight unidentified Fiori candidates and the exact reported intermittent floating failure remain unconfirmed; see docs/DUCKDUCKGO-2.2.md.
 
-## WP5 — Extraction diagnosis and manual recovery
+## WP5 — Extraction diagnosis and manual recovery (implemented; readiness determined by PR validation)
 
-Diagnose the supplied IEEE PDF, distinguishing access/wrapper responses from PDF extraction failures. Allow manual text recovery from Details when extraction fails (including the supplied Quizlet case). Preserve originals, source URL and failure provenance; mark manual text, reassess language/length, retain portability and protect edits from retry overwrite. OCR/general PDF rewrite deferred.
+Diagnose the supplied IEEE PDF, distinguishing access/wrapper responses from PDF extraction failures. Allow manual text recovery from Details when extraction fails (including the supplied Quizlet case). Preserve originals, source URL and failure provenance; mark manual text, reassess language/length, retain portability and protect edits from retry overwrite. OCR/general PDF rewrite deferred. See docs/EXTRACTION-2.2.md for the live access-failure evidence, parser changes, manual recovery semantics and remaining limits.
 
 ## WP6 — Length filters and Settings
 
@@ -62,3 +62,5 @@ Suggested delivery order: WP1 through WP7, gathering WP7 examples early. WP1, WP
 After a collection finds no readable or unresolved candidates, offer Mark as no results in the popup/floating feedback and, for a tracked batch failure, the query row. This is a manual assertion, not automatic detection of provider wording. Recheck that the search page is loaded, unchanged and free of detected results/challenges/unreadable candidates. Save an explicit manual no-results outcome with no invented document/URL; preserve it in portable projects and restore query history after restart. Keep the source tab open and exclude this completed query from batch opening and collection. Show a separate No results badge and explicit Rerun query action; opening that query explicitly clears its manual empty outcome and creates a fresh tracked search tab. Existing saved results for that query must not be overwritten by an empty outcome. A changed result set can be collected normally.
 
 On successful Generate tuples, open Seeds and scroll the Tuples label below the sticky header after layout settles, without changing keyboard focus. Failed/stopped generation keeps previous tuples and does not perform that scroll. Replace the completed-download Dismiss button with a keyboard-accessible × control at the top right; active progress remains visible.
+
+The main-window Mark as no results action is placed immediately after the query status badge and before Open search tab (maintainer adjustment, 27 November 2026).
