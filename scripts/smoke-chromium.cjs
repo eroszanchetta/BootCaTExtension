@@ -43,7 +43,7 @@ const { execFileSync } = require('node:child_process');
       }
       if (request.url.startsWith('/search-fixture')) {
         const query = new URL(request.url, 'http://fixture').searchParams.get('q') || '';
-        const body = query === 'manual-empty' ? '<title>Empty search fixture</title><p>No results found</p>' : query === 'captcha' && !resolvedQueries.has(query) ? '<h1>CAPTCHA required</h1>' : `<a data-testid="result-title-a" href="https://corpus.test/search?q=${encodeURIComponent(query)}">Local result</a>${query === 'partial' ? '<a data-testid="result-title-a" href="https://duckduckgo.com/l/?opaque=1">Unresolved link</a>' : ''}`;
+        const body = query.startsWith('manual-empty') ? '<title>Empty search fixture</title><p>No results found</p>' : query === 'captcha' && !resolvedQueries.has(query) ? '<h1>CAPTCHA required</h1>' : `<a data-testid="result-title-a" href="https://corpus.test/search?q=${encodeURIComponent(query)}">Local result</a>${query === 'partial' ? '<a data-testid="result-title-a" href="https://duckduckgo.com/l/?opaque=1">Unresolved link</a>' : ''}`;
         response.writeHead(200, { 'Content-Type': 'text/html' });
         if (['delayed', 'close while loading'].includes(query)) {
           response.write('<!doctype html><title>Loading search fixture</title>');
@@ -1097,6 +1097,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     // An empty page stays unresolved until a user explicitly records the outcome.
     await page.locator('nav a[href="#seeds-section"]').click(); await page.fill('#tuples','manual-empty');
     await page.click('#prepare-queries'); await page.selectOption('#engine','duckduckgo');
+    const manualQuery=await page.locator('#prepared-queries a').innerText();
     const emptyCreated=context.waitForEvent('page'); await clickConfirmed('#open-all-queries'); const emptyTab=await emptyCreated;
     await emptyTab.waitForLoadState('domcontentloaded'); await waitProjectTabsReady(1);
     await page.click('#collect-project-tabs');
@@ -1109,7 +1110,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.match(await emptyPopup.locator('#feedback').innerText(),/No results \(marked manually\)/);
     const rerunCreated=context.waitForEvent('page'); await emptyPopup.click('#rerun-no-results'); const rerunTab=await rerunCreated;
     await rerunTab.waitForLoadState('domcontentloaded'); assert.notEqual(rerunTab,emptyTab); assert.equal(emptyTab.isClosed(),false);
-    await page.waitForFunction(async () => !(await (globalThis.browser??chrome).storage.local.get('collections')).collections.some(item=>item.status==='no-results' && item.query==='manual-empty'));
+    await page.waitForFunction(async query => !(await (globalThis.browser??chrome).storage.local.get('collections')).collections.some(item=>item.status==='no-results' && item.query===query),manualQuery);
     await rerunTab.close(); await emptyTab.close();
     // Also exercise the real content-script mark action on an untracked page.
     await context.route('https://duckduckgo.com/?q=manual-floating-empty',route=>route.fulfill({contentType:'text/html',body:'<title>Empty search fixture</title><p>No results found</p>'}));
