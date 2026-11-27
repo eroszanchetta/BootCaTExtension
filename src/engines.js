@@ -76,21 +76,38 @@ export function extractResults(adapter) {
   }
   const seen = new Set(), results = [];
   let unresolved = 0, candidates = 0;
+  const candidateDiagnostics = [];
+  function diagnose(anchor, outcome, reason) {
+    // Keep bounded, inspectable evidence locally; never retain credentials.
+    let href = anchor.getAttribute('href') || '';
+    try { const url = new URL(href, page); if (url.username || url.password) href = '[credentials removed]'; } catch {}
+    if (candidateDiagnostics.length >= 200) return;
+    candidateDiagnostics.push({ position: candidates, href: href.slice(0, 2000), outcome, reason });
+  }
   // A combined selector preserves DOM order and matches each anchor once.
   for (const anchor of visibleResults) {
     if (!anchor.getClientRects().length || anchor.closest('[hidden], [aria-hidden="true"], [data-text-ad], [data-ad], [data-testid*="ad-result"], [data-testid="ad"], [data-test-id="mainline-result-ad"], .result--ad, .result--advertisement, #tads, #bottomads')) continue;
+    // Live DDG Related Searches reuse the legacy result__a class. Exclude
+    // only the observed widget, not every provider-owned/unreadable candidate.
+    if (adapter.id === 'duckduckgo' && anchor.closest('.related-searches, .related-searches__item')) {
+      diagnose(anchor, 'ignored', 'related-search'); continue;
+    }
     candidates++;
     const url = destination(anchor.getAttribute("href"));
     if (!url) {
       let internal = false; try { const candidate = new URL(anchor.getAttribute('href'), page); internal = adapter.id === 'google' && owned(candidate) && candidate.pathname !== '/url' && !contentURL(candidate); } catch {}
-      if (!internal) unresolved++; continue;
+      if (!internal) unresolved++;
+      diagnose(anchor, internal ? 'ignored' : 'unresolved', internal ? 'provider-navigation' : 'unreadable-destination'); continue;
     }
-    if (seen.has(url)) continue;
+    if (seen.has(url)) { diagnose(anchor, 'duplicate', 'same-destination'); continue; }
     seen.add(url);
     const titleNode = adapter.titleSelector ? anchor.querySelector(adapter.titleSelector) : anchor;
     results.push({ url, title: (titleNode?.textContent || anchor.textContent || "").replace(/\s+/g, " ").trim().slice(0, 500), positionOnPage: candidates });
     if (results.length >= 200) break;
   }
+  const diagnostics = candidateDiagnostics.slice(0, 200);
+  const resultSetKey = JSON.stringify([results.map(item => item.url), unresolved,
+    candidateDiagnostics.filter(item => item.outcome === 'unresolved').map(item => item.href)]);
   if (!results.length && (challengeForm || (challengeTitle && challengeResource))) return { engine: adapter.id, pageURL: page.href, results: [], unresolved: 0, challenge: true };
-  return { engine: adapter.id, adapterVersion: 1, query: page.searchParams.get(adapter.queryParam) || "", pageURL: page.href, results, unresolved, ...(unreadableGoogle ? { unreadableGoogle } : {}) };
+  return { engine: adapter.id, adapterVersion: 2, resultSetKey, candidateDiagnostics: diagnostics, query: page.searchParams.get(adapter.queryParam) || "", pageURL: page.href, results, unresolved, ...(unreadableGoogle ? { unreadableGoogle } : {}) };
 }

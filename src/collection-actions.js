@@ -1,7 +1,7 @@
 const pageURL = value => { const url = new URL(value); url.hash = ''; return url.href; };
 // Background-owned work survives the popup closing. Only tabs participating in
 // an action are watched; navigation/reload fences apply to tracked and untracked tabs.
-export function createCollectionActions({ ext, serialize, assertProject }) {
+export function createCollectionActions({ ext, serialize, assertProject, verifyBeforeClose = async () => true }) {
   const watchers = new Map(), pending = new Map();
   ext.tabs.onUpdated?.addListener((id, change) => {
     if (change.url || change.status === 'loading' || change.discarded) for (const item of watchers.get(id) || []) item.changed = true;
@@ -34,6 +34,9 @@ export function createCollectionActions({ ext, serialize, assertProject }) {
         const result = await Promise.resolve().then(() => task(tab));
         if (!closeAfterSuccess) return result;
         if (result.unresolved) return { ...result, closed: false, closeWarning: result.linkWarning ? `${result.linkWarning} The tab was left open.` : 'Some search links could not be collected. The tab was left open for review.' };
+        try {
+          if (!await verifyBeforeClose(tab, result)) return { ...result, closed: false, closeWarning: 'Saved successfully. The results changed, so the tab was left open.' };
+        } catch { return { ...result, closed: false, closeWarning: 'Saved successfully. The tab could not be rechecked, so it was left open.' }; }
         return { ...result, ...await closeSaved(snapshot) };
       } finally {
         watchers.get(tabId)?.delete(snapshot);

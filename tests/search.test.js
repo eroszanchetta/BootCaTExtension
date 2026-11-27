@@ -6,14 +6,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { ENGINES, adapterForURL, searchURL, extractResults } from '../src/engines.js';
-import { addCollection, uniqueResults } from '../src/collection.js';
+import { matchingCollection, addCollection, uniqueResults } from '../src/collection.js';
 
 // Synthetic DOM API fixtures test URL handling and isolated-world execution.
 // They do NOT validate selectors against current live engine layouts.
 function extract(engine, href, links, page = {}) {
   const anchors = links.map(link => ({
     getClientRects: () => link.hidden ? [] : [{}],
-    closest: () => link.ad ? {} : null,
+    closest: selector => link.ad || (link.related && selector.startsWith('.related-searches')) ? {} : null,
     getAttribute: () => link.href,
     querySelector: () => ({ textContent: link.title || 'Title' }),
     textContent: link.title || 'Title'
@@ -187,4 +187,31 @@ test('Google Books is readable content; internal Google navigation does not caus
   assert.equal(result.results.length, 3); assert.equal(result.unresolved, 0);
   assert.equal(result.unreadableGoogle, undefined); assert.equal(collectionLinkWarning(result), '');
   assert.ok(result.results.some(item => item.url === 'https://books.google.it/books?id=In_Lv8iMt24C'));
+});
+
+test('DDG related searches are diagnosed separately; unknown internal links remain unresolved', () => {
+  const result = extract('duckduckgo', 'https://duckduckgo.com/?q=flowers', [
+    { href: 'https://example.org/flower' },
+    { href: '?q=related&origin=related', related: true },
+    { href: '/l/?opaque=unknown' }, { href: '/unknown' },
+    { href: '/l/?uddg=https%3A%2F%2Fexample.org%2Fsecond' }
+  ]);
+  assert.equal(result.results.length, 2); assert.equal(result.unresolved, 2);
+  assert.equal(result.results[1].positionOnPage, 4);
+  assert.equal(result.candidateDiagnostics[0].reason, 'related-search');
+  assert.equal(result.candidateDiagnostics[1].href, '/l/?opaque=unknown');
+  assert.equal(result.candidateDiagnostics[1].outcome, 'unresolved');
+  assert.equal(extract('duckduckgo', 'https://duckduckgo.com/?q=flowers', [{href:'https://user:secret@example.org/'}]).candidateDiagnostics[0].href, '[credentials removed]');
+});
+
+test('DDG saved state distinguishes appended results, pagination and unaccepted partial collections', () => {
+  const url = 'https://duckduckgo.com/?q=flowers&ia=web';
+  const saved = extract('duckduckgo', url, [{href:'https://example.org/a'}]);
+  assert.equal(matchingCollection([saved], 'duckduckgo', url+'#top', saved), saved);
+  assert.equal(matchingCollection([saved], 'duckduckgo', url+'&s=10', saved), null);
+  const appended = extract('duckduckgo', url, [{href:'https://example.org/a'},{href:'https://example.org/b'}]);
+  assert.equal(matchingCollection([saved], 'duckduckgo', url, appended), null);
+  assert.equal(matchingCollection([{...saved,resultSetKey:undefined}], 'duckduckgo', url, saved), null, 'old collections retain URLs but allow a fresh collection');
+  const partial = {...saved,unresolved:1};
+  assert.equal(matchingCollection([partial], 'duckduckgo', url, saved), partial, 'matching does not imply acceptance');
 });

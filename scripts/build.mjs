@@ -1,3 +1,4 @@
+import { ENGINES, extractResults } from '../src/engines.js';
 import { preparePDFJS } from './pdfjs-store-build.mjs';
 import { collectionSummary } from '../src/search-feedback.js';
 import { PDFJS_VERSION } from '../src/pdfjs-version.js';
@@ -36,7 +37,7 @@ export async function build(target, { outputRoot = join(ROOT, 'dist'), includeTe
   const mascot = { viewBox: mascotSVG.match(/viewBox="([^"]+)"/)[1], paths: [...mascotSVG.matchAll(/<path\b([^>]+)\/?\s*>/g)].map(match => Object.fromEntries([...match[1].matchAll(/(fill|d)="([^"]*)"/g)].map(attr => [attr[1], attr[2]]))) };
   if (!mascot.paths.length || mascot.paths.some(path => !path.d || !path.fill)) throw new Error('Invalid Sbafo vector artwork.');
   const controlPath = join(destination, 'floating-control.js');
-  const control = (await readFile(controlPath, 'utf8')).replace('const mascot = null;', `const mascot = ${JSON.stringify(mascot)};`).replace('const summarize = null;', `const summarize = ${collectionSummary.toString()};`);
+  const control = (await readFile(controlPath, 'utf8')).replace('const mascot = null;', `const mascot = ${JSON.stringify(mascot)};`).replace('const readResults = null;', `const readResults = ${extractResults.toString()};`).replace('const ddgAdapter = null;', `const ddgAdapter = ${JSON.stringify(ENGINES.find(e => e.id === 'duckduckgo'))};`).replace('const summarize = null;', `const summarize = ${collectionSummary.toString()};`);
   await writeFile(controlPath, control);
 
   await cp(join(ROOT, 'LICENSE'), join(destination, 'LICENSE.txt'));

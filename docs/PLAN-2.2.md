@@ -32,9 +32,11 @@ The Import downloaded file button also accepts one dropped local file, with an o
 
 For user-initiated downloaded-file recovery, report the saved and checked outcome persistently. Successful recovery opens Corpus documents, scrolls to the row below the sticky header and highlights it softly in green for two seconds. Remaining extraction/language issues stay in Documents with issues with amber highlighting and a specific explanation. Failed imports report the error without claiming success. Preserve known inclusion choices; usable text may remain excluded. Keep messages on moved rows and offer Show document. Defer automatic navigation until open dialogs/editors close, preserve keyboard focus, and use a static timed highlight for reduced motion.
 
-## WP4 — DuckDuckGo collection reliability
+## WP4 — DuckDuckGo collection reliability (implemented; readiness determined by PR validation)
 
-Investigate partial results, collection button availability and missing floating controls against populated live DOM and candidate diagnostics. Preserve pagination and dynamic-result distinctions. Implement evidence-backed fixes; do not assume the old unresolved candidates were internal links.
+Live inspection reproduced ten readable documents plus two Related Searches anchors sharing the legacy result selector. Exclude that observed widget; keep unknown/internal opaque result candidates unresolved with bounded local diagnostics. Record the ordered result-set identity and compare it for DuckDuckGo popup/floating saved state, so same-URL additions permit collection again. Preserve full page/pagination/filter identity (apart from fragments), and retain existing query-level collection history. Recheck DDG results before automatic tab closure; leave changed or unreadable pages open. Restore removed floating hosts, and refresh after dynamic result/URL changes, visibility return and history restoration. No automatic collection or reload.
+
+Old DuckDuckGo collections without result-set metadata retain their URLs and allow one fresh collection. Current tests replay a minimized populated live DOM in Chromium/Firefox and exercise the full Chromium extension. The historical eight unidentified Fiori candidates and the exact reported intermittent floating failure remain unconfirmed; see docs/DUCKDUCKGO-2.2.md.
 
 ## WP5 — Extraction diagnosis and manual recovery
 

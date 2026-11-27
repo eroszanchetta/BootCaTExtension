@@ -72,3 +72,10 @@ test('floating registration covers existing/new tabs, hides on project closure a
   project = null; await manager.sync(); assert.equal(registered.length, 0); assert.ok(notified.includes(1));
   values[COLLECTION_CONTROLS_KEY].values.floatingEnabled = false; await manager.sync(); assert.equal(registered.length, 0);
 });
+
+test('a changed dynamic result set is saved but never automatically closed', async () => {
+  const ext = {tabs:{get:async()=>({id:1,url:'https://duckduckgo.com/?q=flowers',status:'complete'}),remove:async()=>assert.fail('Changed results must stay open')}};
+  const actions = createCollectionActions({ext,serialize:fn=>fn(),assertProject:async()=>{},verifyBeforeClose:async()=>false});
+  const reply = await actions.run({projectId:'p',tabId:1,action:'collect',closeAfterSuccess:true},async()=>({count:10}));
+  assert.equal(reply.count,10); assert.equal(reply.closed,false); assert.match(reply.closeWarning,/results changed/);
+});

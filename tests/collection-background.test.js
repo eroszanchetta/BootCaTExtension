@@ -27,7 +27,7 @@ async function fixture(namespace, label) {
     },
     scripting: { executeScript: async ({ target, func }) => {
       const tab = tabs.get(target.tabId);
-      if (func.name === 'extractResults') return [{ result: { engine: adapterForURL(tab.url).id, pageURL: tab.url, query: new URL(tab.url).searchParams.get('q'), unresolved, results: [{ url: 'https://corpus.test/article', title: 'Article' }] } }];
+      if (func.name === 'extractResults') return [{ result: { engine: adapterForURL(tab.url).id, pageURL: tab.url, query: new URL(tab.url).searchParams.get('q'), unresolved, resultSetKey: JSON.stringify([tab.resultSuffix || '', unresolved]), results: [{ url: 'https://corpus.test/article', title: 'Article' }] } }];
       captures++; return [{ result: { url: tab.url, html: '<html><body><p>Safely stored original</p></body></html>', capturedAt: new Date().toISOString() } }];
     } }
   };
@@ -122,3 +122,29 @@ for (const namespace of ['chrome', 'browser']) {
     } finally { delete globalThis[namespace]; delete globalThis.indexedDB; }
   });
 }
+
+for (const namespace of ['chrome','browser']) test(`${namespace}: DDG popup and floating saved state tracks live result sets and keeps partial pages available`, async () => {
+  const app = await fixture(namespace,'ddg-results');
+  try {
+    const {project} = await app.send({type:'new-project',projectId:null,name:'DDG corpus'});
+    await app.send({type:'save-collection-controls',patch:{floatingEnabled:true}});
+    app.tabs.get(1).url = 'https://duckduckgo.com/?q=flowers';
+    const collect = () => app.send({type:'collect',projectId:project.id,tabId:1});
+    await collect();
+    assert.equal((await app.content({type:'get-floating-state'})).state.saved,true);
+    assert.ok((await app.send({type:'get-search-collection-state',tabId:1})).collection);
+    app.tabs.get(1).resultSuffix = 'appended';
+    assert.equal((await app.content({type:'get-floating-state'})).state.saved,false);
+    assert.equal((await app.send({type:'get-search-collection-state',tabId:1})).collection,null);
+    app.setPartial(1); await collect();
+    assert.equal((await app.content({type:'get-floating-state'})).state.saved,false);
+    assert.equal((await app.send({type:'get-search-collection-state',tabId:1})).collection.unresolved,1);
+    await app.send({type:'accept-collected-results',projectId:project.id,pageURL:app.tabs.get(1).url});
+    assert.equal((await app.content({type:'get-floating-state'})).state.saved,true);
+    const originalURL = app.tabs.get(1).url;
+    app.tabs.get(1).url += '&s=10';
+    assert.equal((await app.content({type:'get-floating-state',pageURL:app.tabs.get(1).url},{url:originalURL})).state.saved,false, 'same-document navigation keeps controls available despite the original sender URL');
+    assert.equal((await app.content({type:'get-floating-state',pageURL:originalURL},{url:originalURL})).ok,false, 'stale action URL is rejected');
+    assert.equal((await app.content({type:'get-floating-state',pageURL:app.tabs.get(1).url},{url:'https://other.test/'})).ok,false, 'cross-origin stale document is rejected');
+  } finally { delete globalThis[namespace]; delete globalThis.indexedDB; }
+});

@@ -2,6 +2,7 @@ import { collectionLinkWarning, collectionSummary } from './search-feedback.js';
 import { COLLECTION_CONTROLS_KEY, DEFAULT_COLLECTION_CONTROLS, collectionControlsFromRecord } from './collection-preferences.js';
 import { getExtensionAPI } from './extension-api.js';
 import { initVersionBadge } from './version.js';
+import { matchingCollection } from './collection.js';
 import { adapterForURL } from './engines.js';
 const ext = getExtensionAPI();
 initVersionBadge();
@@ -108,10 +109,23 @@ async function refreshPageState() {
   render();
 }
 function updateCollectionState(collections) {
-  const saved = engine && collections.find(item => item.engine === engine.id && item.pageURL === activeTab?.url);
+  const saved = engine && matchingCollection(collections, engine.id, activeTab?.url);
+  applyCollectionState(saved);
+  if (engine?.id === 'duckduckgo') refreshSearchCollection();
+}
+function applyCollectionState(saved) {
   alreadyCollected = !!saved; unresolved = saved?.unresolved || 0; collectedResult = saved; acceptedPartial = !!saved?.acceptedPartial;
   if (!collecting) { collectionError = ''; collectionWarning = saved?.acceptedPartial ? '' : collectionLinkWarning(saved); }
   render();
+}
+let searchRead = 0;
+async function refreshSearchCollection() {
+  const read = ++searchRead, projectId = project?.id;
+  try {
+    const reply = await ext.runtime.sendMessage({ type: 'get-search-collection-state', tabId: activeTab.id });
+    if (read !== searchRead || collecting || reloading || project?.id !== projectId) return;
+    if (reply?.ok && reply.projectId === projectId) applyCollectionState(reply.collection);
+  } catch { /* Keep the collect action available when inspection fails. */ }
 }
 ext.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local' || reloading) return;

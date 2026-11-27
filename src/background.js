@@ -16,7 +16,7 @@ import { getExtensionAPI } from './extension-api.js';
 const ext = getExtensionAPI();
 import { adapterForURL, extractResults } from "./engines.js";
 import { parseURLs } from './core.js';
-import { addCollection } from "./collection.js";
+import { matchingCollection, addCollection } from "./collection.js";
 import { createProjectSearchTabs, matchesProjectSearch } from './project-search-tabs.js';
 let searchTabs;
 const captures = new Map();
@@ -103,14 +103,19 @@ async function collectPage(tabId, projectId, expected, expectedURL) {
     await ext.storage.local.set({ collections: addCollection(collections, collection, settings) });
     if (marker) await searchTabs.markCollectedInQueue(marker, result);
     const notice = await workspaceNotice();
-    return { count: result.results.length, added, duplicates, collectionId: collection.id, unresolved: result.unresolved, engine: adapter.name, linkWarning: collectionLinkWarning(result), ...notice };
+    return { count: result.results.length, added, duplicates, collectionId: collection.id, resultSetKey: result.resultSetKey, unresolved: result.unresolved, engine: adapter.name, linkWarning: collectionLinkWarning(result), ...notice };
   });
 }
 searchTabs = createProjectSearchTabs({ ext, serialize, assertProject, collectPage });
 
 const canonicalURL = value => { const url = new URL(value); url.hash = ''; return url.href; };
 const namedProject = project => !!project && (project.nameConfirmed === true || (project.nameConfirmed == null && !!project.name?.trim() && project.name !== 'Untitled project'));
-const collectionActions = createCollectionActions({ ext, serialize, assertProject });
+const collectionActions = createCollectionActions({ ext, serialize, assertProject, verifyBeforeClose: async (tab, result) => {
+  const adapter = adapterForURL(tab.url);
+  if (adapter?.id !== 'duckduckgo') return true;
+  const snapshot = (await ext.scripting.executeScript({ target: { tabId: tab.id }, func: extractResults, args: [adapter] }))[0]?.result;
+  return !!result.resultSetKey && snapshot?.resultSetKey === result.resultSetKey && canonicalURL(snapshot.pageURL) === canonicalURL(tab.url);
+} });
 const floatingControls = createFloatingManager({ ext, getProject: () => serialize(ensureProject) });
 async function isSavedPage(projectId, url) {
   if (await hasStoredPage(projectId, url)) return true;
@@ -145,6 +150,19 @@ async function runPageAction(message) {
   return collectionActions.run({ projectId: project.id, tabId: message.tabId, action: message.type, closeAfterSuccess: collect ? preferences.closeCollectedTab : preferences.closeCapturedTab },
     tab => collect ? collectPage(tab.id, project.id, undefined, tab.url) : capturePage(message, project, tab));
 }
+async function currentCollection(tab) {
+  const engine = adapterForURL(tab.url);
+  if (!engine) return null;
+  let snapshot;
+  if (engine.id === 'duckduckgo') {
+    try {
+      snapshot = (await ext.scripting.executeScript({ target: { tabId: tab.id }, func: extractResults, args: [engine] }))[0]?.result;
+      if (!snapshot || canonicalURL(snapshot.pageURL) !== canonicalURL(tab.url)) return null;
+    } catch { return null; } // Unreadable pages must keep the retry action available.
+  }
+  const { collections = [] } = await ext.storage.local.get('collections');
+  return matchingCollection(collections, engine.id, tab.url, snapshot);
+}
 async function floatingState(tabId) {
   const preferences = await readCollectionControls(ext.storage.local), project = await serialize(ensureProject);
   if (!preferences.floatingEnabled || !namedProject(project)) return { enabled: false };
@@ -154,8 +172,8 @@ async function floatingState(tabId) {
   const saved = await serialize(async () => {
     await assertProject(project.id);
     if (engine) {
-      const { collections = [] } = await ext.storage.local.get('collections');
-      return collections.some(item => item.engine === engine.id && canonicalURL(item.pageURL) === canonicalURL(tab.url) && (!item.unresolved || item.acceptedPartial));
+      const item = await currentCollection(tab);
+      return !!(item && (!item.unresolved || item.acceptedPartial));
     }
     return isSavedPage(project.id, tab.url);
   });
@@ -164,7 +182,10 @@ async function floatingState(tabId) {
 }
 async function handleFloating(message, sender) {
   const tab = await ext.tabs.get(sender.tab.id);
-  if (!/^https?:\/\//.test(tab.url || '') || canonicalURL(tab.url) !== canonicalURL(sender.url)) throw new Error('The page changed. Use the controls on the current page.');
+  // A content script can survive same-document history changes. sender.url can
+  // retain its original document address; verify its origin and the isolated
+  // script's current address against the browser-owned tab instead.
+  if (!/^https?:\/\//.test(tab.url || '') || new URL(tab.url).origin !== new URL(sender.url).origin || canonicalURL(tab.url) !== canonicalURL(message.pageURL || sender.url)) throw new Error('The page changed. Use the controls on the current page.');
   if (message.type === 'get-floating-state') return { state: await floatingState(tab.id) };
   const state = await floatingState(tab.id);
   if (!state.enabled || message.projectId !== state.projectId) throw new Error('Floating controls are unavailable for this project.');
@@ -296,6 +317,10 @@ async function handle(message) {
     await ext.storage.local.set({ collections: [] });
     return {};
   });
+  if (message.type === 'get-search-collection-state') {
+    const tab = await ext.tabs.get(message.tabId);
+    return serialize(async () => { const project = await ensureProject(); return { projectId: project?.id ?? null, collection: project ? await currentCollection(tab) : null }; });
+  }
   if (message.type === 'get-page-corpus-state') {
     const tab = await ext.tabs.get(message.tabId);
     return serialize(async () => {
