@@ -377,6 +377,11 @@ export function createProjectSearchTabs({ ext, serialize, assertProject, collect
     const status = result.status === 'no-results' ? 'no-results' : result.unresolved ? 'attention' : 'collected';
     const reason = result.status === 'no-results' ? 'No results (marked manually).' : result.unresolved ? 'Partial results saved. Some links could not be resolved; inspect this tab and retry.' : 'Results saved. This tab remains open.';
     if (record) { record.status = status; record.reason = reason; record.noResults = status === 'no-results'; record.canMarkNoResults = false; }
+    if (status === 'no-results') for (const item of data.tabs) {
+      if (item.projectId === marker.projectId && queryKey(item.engine,item.query,item.languageFilter) === queryKey(marker.engine,marker.query,marker.languageFilter)) {
+        item.noResults = true; item.status = status; item.reason = reason; item.canMarkNoResults = false;
+      }
+    }
     remember(data, { projectId: marker.projectId, engine: marker.engine, query: marker.query, languageFilter: marker.languageFilter }, status, reason);
     await write(data);
   }

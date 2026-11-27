@@ -158,8 +158,9 @@ for (const namespace of ['chrome','browser']) for (const engine of ['google','du
     const failed=await app.send({type:'collect',projectId:project.id,tabId:tab.id});
     assert.equal(failed.code,'no-results-collected'); assert.equal(app.local.collections?.length || 0,0);
     const mark=()=>app.send({type:'mark-search-no-results',projectId:project.id,tabId:tab.id,pageURL:tab.url});
+    const duplicate=await app.send({type:'open-project-search',projectId:project.id,engine,query:'gynoecium corolla'});
     const marked=await mark(); assert.equal(marked.ok,true,JSON.stringify(marked)); assert.equal(marked.collection.status,'no-results'); assert.equal(marked.collection.manual,true);
-    assert.equal(app.tabs.has(tab.id),true); assert.equal(marked.collection.results.length,0);
+    assert.equal(app.tabs.has(tab.id),true); assert.equal(app.tabs.has(duplicate.tabId),true); assert.equal(marked.collection.results.length,0);
     let state=await app.send({type:'get-project-search-tabs',projectId:project.id});
     assert.equal(state.count,0); assert.equal(state.history[0].status,'no-results');
     const skip=await app.send({type:'open-project-search',projectId:project.id,engine,query:'gynoecium corolla',onlyMissing:true}); assert.equal(skip.opened,false);
