@@ -1,12 +1,12 @@
-# Chrome Web Store submission — BootCaT 2.1.0
+# Chrome Web Store submission — BootCaT 2.2.0
 
-Updated 23 November 2026 for the 2.1 update. This guide prepares a submission; it does not publish one.
+Updated 28 November 2026 for the 2.2 update. This guide prepares a submission; it does not publish one.
 Build and submit the browser-specific package from the tested release commit.
 
 ## Update the existing listing
 
 Use the Google account that owns the current BootCaT listing. Keep its extension ID and
-publisher identity. Do not create another listing for 2.1. Confirm that 2.1.0 has not already
+publisher identity. Do not create another listing for 2.2. Confirm that 2.2.0 has not already
 been uploaded or published; a new upload must have a version greater than the store's
 current version. Confirm account access and 2-Step Verification before submission.
 
@@ -27,14 +27,14 @@ node scripts/verify-release-package.mjs
 
 Outputs:
 
-- `dist/packages/bootcat-chromium-2.1.0.zip`: upload this to Chrome Web Store.
-- `dist/packages/bootcat-source-2.1.0.zip`: keep as the corresponding source release; supply
+- `dist/packages/bootcat-chromium-2.2.0.zip`: upload this to Chrome Web Store.
+- `dist/packages/bootcat-source-2.2.0.zip`: keep as the corresponding source release; supply
   it to reviewers if requested and make source available to users as required by the GPL.
 - `dist/packages/bootcat-privacy.html`: a standalone public privacy-policy page.
 
 Do not upload the Firefox ZIP or the source ZIP as the extension. Chrome normally receives
 one extension ZIP, unlike Mozilla's separate source-upload workflow. package.json and
-package-lock.json already specify 2.1.0; do not increment them unless that version has
+package-lock.json already specify 2.2.0; do not increment them unless that version has
 already been used in the store. Build all release artifacts from the same final commit.
 
 `npm run export:privacy` exports just the public policy without installing PDF.js.
@@ -54,21 +54,19 @@ The source repository is now public: https://github.com/eroszanchetta/BootCaTExt
 Use it in the listing and keep the source corresponding to each released version available
 through a release/tag, an exact commit link, or the matching source ZIP.
 
-## Replacement for the 2.0.1 code-readability violation
+## Retained PDF.js preparation
 
-The Red Titanium notice applies to **2.0.1**. Submit **2.1.0** as an update to the same existing item, **fpblhmfnjkhnijinpcemmnaplcmklbcb**, after merging the readability-fix PR and rebuilding from the tested final commit. Version 2.1 includes the current merged features and interface changes as well as this fix. This document does not establish the old listing's current availability or enforcement deadline; check the notice/dashboard for those details.
+Version 2.1 is already published in both stores. The Red Titanium notice was historical and applied to 2.0.1; do not describe 2.2 as still awaiting the 2.1 replacement submission.
 
-The build removes obsolete core-js IE/ActiveX/iframe and dynamic Function fallbacks from both legacy PDF.js bundles. The code is removed, not renamed or encoded. See [PDFJS-STORE-BUILD.md](PDFJS-STORE-BUILD.md) for exact changes, input hashes and licence/provenance. Package creation verifies the actual serialized ZIP contents against the reviewed prepared-file hashes. The standalone verification command above can be repeated on the exact ZIP selected for upload:
+The 2.2 build retains the reviewed removal of obsolete core-js IE/ActiveX/iframe and dynamic Function fallbacks from both legacy PDF.js bundles. No other dependency change is made. See [PDFJS-STORE-BUILD.md](PDFJS-STORE-BUILD.md) for exact changes, guards and provenance. Verify the exact upload ZIP:
 
+```sh
+node scripts/verify-release-package.mjs dist/packages/bootcat-chromium-2.2.0.zip
 ```
-node scripts/verify-release-package.mjs dist/packages/bootcat-chromium-2.1.0.zip
-```
 
-Suggested reviewer explanation (use in the dashboard's available reviewer/support field):
+Suggested reviewer explanation:
 
-> Version 2.1.0 replaces BootCaT 2.0.1 and addresses the Red Titanium code-readability notice. Both vendor/pdfjs/pdf.mjs and vendor/pdfjs/pdf.worker.mjs now use native Object.create and globalThis instead of obsolete core-js compatibility fallbacks. The script-tag/JavaScript-URL construction and dynamic Function fallback have been removed. The pinned PDF.js version, remaining compatibility support, CSP and local-only PDF extraction are retained. A reproducible, hash-guarded build script and regression tests document the changes; vendor/pdfjs/README-BootCaT.md provides provenance in the extension package. The corresponding source and reviewer documentation are included in the source release.
-
-If the store still rejects the replacement, use its review/support route with the exact new package version and the supplied offending paths. Do not assume an older rejection message refers to the new upload. An appeal is an alternative if required by the dashboard; it does not replace testing and submitting the corrected package.
+> BootCaT 2.2.0 updates the existing 2.1.0 installation. It adds local manual text recovery, project length filters, selectable native/franc language detection and an additional diagnostics worksheet in Report.xlsx. Browser/version and detector diagnostics are retained locally and in user-exported files; there is no telemetry or external text-processing service. Permissions, supported browser minimums and pinned dependencies are unchanged. The previously reviewed PDF.js compatibility preparation, local worker, restrictive CSP and hash-guarded reproducible build are retained.
 
 ## Upload and complete the listing
 
@@ -140,7 +138,7 @@ manifest; justify the permissions actually shown.
 ### Remote code
 
 Select **No, I am not using remote code** for this release. Readability, Defuddle, franc,
-PDF.js and its worker are bundled locally. Downloaded documents are input data, not executable
+PDF.js and its worker are bundled locally; native language detection uses the browser’s built-in extension API. Downloaded documents are input data, not executable
 extension code. HTML is parsed in detached documents; extracted HTML is not rendered in the
 workspace. PDF text extraction uses a local worker, with useWasm/isEvalSupported set to false
 and a CSP that does not allow unsafe-eval. Dynamic-import and Function-constructor patterns
@@ -199,8 +197,8 @@ https://github.com/eroszanchetta/BootCaTExtension.
 
 ## Release materials and checks
 
-Use [RELEASE-NOTES-2.1.md](RELEASE-NOTES-2.1.md) for What is new and
-[RELEASE-CHECKLIST-2.1.md](RELEASE-CHECKLIST-2.1.md) for final-package/upgrade testing.
+Use [RELEASE-NOTES-2.2.md](RELEASE-NOTES-2.2.md) for What is new and
+[RELEASE-CHECKLIST-2.2.md](RELEASE-CHECKLIST-2.2.md) for final-package/upgrade testing.
 Refresh actual Chrome screenshots of the Project section, Build Corpus/text review and popup.
 Verify the hosted privacy-policy page matches the newly generated public policy.
 
@@ -223,3 +221,13 @@ Portable project review: Save Project downloads a .bootcat ZIP containing all pr
 - Update an existing listing and deferred publication: https://developer.chrome.com/docs/webstore/update
 
 Search-status checks inspect only tracked project result tabs for verification-page evidence and usable results. They do not collect/save results, click challenges, reload pages or inspect unrelated tabs. Recovery in one tab prompts independent checks of blocked siblings for the same engine. Unreadable Google links provide sign-in-or-switch-engine guidance. Save Project feedback identifies a download request, not verified filesystem completion; Download again permits retry without changing the project.
+
+## Additional 2.2 reviewer checks
+
+- In Settings → This project, set minimum/maximum characters and select the web-page extractor. Save closes the dialog; the top-right ×, Cancel and Escape discard unsaved drafts. Technical processing limits remain separate. Use as defaults affects new projects only.
+- Check Native API with franc fallback, Native API only and franc only. New projects default to native with fallback; older projects retain franc. A strategy change affects future checks; explicitly recheck saved texts to replace assessments. Unverified native coverage and API failures use franc only in fallback mode; uncertain/mismatched native results are not replaced. There is no accuracy-improvement claim.
+- Export Corpus: Report.xlsx keeps Corpus metadata and adds Language detection, including excluded documents and one row per retained sample. Rechecking replaces the previous assessment; this is not a history of earlier experiments.
+- Resolve an issue by importing/dropping a downloaded file, manually entering text, or Include anyway. Check brief feedback, a hand tooltip, row reveal/highlight and original-file retention. A completed banner changes to green when the last issue is cleared. Go to export highlights a small area around the export button.
+- Manually mark an empty query as No results, then rerun it. Unreadable Google result links must retain sign-in/change-engine guidance rather than being treated as empty pages. DuckDuckGo appended result sets can be collected again; unknown candidates remain reviewable.
+
+No Bing adapter, pseudo-XML export, OCR, system-notification permission or remote language service is included in 2.2. These instructions prepare review material and do not submit or publish anything.

@@ -1,6 +1,6 @@
-# Mozilla Add-ons submission — BootCaT 2.1.0
+# Mozilla Add-ons submission — BootCaT 2.2.0
 
-Updated 21 November 2026 for the 2.1 update. This is a submission checklist, not a claim of approval.
+Updated 28 November 2026 for the 2.2 update. This is a submission checklist, not a claim of approval.
 
 ## Build the upload files
 
@@ -16,9 +16,9 @@ npm run lint:firefox
 
 `npm run package` builds both browser extensions and the corresponding source ZIP:
 
-- `dist/packages/bootcat-firefox-2.1.0.zip`: Firefox extension to upload to AMO.
-- `dist/packages/bootcat-source-2.1.0.zip`: source archive to supply to reviewers.
-- `dist/packages/bootcat-chromium-2.1.0.zip`: separate Chrome package; do not upload it to AMO.
+- `dist/packages/bootcat-firefox-2.2.0.zip`: Firefox extension to upload to AMO.
+- `dist/packages/bootcat-source-2.2.0.zip`: source archive to supply to reviewers.
+- `dist/packages/bootcat-chromium-2.2.0.zip`: separate Chrome package; do not upload it to AMO.
 
 Version numbers follow package.json. Do not upload the GitHub repository ZIP as the extension.
 The source package has an explicit allowlist and excludes node_modules, dist, browser profiles
@@ -48,7 +48,7 @@ PDF.js compatibility preparation is documented in [PDFJS-STORE-BUILD.md](PDFJS-S
    the repository and release tag. An AMO source upload is for reviewers and does not by itself
    make source available to users. Put that public source link in the listing.
 9. Review the final listing, disclosures and permissions before submitting for review.
-10. Confirm that 2.1.0 has not already been used for this listing. Do not submit the same
+10. Confirm that 2.2.0 has not already been used for this listing. Do not submit the same
     version number again, create another listing, or change the existing add-on ID.
     Review any older-version availability decisions separately after acceptance; this guide
     does not automatically disable existing versions or declare store approval.
@@ -62,7 +62,7 @@ The Firefox manifest declares required browsingActivity, searchTerms and website
 BootCaT sends user-requested queries to the selected engine, URLs/request information to
 source websites, and may use same-site session cookies when retrying a PDF from a browser tab.
 It sends no corpus, document text, project database, analytics or telemetry to its developer.
-All extraction and language detection are local. Normal site requests still disclose an IP
+All extraction and language detection are local. Detector diagnostics and browser name/version are saved in projects and user-exported reports, without automatic transmission to the publisher. Normal site requests still disclose an IP
 address to the receiving site. Do not describe BootCaT as making no network requests.
 
 The minimum desktop Firefox version is 140, which supports the built-in consent prompt.
@@ -107,10 +107,10 @@ No remote executable code is loaded. PDF.js, its worker, character maps and font
 PDF JavaScript and WebAssembly execution are disabled. Page scripts are not executed during
 HTML extraction. Imported files are processed locally without server upload.
 
-## Version 2.1 release materials
+## Version 2.2 release materials
 
-Use [RELEASE-NOTES-2.1.md](RELEASE-NOTES-2.1.md) for version notes and
-[RELEASE-CHECKLIST-2.1.md](RELEASE-CHECKLIST-2.1.md) for final-package and upgrade tests.
+Use [RELEASE-NOTES-2.2.md](RELEASE-NOTES-2.2.md) for version notes and
+[RELEASE-CHECKLIST-2.2.md](RELEASE-CHECKLIST-2.2.md) for final-package and upgrade tests.
 Refresh Firefox screenshots of the Project section, Build Corpus/text review and popup.
 
 Additional reviewer checks: edit text in Preview text and test Cancel/Save; change
@@ -134,8 +134,7 @@ npm run package:firefox
 
 Compare the contents of dist/firefox with the uploaded extension ZIP: there should be no
 file-content differences. The build copies shared src files unchanged, injects package.json's
-version into the merged Firefox manifest, copies LICENSE/NOTICE, and copies the exact locked
-pdfjs-dist assets. No timestamps or absolute paths are injected into extension files.
+version into the merged Firefox manifest, copies LICENSE/NOTICE, and prepares the locked PDF.js modules using the reviewed hash-guarded compatibility transformation. Other PDF.js assets retain their upstream bytes. Floating-control assets/functions are embedded deterministically by the build. No timestamps or absolute paths are injected into extension files.
 
 Third-party provenance:
 
@@ -181,10 +180,20 @@ UI, and displays only text. Its CSP also blocks remote resources and frame/objec
 PDF.js includes Function-constructor feature detection, legacy DOM helpers and other code
 shared with rendering. BootCaT uses getTextContent only, explicitly sets isEvalSupported
 and useWasm to false, uses a local worker, and has no unsafe-eval in its CSP. These upstream
-files are kept unmodified for provenance; do not remove scanner findings by editing them.
+bundles retain the two reviewed compatibility edits documented in PDFJS-STORE-BUILD.md; the rest is preserved. Do not make ad-hoc edits to generated files to hide scanner findings.
 Review all warnings for the submitted version rather than assuming an automatic pass is
 Mozilla approval. The CI job prints the full validator report.
 
 Portable project review: Save Project downloads a .bootcat ZIP containing all project records and source/text files. Open Project reads a user-selected local file, validates it, then atomically replaces the current project after confirmation. No archive content is executed or sent to a server. User preferences remain on the receiving browser.
 
 Search-status checks inspect only tracked project result tabs for verification-page evidence and usable results. They do not collect/save results, click challenges, reload pages or inspect unrelated tabs. Recovery in one tab prompts independent checks of blocked siblings for the same engine. Unreadable Google links provide sign-in-or-switch-engine guidance. Save Project feedback identifies a download request, not verified filesystem completion; Download again permits retry without changing the project.
+
+## Additional 2.2 reviewer checks
+
+- In Settings → This project, set minimum/maximum characters and select the web-page extractor. Save closes the dialog; the top-right ×, Cancel and Escape discard unsaved drafts. Technical processing limits remain separate. Use as defaults affects new projects only.
+- Check Native API with franc fallback, Native API only and franc only. New projects default to native with fallback; older projects retain franc. A strategy change affects future checks; explicitly recheck saved texts to replace assessments. Unverified native coverage and API failures use franc only in fallback mode; uncertain/mismatched native results are not replaced. There is no accuracy-improvement claim.
+- Export Corpus: Report.xlsx keeps Corpus metadata and adds Language detection, including excluded documents and one row per retained sample. Rechecking replaces the previous assessment; this is not a history of earlier experiments.
+- Resolve an issue by importing/dropping a downloaded file, manually entering text, or Include anyway. Check brief feedback, a hand tooltip, row reveal/highlight and original-file retention. A completed banner changes to green when the last issue is cleared. Go to export highlights a small area around the export button.
+- Manually mark an empty query as No results, then rerun it. Unreadable Google result links must retain sign-in/change-engine guidance rather than being treated as empty pages. DuckDuckGo appended result sets can be collected again; unknown candidates remain reviewable.
+
+No Bing adapter, pseudo-XML export, OCR, system-notification permission or remote language service is included in 2.2. These instructions prepare review material and do not submit or publish anything.
