@@ -8,7 +8,7 @@ Settings → This project contains optional Minimum characters, Maximum characte
 
 The count uses the existing extracted/edited text's Unicode code points, including spaces and line breaks. It does not count bytes, HTML, words or grapheme clusters. Extraction normalization is unchanged; manual text is counted as saved. PDF/DOCX page, memory, size, character and timeout safeguards still apply before filtering. A filter never truncates text or reruns extraction.
 
-Save project settings atomically rechecks the saved document metadata. The save requires exclusive project access, so a running batch or another document operation cannot interleave with the range change. Optimistic revisions reject stale dialogs. Originals and text Blobs are retained. Settings updates notify other workspaces and update completion feedback. Explicitly cleared issues use the existing deferred recovery reveal/highlight; passive refresh does not repeat it.
+Save project settings atomically rechecks the saved document metadata and closes Settings after success. Errors keep the dialog open. The top-left ×, Cancel and Escape close without saving unsaved drafts in either form; already saved choices remain saved. The save requires exclusive project access, so a running batch or another document operation cannot interleave with the range change. Optimistic revisions reject stale dialogs. Originals and text Blobs are retained. Settings updates notify other workspaces and update completion feedback. Explicitly cleared issues use the existing deferred recovery reveal/highlight; passive refresh does not repeat it.
 
 Changing the extractor affects future web-page extractions, including captures. Existing texts, manual edits and extraction provenance stay intact. Opened projects keep the extractor stored in their draft. Old projects inherit no length bounds.
 
@@ -26,7 +26,7 @@ Use as defaults for new projects saves the three displayed project choices as pe
 
 ## Export navigation
 
-Both Go to export links reveal and focus Export Corpus and apply a static green highlight for two seconds. Repeated activation restarts the timeout. No animation is used, including with reduced motion.
+Both Go to export links reveal and focus Export Corpus and apply a static green highlight to a small padded area around the button for two seconds. The button keeps its normal styling; the Project section is not highlighted. Repeated activation restarts the timeout. No animation is used, including with reduced motion.
 
 ## Validation
 

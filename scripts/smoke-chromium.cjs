@@ -526,8 +526,7 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
       await page.waitForFunction(()=>!document.querySelector('#project-corpus-settings-save').disabled);
       await page.selectOption('#extractor', extractor);
       await page.click('#project-corpus-settings-save');
-      await page.waitForFunction(()=>document.querySelector('#project-corpus-settings-status').textContent==='Project settings saved.');
-      await page.click('#settings-cancel');
+      await page.locator('#settings-dialog[open]').waitFor({state:'hidden'});
       await page.click('#start');
       await waitForFinished();
       assert.match(await page.locator('#status').innerText(), /^Finished\.$/);
@@ -662,8 +661,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
       await page.fill('#project-minimum-characters',minimum);
       await page.fill('#project-maximum-characters',maximum);
       await page.click('#project-corpus-settings-save');
-      await page.waitForFunction(()=>document.querySelector('#project-corpus-settings-status').textContent==='Project settings saved.');
-      await page.click('#settings-cancel');
+      await page.locator('#settings-dialog[open]').waitFor({state:'hidden'});
     }
     await setProjectLength('1000000','');
     await page.waitForFunction(()=>document.querySelectorAll('#problem-results tr').length===5);
@@ -1024,10 +1022,14 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     await page.waitForFunction(()=>document.querySelector('#results tr')?.classList.contains('recovery-success') && document.querySelector('#download-feedback-strip').dataset.state==='finished');
     assert.match(await page.locator('#results .manual-intervention').getAttribute('title'),/Language warning accepted/);
     assert.equal(await page.locator('#download-feedback-summary').innerText(),'Your corpus is ready to export.');
+    const exportButtonColor = await page.locator('#export').evaluate(button=>getComputedStyle(button).backgroundColor);
     await page.locator('#download-feedback-link').click();
+    assert.equal(await page.locator('#export').evaluate(button=>getComputedStyle(button).backgroundColor),exportButtonColor);
     assert.equal(await page.locator('#export').evaluate(button=>button===document.activeElement),true);
-    assert.equal(await page.locator('#export').evaluate(button=>button.classList.contains('export-highlight')),true);
-    await page.waitForFunction(()=>!document.querySelector('#export').classList.contains('export-highlight'));
+    assert.equal(await page.locator('#export-focus-area').evaluate(area=>area.classList.contains('export-highlight')),true);
+    const exportArea = await page.locator('#export-focus-area').evaluate(area=>({area:area.getBoundingClientRect().width,button:area.querySelector('button').getBoundingClientRect().width,project:document.querySelector('#project-section').getBoundingClientRect().width}));
+    assert.ok(exportArea.area>exportArea.button && exportArea.area<=exportArea.button+24 && exportArea.area<exportArea.project/2);
+    await page.waitForFunction(()=>!document.querySelector('#export-focus-area').classList.contains('export-highlight'));
     assert.equal(await page.evaluate(async()=>await (globalThis.browser??chrome).action.getBadgeText({})),'✓');
     await page.click('#recheck-language');
     await page.waitForFunction(() => document.querySelector('#language-status').textContent.startsWith('1 of 1 saved texts rechecked') && !document.querySelector('#urls').disabled && !document.querySelector('#open-project').disabled);

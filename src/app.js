@@ -213,9 +213,10 @@ function goToExport() {
   openWorkspaceSection('project-section');
   ui.export.scrollIntoView({ block: 'center' });
   ui.export.focus({ preventScroll: true });
-  ui.export.classList.toggle('export-highlight', true);
+  const area = document.getElementById('export-focus-area');
+  area.classList.toggle('export-highlight', true);
   clearTimeout(exportHighlightTimer);
-  exportHighlightTimer = setTimeout(() => ui.export.classList.toggle('export-highlight', false), 2000);
+  exportHighlightTimer = setTimeout(() => area.classList.toggle('export-highlight', false), 2000);
 }
 document.getElementById('go-to-export').addEventListener('click', event => { event.preventDefault(); goToExport(); });
 

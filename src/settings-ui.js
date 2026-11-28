@@ -5,6 +5,7 @@ import { getExtensionAPI } from './extension-api.js';
 const ext = getExtensionAPI(), dialog = document.getElementById('settings-dialog');
 const form = document.getElementById('settings-form'), status = document.getElementById('settings-status');
 const trigger = document.getElementById('open-settings'), cancel = document.getElementById('settings-cancel');
+const closeButton = document.getElementById('settings-close');
 const save = document.getElementById('settings-save'), reset = document.getElementById('settings-reset');
 let revision, loading = false, saving = false, request = 0;
 const inputs = new Map();
@@ -38,14 +39,14 @@ function controls() {
   for (const { input } of inputs.values()) input.disabled = loading || saving;
   projectControls();
   save.disabled = reset.disabled = loading || saving || revision === undefined;
-  cancel.disabled = saving;
+  cancel.disabled = closeButton.disabled = saving;
   dialog.setAttribute('aria-busy', String(loading || saving));
 }
 trigger.addEventListener('click', async () => {
   if (dialog.open) return;
   const token = ++request; revision = undefined; loading = true; status.textContent = 'Loading settings…';
   document.getElementById('settings-advanced').open = false;
-  populate(DEFAULT_SETTINGS); dialog.showModal(); controls(); cancel.focus({ preventScroll: true }); dialog.scrollTop = 0; projectId = null; projectStatus.textContent = 'Loading project settings…';
+  populate(DEFAULT_SETTINGS); dialog.showModal(); controls(); closeButton.focus({ preventScroll: true }); dialog.scrollTop = 0; projectId = null; projectStatus.textContent = 'Loading project settings…';
   try {
     const result = await ext.runtime.sendMessage({ type: 'get-settings' });
     if (token !== request || !dialog.open) return;
@@ -57,6 +58,7 @@ trigger.addEventListener('click', async () => {
 });
 function close() { if (saving) return; request++; dialog.close(); trigger.focus(); }
 cancel.addEventListener('click', close);
+closeButton.addEventListener('click', close);
 dialog.addEventListener('cancel', event => { event.preventDefault(); close(); });
 reset.addEventListener('click', () => { populate(DEFAULT_SETTINGS); status.textContent = 'Defaults restored in this dialog. Choose Save settings to apply them.'; });
 form.addEventListener('submit', async event => {
@@ -105,7 +107,7 @@ async function saveProjectOptions(asDefaults) {
       revision = result.settings.revision;
       for (const key of ['defaultExtractor', 'defaultMinimumCharacters', 'defaultMaximumCharacters']) inputs.get(key).input.value = result.settings.values[key] ?? '';
       projectStatus.textContent = 'Defaults saved for new projects.';
-    } else { projectRevision = result.revision; projectStatus.textContent = 'Project settings saved.'; }
+    } else { projectRevision = result.revision; projectStatus.textContent = 'Project settings saved.'; saving = false; close(); }
   } catch (error) { projectStatus.textContent = error.message; }
   finally { saving = false; controls(); }
 }
