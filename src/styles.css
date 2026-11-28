@@ -268,4 +268,8 @@ section { scroll-margin-top: 0; }
 .manual-indicator-space { display: inline-block; width: 22px; height: 16px; vertical-align: middle; }
 
 .project-corpus-settings { padding-bottom: 18px; margin-bottom: 18px; border-bottom: 1px solid #ccd5db; }
-#export.export-highlight { background: #ccebd4; color: #124c28; box-shadow: 0 0 0 5px #ccebd4; }
+#export-focus-area { display: inline-flex; padding: 10px; margin: -10px; border-radius: 12px; }
+#export-focus-area.export-highlight { background: #dff3e4; box-shadow: 0 0 0 2px #b8dfc2; }
+.settings-heading { display: flex; align-items: center; gap: 12px; }
+.settings-heading h2 { margin: 0; }
+.settings-close { flex: 0 0 36px; padding: 6px; font-size: 1.6rem; line-height: 1; color: #29495d; background: transparent; border: 0; }

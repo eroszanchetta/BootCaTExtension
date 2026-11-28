@@ -41,7 +41,7 @@
       <div class="language-settings"><label for="project-language">Project language</label><select id="project-language" disabled></select>
       <button id="recheck-language" type="button" class="secondary" disabled>Recheck saved texts</button></div>
       <p id="language-status" class="hint" role="status" aria-live="polite">Language detection is optional. Changing this setting does not recheck existing texts until you click Recheck saved texts.</p>
-      <div class="project-export">      <button id="export" class="project-button" disabled><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-5-5 5 5 5-5M4 15v6h16v-6"/></svg><span id="export-label">Export Corpus</span></button>
+      <div class="project-export"><span id="export-focus-area"><button id="export" class="project-button" disabled><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-5-5 5 5 5-5M4 15v6h16v-6"/></svg><span id="export-label">Export Corpus</span></button></span>
       <p id="export-status" class="hint" role="status" aria-live="polite">Export all corpus data as a ZIP file to your computer.</p>
 </div>
       <p id="project-status" class="hint" role="status" aria-live="polite">Loading project…</p>
@@ -157,7 +157,7 @@
     <div class="text-review-footer"><p id="text-review-status" class="hint" role="status" aria-live="polite"></p><div class="actions"><button id="text-review-edit" type="button" class="secondary" disabled>Edit</button><button id="text-review-save" type="button" disabled>Save</button></div></div>
   </dialog>
   <dialog id="settings-dialog" aria-labelledby="settings-title" aria-describedby="settings-description">
-    <h2 id="settings-title">Settings</h2>
+    <div class="settings-heading"><button id="settings-close" type="button" class="secondary settings-close" aria-label="Close Settings without saving" title="Close without saving"><span aria-hidden="true">×</span></button><h2 id="settings-title">Settings</h2></div>
     <form id="project-corpus-settings-form" class="project-corpus-settings">
       <h3>This project</h3>
       <p class="hint">Length filters recheck saved texts. Spaces and line breaks count. Blank means no limit.</p>
