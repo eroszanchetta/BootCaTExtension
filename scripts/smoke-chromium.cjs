@@ -667,6 +667,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     }
     await setProjectLength('1000000','');
     await page.waitForFunction(()=>document.querySelectorAll('#problem-results tr').length===5);
+    await openIssues();
     assert.match(await page.locator('#problem-results').innerText(),/Too short:/);
     await parallelWorkspace.waitForFunction(()=>document.querySelectorAll('#problem-results tr').length===5);
     await openIssues();
