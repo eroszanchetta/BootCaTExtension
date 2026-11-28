@@ -157,7 +157,7 @@
     <div class="text-review-footer"><p id="text-review-status" class="hint" role="status" aria-live="polite"></p><div class="actions"><button id="text-review-edit" type="button" class="secondary" disabled>Edit</button><button id="text-review-save" type="button" disabled>Save</button></div></div>
   </dialog>
   <dialog id="settings-dialog" aria-labelledby="settings-title" aria-describedby="settings-description">
-    <div class="settings-heading"><button id="settings-close" type="button" class="secondary settings-close" aria-label="Close Settings without saving" title="Close without saving"><span aria-hidden="true">×</span></button><h2 id="settings-title">Settings</h2></div>
+    <div class="settings-heading"><h2 id="settings-title">Settings</h2><button id="settings-close" type="button" class="secondary settings-close" aria-label="Close Settings without saving" title="Close without saving"><span aria-hidden="true">×</span></button></div>
     <form id="project-corpus-settings-form" class="project-corpus-settings">
       <h3>This project</h3>
       <p class="hint">Length filters recheck saved texts. Spaces and line breaks count. Blank means no limit.</p>
@@ -166,6 +166,9 @@
         <div><label for="project-maximum-characters">Maximum characters</label><input id="project-maximum-characters" type="number" min="1" max="100000000" step="1" placeholder="No maximum"></div>
         <div><label for="extractor">Text extractor for web pages</label><select id="extractor"><option value="readability">Mozilla Readability</option><option value="defuddle">Defuddle</option></select><p class="hint">Applies to future web-page extractions. Existing texts and edits are kept.</p></div>
       </div>
+      <label for="project-language-detector">Language detector</label>
+      <select id="project-language-detector"><option value="native-franc">Native API with franc fallback (default)</option><option value="native">Native API only</option><option value="franc">franc only</option></select>
+      <p class="hint">Used for future checks. Choose Recheck saved texts in Project to replace existing assessments. Native coverage and results may differ between browsers.</p>
       <p id="project-corpus-settings-status" class="hint" role="status"></p>
       <div class="actions"><button id="project-corpus-settings-save" type="submit">Save project settings</button><button id="project-corpus-settings-defaults" type="button" class="secondary">Use as defaults for new projects</button></div>
     </form>

@@ -77,9 +77,10 @@ const projectForm = document.getElementById('project-corpus-settings-form');
 const projectStatus = document.getElementById('project-corpus-settings-status');
 const projectSave = document.getElementById('project-corpus-settings-save'), projectDefaults = document.getElementById('project-corpus-settings-defaults');
 const projectMinimum = document.getElementById('project-minimum-characters'), projectMaximum = document.getElementById('project-maximum-characters'), extractor = document.getElementById('extractor');
+const languageDetector = document.getElementById('project-language-detector');
 let projectId = null, projectRevision = 0;
 function projectControls() {
-  for (const node of [projectSave, projectDefaults, projectMinimum, projectMaximum, extractor]) node.disabled = loading || saving || !projectId;
+  for (const node of [projectSave, projectDefaults, projectMinimum, projectMaximum, extractor, languageDetector]) node.disabled = loading || saving || !projectId;
   extractor.querySelector('option[value="defuddle"]').disabled = !DEFUDDLE_AVAILABLE;
   inputs.get('defaultExtractor').input.querySelector('option[value="defuddle"]').disabled = !DEFUDDLE_AVAILABLE;
 }
@@ -89,11 +90,11 @@ async function loadProjectOptions(token) {
   if (!result.ok) throw new Error(result.error || 'Could not load project settings.');
   projectId = result.projectId || null; projectRevision = result.revision || 0;
   const values = validateCorpusOptions(result.options);
-  projectMinimum.value = values.minimumCharacters ?? ''; projectMaximum.value = values.maximumCharacters ?? ''; extractor.value = values.extractor;
+  projectMinimum.value = values.minimumCharacters ?? ''; projectMaximum.value = values.maximumCharacters ?? ''; extractor.value = values.extractor; languageDetector.value = values.languageDetector;
   projectStatus.textContent = projectId ? '' : 'Create or open a project to change its settings.';
 }
 function projectValues() {
-  return validateCorpusOptions({ extractor: extractor.value, minimumCharacters: projectMinimum.value === '' ? null : Number(projectMinimum.value), maximumCharacters: projectMaximum.value === '' ? null : Number(projectMaximum.value) });
+  return validateCorpusOptions({ extractor: extractor.value, languageDetector: languageDetector.value, minimumCharacters: projectMinimum.value === '' ? null : Number(projectMinimum.value), maximumCharacters: projectMaximum.value === '' ? null : Number(projectMaximum.value) });
 }
 async function saveProjectOptions(asDefaults) {
   if (loading || saving || !projectId || !projectForm.reportValidity()) return;
@@ -105,7 +106,7 @@ async function saveProjectOptions(asDefaults) {
     if (!result.ok) throw new Error(result.error || 'Could not save project settings.');
     if (asDefaults) {
       revision = result.settings.revision;
-      for (const key of ['defaultExtractor', 'defaultMinimumCharacters', 'defaultMaximumCharacters']) inputs.get(key).input.value = result.settings.values[key] ?? '';
+      for (const key of ['defaultExtractor', 'defaultMinimumCharacters', 'defaultMaximumCharacters', 'defaultLanguageDetector']) inputs.get(key).input.value = result.settings.values[key] ?? '';
       projectStatus.textContent = 'Defaults saved for new projects.';
     } else { projectRevision = result.revision; projectStatus.textContent = 'Project settings saved.'; saving = false; close(); }
   } catch (error) { projectStatus.textContent = error.message; }
