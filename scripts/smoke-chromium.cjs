@@ -1037,6 +1037,50 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     const acceptedDownload = page.waitForEvent('download'); await closeTextReview(); await page.click('#export');
     const acceptedZIP = join(root, 'accepted-language.zip'); await (await acceptedDownload).saveAs(acceptedZIP);
     await checkCorpusReport(acceptedZIP, 'English');
+    async function chooseLanguageDetector(value) {
+      await page.click('#open-settings');
+      await page.waitForFunction(()=>!document.querySelector('#project-corpus-settings-save').disabled);
+      await page.selectOption('#project-language-detector',value);
+      await page.click('#project-corpus-settings-save');
+      await page.locator('#settings-dialog[open]').waitFor({state:'hidden'});
+    }
+    const savedAssessment = await page.evaluate(async()=>{
+      const s=await import('./project-store.js'); const id=(await (globalThis.browser??chrome).runtime.sendMessage({type:'get-project'})).project.id;
+      return (await s.loadWorkspace(id)).entries[0].doc.extraction.languageCheck;
+    });
+    await chooseLanguageDetector('native');
+    const unchangedAssessment = await page.evaluate(async()=>{
+      const s=await import('./project-store.js'); const id=(await (globalThis.browser??chrome).runtime.sendMessage({type:'get-project'})).project.id;
+      return (await s.loadWorkspace(id)).entries[0].doc.extraction.languageCheck;
+    });
+    assert.deepEqual(unchangedAssessment,savedAssessment,'changing strategy must not recheck saved text');
+    await page.click('#recheck-language');
+    await page.waitForFunction(()=>document.querySelector('#language-status').textContent.startsWith('1 of 1 saved texts rechecked')&&!document.querySelector('#recheck-language').disabled);
+    const realNative = await page.evaluate(async()=>{
+      const s=await import('./project-store.js'); const id=(await (globalThis.browser??chrome).runtime.sendMessage({type:'get-project'})).project.id;
+      return (await s.loadWorkspace(id)).entries[0].doc.extraction.languageCheck;
+    });
+    assert.equal(realNative.detector.id,'native'); assert.equal(realNative.strategy,'native');
+    assert.equal(realNative.browser.name,'Chrome'); assert.notEqual(realNative.browser.version,'Unknown');
+    assert.ok(realNative.samples.length>0 && realNative.samples.some(s=>typeof s.native?.isReliable==='boolean'));
+    const reportDownload=page.waitForEvent('download'); await page.click('#export');
+    const reportZIP=join(root,'language-experiment.zip'); await (await reportDownload).saveAs(reportZIP);
+    execFileSync('python3',['-c',`
+import io,sys,zipfile,xml.etree.ElementTree as E
+with zipfile.ZipFile(sys.argv[1]) as z:
+ with zipfile.ZipFile(io.BytesIO(z.read('Report.xlsx'))) as report:
+  root=E.fromstring(report.read('xl/worksheets/sheet2.xml'))
+  rows=root.findall('{*}sheetData/{*}row')
+  values=[[c.find('{*}is/{*}t').text if c.attrib.get('t')=='inlineStr' else c.find('{*}v').text for c in row] for row in rows]
+  assert len(rows)>1 and values[1][5]=='Native API only' and values[1][6]=='native'
+  assert values[1][8]=='Chrome' and values[1][9]!='Unknown'
+  assert any('percentage' in (row[25] or '') for row in values[1:])
+` ,reportZIP]);
+    await chooseLanguageDetector('franc');
+    await page.click('#recheck-language');
+    await page.waitForFunction(()=>document.querySelector('#language-status').textContent.startsWith('1 of 1 saved texts rechecked')&&!document.querySelector('#recheck-language').disabled);
+    console.log('WP7: real Chromium native API, explicit recheck, saved-strategy provenance and Report.xlsx diagnostics passed.');
+
 
     await page.uncheck('#results input[type="checkbox"]');
     await page.selectOption('#project-language', 'none'); await page.click('#recheck-language');

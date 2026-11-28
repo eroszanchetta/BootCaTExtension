@@ -1,8 +1,8 @@
 // Only metadata is hashed. Text edits update the document revision atomically
 // with its Blob, so bodies need not be loaded just to compare export snapshots.
 export async function corpusFingerprint(workspace, project, collections) {
-  // Invalidate receipts from exports with the old input-only URL list and no excluded list.
-  const data = JSON.stringify({ layoutVersion: 3, project, draft: workspace.draft, batch: workspace.batch, entries: workspace.entries, collections }, (_, value) => {
+  // Invalidate receipts from exports without the language-detection worksheet.
+  const data = JSON.stringify({ layoutVersion: 4, project, draft: workspace.draft, batch: workspace.batch, entries: workspace.entries, collections }, (_, value) => {
     // Storage round trips and object construction order must not count as edits.
     if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
     return Object.fromEntries(Object.keys(value).sort().map(key => [key, value[key]]));

@@ -72,7 +72,7 @@ const projectUI = initProjectUI({
   }
 });
 textReview = initTextReview({ root: document, confirm: confirmAction, run: (task, { url }) => documentWork(url, task),
-  getSettings: () => readSettings(ext.storage.local), getProjectId: () => projectId, getLanguage: () => projectUI.snapshot()?.language || 'none', isRunning: url => isDocumentBusy(url),
+  getSettings: () => readSettings(ext.storage.local), getDetectorStrategy: async () => (await storage.loadWorkspace(projectId)).draft.languageDetector || 'franc', getProjectId: () => projectId, getLanguage: () => projectUI.snapshot()?.language || 'none', isRunning: url => isDocumentBusy(url),
   onSaved: (entry, { recovered = false } = {}) => {
     remember(entry, { keepPreview: true });
     if (recovered && needsAttention(entry)) {
@@ -449,7 +449,7 @@ async function notifyWorkspace() {
 async function applyProjectOptionsFeedback() {
   const saved = await storage.loadWorkspace(projectId);
   if (resetting) return;
-  for (const key of ['extractor', 'minimumCharacters', 'maximumCharacters', 'optionsRevision']) state.draft[key] = saved.draft[key];
+  for (const key of ['extractor', 'minimumCharacters', 'maximumCharacters', 'optionsRevision', 'languageDetector']) state.draft[key] = saved.draft[key];
   for (const entry of saved.entries) remember(entry);
   flushResolutions(); updateControls(); await refreshActivity();
 }
@@ -589,7 +589,7 @@ ui.start.addEventListener('click', async () => {
             });
             if (resetting) return;
             const record = { url, finalURL: response.finalURL, outcome: 'downloaded', httpStatus: response.status, contentType: response.contentType, bytes: response.bytes.length, filename, processingIncomplete: active.signal.aborted, downloadedAt: new Date().toISOString() };
-            const checkedExtraction = await checkLanguage(extraction, projectUI.snapshot().language || 'none');
+            const checkedExtraction = await checkLanguage(extraction, projectUI.snapshot().language || 'none', { strategy: saved.draft.languageDetector || 'franc' });
             const doc = { url, filename, textFilename: filename.replace(/^pages\//, 'corpus/').replace(/\.[^.]+$/, '.txt'), extraction: checkedExtraction };
             remember(await storage.saveDocument(projectId, record, doc, response.bytes));
           } catch (error) {
@@ -620,6 +620,7 @@ ui.start.addEventListener('click', async () => {
   finally { activeFeedback = null; downloading = false; ui.stop.disabled = true; if (!resetting) { await notifyWorkspace(); await refreshActivity(); updateControls(); searchUI?.flush(); flushResolutions(); } }
 });
 async function storeCapture({ url, finalURL, bytes, contentType, source, capturedAt, captureId, settings }) {
+  const captureOptions = (await storage.loadWorkspace(projectId)).draft;
   const index = await storage.allocateFileIndex(projectId), filename = filenameFor(url, contentType, index);
   const active = new AbortController(); operationControllers.add(active);
   try {
@@ -627,11 +628,11 @@ async function storeCapture({ url, finalURL, bytes, contentType, source, capture
       active.signal.throwIfAborted();
       return formatByMIME(contentType)
         ? extractDownloadedDocument(bytes, contentType, { settings, sourceURL: finalURL, signal: active.signal })
-        : extractDocument(bytes, contentType, { settings, extractor: (await storage.loadWorkspace(projectId)).draft.extractor, sourceURL: finalURL });
+        : extractDocument(bytes, contentType, { settings, extractor: captureOptions.extractor, sourceURL: finalURL });
     }, { priority: true });
     if (resetting) return;
     const previous = source === 'local-file' ? (await storage.readDownloadTarget(projectId, url)).entry?.doc?.extraction : null;
-    const checkedExtraction = await checkLanguage(preserveRecoveryInclusion(extraction, previous), projectUI.snapshot().language || 'none');
+    const checkedExtraction = await checkLanguage(preserveRecoveryInclusion(extraction, previous), projectUI.snapshot().language || 'none', { strategy: captureOptions.languageDetector || 'franc' });
     const doc = { url, filename, textFilename: filename.replace(/^pages\//, 'corpus/').replace(/\.[^.]+$/, '.txt'), extraction: checkedExtraction, captureId, source, capturedAt };
     const record = { url, finalURL, outcome: 'captured', source, capturedAt, captureId, filename, contentType, bytes: bytes.length };
     if (!state.batch.startedAt) { const startedAt = new Date().toISOString(); await storage.saveBatch(projectId, { startedAt }, await readCollections()); state.batch.startedAt = startedAt; }
@@ -686,7 +687,7 @@ ui['recheck-language'].addEventListener('click', () => work(async () => {
     for (const entry of documents) {
       if (resetting || stopping) break;
       const blob = await storage.readText(projectId, entry.url);
-      const result = await checkLanguage({ ...entry.doc.extraction, text: blob ? await blob.text() : '' }, target);
+      const result = await checkLanguage({ ...entry.doc.extraction, text: blob ? await blob.text() : '' }, target, { strategy: saved.draft.languageDetector || 'franc' });
       if (resetting) return;
       remember(await storage.saveLanguageCheck(projectId, entry.url, entry.doc.filename, result.languageCheck, result.included, {manualRecheck:true}));
       checked++; ui['language-status'].textContent = `Rechecked ${checked} of ${documents.length} saved texts…`;

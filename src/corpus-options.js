@@ -1,7 +1,8 @@
+import { validateLanguageDetector } from './language-strategies.js';
 import { hasLanguageWarning } from './language-detection.js';
 
 export function validateCorpusOptions(value = {}) {
-  const options = { extractor: value.extractor ?? 'readability', minimumCharacters: value.minimumCharacters ?? null, maximumCharacters: value.maximumCharacters ?? null };
+  const options = { extractor: value.extractor ?? 'readability', languageDetector: validateLanguageDetector(value.languageDetector ?? 'franc'), minimumCharacters: value.minimumCharacters ?? null, maximumCharacters: value.maximumCharacters ?? null };
   if (!['readability', 'defuddle'].includes(options.extractor)) throw new Error('Choose a supported text extractor.');
   for (const key of ['minimumCharacters', 'maximumCharacters']) {
     const n = options[key];
@@ -10,7 +11,7 @@ export function validateCorpusOptions(value = {}) {
   if (options.minimumCharacters !== null && options.maximumCharacters !== null && options.minimumCharacters > options.maximumCharacters) throw new Error('Minimum characters cannot exceed maximum characters.');
   return options;
 }
-export const corpusDefaults = settings => validateCorpusOptions({ extractor: settings.defaultExtractor, minimumCharacters: settings.defaultMinimumCharacters, maximumCharacters: settings.defaultMaximumCharacters });
+export const corpusDefaults = settings => validateCorpusOptions({ extractor: settings.defaultExtractor, languageDetector: settings.defaultLanguageDetector, minimumCharacters: settings.defaultMinimumCharacters, maximumCharacters: settings.defaultMaximumCharacters });
 export const hasLengthWarning = e => ['short', 'long'].includes(e?.lengthCheck?.outcome) && !e.lengthCheck.accepted;
 export const hasDocumentWarning = e => hasLanguageWarning(e) || hasLengthWarning(e);
 export function lengthMessage(e) {

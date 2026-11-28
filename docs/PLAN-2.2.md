@@ -48,7 +48,7 @@ Authorized 28 November 2026: optional minimum/maximum character filters in Setti
 
 ## WP7 — Language detection
 
-Collect actual failures and comparison examples early. Evaluate sampling/uncertainty policy independently from the detector; benchmark local alternatives for accuracy, language coverage, browser compatibility, speed, package size and licensing. Agree the resulting detector/inclusion policy before implementation; defer substantial model integration if necessary.
+Authorized 28 November 2026: defer accuracy evaluation to student/user experiments. Add a project Language detector setting with Native API with franc fallback (new-project default), Native API only and franc only; include it in personal defaults and portable projects. Projects without the field retain franc only. Keep policy-1 sampling unchanged. Route by verified browser-specific language coverage; fall back only for unverified coverage or unavailable/failing native calls, never to overturn a native mismatch or uncertain result. Native-only unavailable checks remain reviewable. Record the strategy, actual detector, browser/version, fallback reason, policy and per-sample diagnostics. Changing strategy affects future checks; existing assessments require explicit Recheck saved texts. Extend Report.xlsx with a separate Language detection worksheet including excluded documents. Move the Settings × to the top right. See LANGUAGE-DETECTION-2.2.md for implementation, report schema, sources and limits. No accuracy comparison is claimed in this package.
 
 ## Maintenance work package — after 2.2, before starting 2.3
 

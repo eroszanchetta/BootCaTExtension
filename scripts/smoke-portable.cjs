@@ -29,6 +29,7 @@ const assert = require('node:assert/strict');
         const { makeProjectArchive } = await import('./portable-project.js');
         const project = { id: 'source', name: 'Energia 中文 à', language: 'none', nameConfirmed: true };
         await s.resetStoredProject(project.id, {}, project);
+        await s.saveCorpusOptions(project.id,{languageDetector:'native'},0);
         await s.saveDraft(project.id, { seeds: 'ènergie\n中文', tuples: 'ènergie 中文', preparedQueries: ['ènergie 中文'], urls: 'https://example.test/html' });
         for (const [kind, content] of [['html', [60,112,62,195,168,60,47,112,62]], ['pdf', [37,80,68,70,45,0,255]], ['docx', [80,75,3,4,0,255]]]) {
           const url = `https://example.test/${kind}`, filename = `pages/00000${kind}.${kind}`;
@@ -46,11 +47,11 @@ const assert = require('node:assert/strict');
         const snapshot = restoredProjectSnapshot(await openProjectArchive(new Blob([new Uint8Array(bytes)])));
         await s.replaceStoredProject(expected, snapshot, snapshot.project);
         const id = snapshot.project.id, state = await s.loadWorkspace(id);
-        return { name: snapshot.project.name, seeds: state.draft.seeds, entries: state.entries.length, excluded: state.entries.find(e => e.url.endsWith('/html')).doc.extraction.included,
+        return { detector:state.draft.languageDetector, name: snapshot.project.name, seeds: state.draft.seeds, entries: state.entries.length, excluded: state.entries.find(e => e.url.endsWith('/html')).doc.extraction.included,
           text: await (await s.readText(id, 'https://example.test/html')).text(), baseline: await (await s.readOriginalText(id, 'https://example.test/html')).text(), raw: await (await s.readRawText(id, 'https://example.test/pdf')).text(),
           pdf: Array.from(new Uint8Array(await (await s.readOriginal(id, 'pages/00000pdf.pdf')).arrayBuffer())), pending: (await s.snapshotStoredProject(snapshot.project)).stores.pages[0].html };
       }, bytes);
-      assert.deepEqual(result, { name: 'Energia 中文 à', seeds: 'ènergie\n中文', entries: 4, excluded: false, text: 'edited è 中文', baseline: 'original', raw: 'raw PDF layout', pdf: [37,80,68,70,45,0,255], pending: '<p>Pending è 中文</p>' });
+      assert.deepEqual(result, { detector:'native', name: 'Energia 中文 à', seeds: 'ènergie\n中文', entries: 4, excluded: false, text: 'edited è 中文', baseline: 'original', raw: 'raw PDF layout', pdf: [37,80,68,70,45,0,255], pending: '<p>Pending è 中文</p>' });
       console.log(`${producer === 0 ? 'Chromium → Firefox' : 'Firefox → Chromium'} portable project round trip passed${forceZIP64 ? ' (ZIP64)' : ''}.`);
     }
     // A successful in-page arrayBuffer() read is not a successful browser

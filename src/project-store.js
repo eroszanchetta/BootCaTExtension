@@ -1,3 +1,4 @@
+import { INITIAL_LANGUAGE_DETECTOR } from './language-strategies.js';
 import { validateCorpusOptions, applyLengthFilter, hasLengthWarning } from './corpus-options.js';
 import { manualActions } from './manual-intervention.js';
 import { LEGACY_SEARCH_ENGINE } from './search-engine-options.js';
@@ -5,7 +6,7 @@ import { DEFAULT_EXCLUDED_SITES } from './search-filters.js';
 import { hasLanguageWarning } from './language-detection.js';
 import { transaction, STORES } from './storage-db.js';
 import { parseURLs } from './core.js';
-const initialDraft = (defaults = {}) => ({ key: 'draft', urls: '', query: '', engine: defaults.engine ?? LEGACY_SEARCH_ENGINE, ...validateCorpusOptions(defaults), optionsRevision: 0, seenCollections: [], seeds: '', tupleLength: '3', tupleCount: '10', tuples: '', preparedQueries: [], preparedQueryBases: null, preparedFilters: null, searchFileType: '', searchSite: '', excludedSites: (defaults.excludedSites ?? DEFAULT_EXCLUDED_SITES).join('\n') });
+const initialDraft = (defaults = {}) => ({ key: 'draft', urls: '', query: '', engine: defaults.engine ?? LEGACY_SEARCH_ENGINE, ...validateCorpusOptions({ ...defaults, languageDetector: defaults.languageDetector ?? INITIAL_LANGUAGE_DETECTOR }), optionsRevision: 0, seenCollections: [], seeds: '', tupleLength: '3', tupleCount: '10', tuples: '', preparedQueries: [], preparedQueryBases: null, preparedFilters: null, searchFileType: '', searchSite: '', excludedSites: (defaults.excludedSites ?? DEFAULT_EXCLUDED_SITES).join('\n') });
 const initialBatch = () => ({ key: 'batch', startedAt: null, state: 'idle', processed: 0, total: 0, nextFileIndex: 0, storedBytes: 0, lastStatus: 'Ready when you are.' });
 // Reserve the whole URL list before the first result, so completion/recovery
 // timing cannot change document order. Later URLs always follow existing ones.

@@ -240,7 +240,7 @@ const assert = require('node:assert/strict');
               }
               if (message.type === 'set-default-corpus-options') {
                 const current = await settings.readSettingsState(area), v=message.values;
-                return {ok:true,settings:await settings.saveSettings(area,{...current.values,defaultExtractor:v.extractor,defaultMinimumCharacters:v.minimumCharacters,defaultMaximumCharacters:v.maximumCharacters},current.revision)};
+                return {ok:true,settings:await settings.saveSettings(area,{...current.values,defaultExtractor:v.extractor,defaultLanguageDetector:v.languageDetector,defaultMinimumCharacters:v.minimumCharacters,defaultMaximumCharacters:v.maximumCharacters},current.revision)};
               }
               if (message.type === 'get-settings') return { ok: true, settings: await settings.readSettingsState(area) };
               if (message.type === 'set-default-search-engine') { const current = await settings.readSettingsState(area); return { ok: true, settings: await settings.saveSettings(area, { ...current.values, defaultEngine: message.engine }, current.revision) }; }
@@ -542,6 +542,7 @@ const assert = require('node:assert/strict');
         assert.match(await workspace.locator('#project-corpus-settings-status').innerText(),/Minimum characters cannot exceed/);
         await workspace.fill('#project-maximum-characters','1000');
         await workspace.selectOption('#extractor','defuddle');
+        await workspace.selectOption('#project-language-detector','native');
         await workspace.click('#project-corpus-settings-save');
         await workspace.locator('#settings-dialog[open]').waitFor({state:'hidden'});
         await openSettings();
@@ -553,7 +554,7 @@ const assert = require('node:assert/strict');
           await workspace.setViewportSize({width,height:850});
           await workspace.locator('#settings-dialog').evaluate(dialog=>{dialog.scrollTop=0;});
           const box = await settingsClose.evaluate(button=>({button:button.getBoundingClientRect().toJSON(),title:document.querySelector('#settings-title').getBoundingClientRect().toJSON(),dialog:button.closest('dialog').getBoundingClientRect().toJSON()}));
-          assert.ok(box.button.right<=box.title.left && box.button.left<box.dialog.left+60,`${name}: close control at top left`);
+          assert.ok(box.button.left>=box.title.right && box.dialog.right-box.button.right<60,`${name}: close control at top right`);
           assert.equal(await workspace.locator('#settings-dialog').evaluate(dialog=>dialog.scrollWidth>dialog.clientWidth),false);
         }
         await settingsClose.focus(); await workspace.keyboard.press('Enter');
@@ -561,12 +562,15 @@ const assert = require('node:assert/strict');
         assert.equal(await workspace.locator('#open-settings').evaluate(button=>button===document.activeElement),true);
         await workspace.setViewportSize({width:1050,height:850}); await openSettings();
         assert.equal(await workspace.inputValue('#project-minimum-characters'),'500');
+        assert.equal(await workspace.inputValue('#project-language-detector'),'native');
         assert.equal(await workspace.inputValue('#setting-fileMiB'),savedFileLimit,'close discards personal draft too');
         await workspace.click('#project-corpus-settings-defaults');
         await workspace.waitForFunction(()=>document.querySelector('#project-corpus-settings-status').textContent==='Defaults saved for new projects.');
         assert.equal(await workspace.inputValue('#setting-defaultMinimumCharacters'),'500');
+        assert.equal(await workspace.inputValue('#setting-defaultLanguageDetector'),'native');
         await workspace.click('#settings-cancel'); await openSettings();
         assert.equal(await workspace.inputValue('#project-minimum-characters'),'500');
+        assert.equal(await workspace.inputValue('#project-language-detector'),'native');
         assert.equal(await workspace.inputValue('#extractor'),'defuddle');
         await workspace.fill('#project-minimum-characters',''); await workspace.fill('#project-maximum-characters','');
         await workspace.click('#project-corpus-settings-save');
@@ -575,6 +579,25 @@ const assert = require('node:assert/strict');
         await workspace.click('#settings-reset'); await workspace.click('#settings-save');
         await workspace.locator('#settings-dialog[open]').waitFor({state:'hidden'});
         console.log(`${name}: WP6 project range validation, extractor persistence and new-project defaults passed.`);
+        const detectorContract = await workspace.evaluate(async () => {
+          const {checkLanguage} = await import('./language-detection.js');
+          const {nativeSupports} = await import('./language-detectors/native.js');
+          const text = 'Scientific prose describes flower development and compares the structure of leaves, stems and reproductive organs. Researchers record observations and publish their conclusions. '.repeat(40);
+          const extraction = {status:'ok',included:true,text,characters:text.length,warnings:[]};
+          const browserInfo = {name:'Firefox',version:'140.0'};
+          const api = {i18n:{detectLanguage:async()=>({isReliable:true,languages:[{language:'en',percentage:100}]})}};
+          const assessed = await checkLanguage(extraction,'eng',{strategy:'native-franc',api,browserInfo});
+          const unavailable = await checkLanguage(extraction,'qug',{strategy:'native',api,browserInfo});
+          const fallback = await checkLanguage(extraction,'eng',{strategy:'native-franc',api:{},browserInfo});
+          return {check:assessed.languageCheck, unavailable:unavailable.languageCheck, fallback:fallback.languageCheck,latin:nativeSupports('lat',browserInfo)};
+        });
+        assert.equal(detectorContract.check.detector.id,'native');
+        assert.equal(detectorContract.check.samples.length,3);
+        assert.equal(detectorContract.check.samples[0].native.languages[0].percentage,100);
+        assert.equal(detectorContract.unavailable.unavailable,true);
+        assert.equal(detectorContract.fallback.detector.id,'franc');
+        assert.equal(detectorContract.latin,false);
+        console.log(`${name}: WP7 detector selection/defaults and native contract/fallback metadata passed (fixtures, not accuracy evaluation).`);
         // Exercise the real text-review controller and native modal in both engines.
         await workspace.evaluate(async () => {
           const storage = await import('./project-store.js');

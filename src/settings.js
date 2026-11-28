@@ -1,9 +1,11 @@
+import { LANGUAGE_DETECTORS, INITIAL_LANGUAGE_DETECTOR } from './language-strategies.js';
 import { validateCorpusOptions } from './corpus-options.js';
 import { SEARCH_ENGINE_NAMES, INITIAL_SEARCH_ENGINE } from './search-engine-options.js';
 // Personal preferences, independent of project contents and browser sessions.
 export const SETTINGS_KEY = 'bootcatSettings';
 const memoryWarning = 'Increasing this limit may use substantially more memory and browser storage, slow processing, or make the tab unresponsive.';
 export const SETTING_FIELDS = [
+  { key: 'defaultLanguageDetector', label: 'Language detector for new projects', initial: INITIAL_LANGUAGE_DETECTOR, options: Object.entries(LANGUAGE_DETECTORS).map(([value,label])=>({value,label})), help: 'Existing and opened projects keep their detector choice.' },
   { key: 'defaultExtractor', label: 'Text extractor for new projects', initial: 'readability', options: [{ value: 'readability', label: 'Mozilla Readability' }, { value: 'defuddle', label: 'Defuddle' }], help: 'Existing projects keep their selected extractor.' },
   { key: 'defaultMinimumCharacters', label: 'Minimum characters for new projects', initial: null, optional: true, max: 100000000, help: 'Blank means no minimum. Includes spaces and line breaks.' },
   { key: 'defaultMaximumCharacters', label: 'Maximum characters for new projects', initial: null, optional: true, max: 100000000, help: 'Blank means no maximum. These filters do not raise extraction limits.' },
@@ -37,7 +39,7 @@ export function validateSettings(values = {}) {
     if (field.optional && value === null) continue;
     if (!Number.isSafeInteger(value) || value < 1 || value > field.max) throw new Error(`${field.label}: enter a whole number from 1 to ${field.max.toLocaleString()}.`);
   }
-  validateCorpusOptions({ extractor: result.defaultExtractor, minimumCharacters: result.defaultMinimumCharacters, maximumCharacters: result.defaultMaximumCharacters });
+  validateCorpusOptions({ extractor: result.defaultExtractor, languageDetector: result.defaultLanguageDetector, minimumCharacters: result.defaultMinimumCharacters, maximumCharacters: result.defaultMaximumCharacters });
   return Object.freeze(result);
 }
 export async function readSettingsState(area) {

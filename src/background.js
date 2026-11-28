@@ -265,7 +265,7 @@ async function handle(message) {
   if (message.type === 'set-default-corpus-options') return serialize(async () => {
     await assertProject(message.projectId);
     const values = validateCorpusOptions(message.values), current = await readSettingsState(ext.storage.local);
-    return { settings: await saveSettings(ext.storage.local, { ...current.values, defaultExtractor: values.extractor, defaultMinimumCharacters: values.minimumCharacters, defaultMaximumCharacters: values.maximumCharacters }, current.revision) };
+    return { settings: await saveSettings(ext.storage.local, { ...current.values, defaultExtractor: values.extractor, defaultLanguageDetector: values.languageDetector, defaultMinimumCharacters: values.minimumCharacters, defaultMaximumCharacters: values.maximumCharacters }, current.revision) };
   });
   if (message.type === 'get-settings') return { settings: await readSettingsState(ext.storage.local) };
   if (message.type === 'save-settings') return serialize(async () => ({ settings: await saveSettings(ext.storage.local, message.values, message.revision) }));

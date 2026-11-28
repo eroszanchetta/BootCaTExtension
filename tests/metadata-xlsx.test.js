@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { makeMetadataWorkbook, corpusMetadataRows, corpusURLList, excludedURLList } from '../src/metadata-xlsx.js';
 import { createExportLayout } from '../src/export-layout.js';
+import { languageReportRows } from '../src/language-report.js';
 
 const entry = (name, check, extra = {}) => ({ url: 'https://example.org/caffè?q=1&other=2',
   record: { filename: `pages/${name}.html`, source: 'browser-tab' }, fileNames: [`pages/${name}.html`],
@@ -20,6 +21,39 @@ test('metadata contains only included texts, using detected rather than project 
   assert.deepEqual(rows.map(row => row.filename), ['accepted.txt', 'caffè-中文-😀.txt', 'disabled.txt', 'legacy.txt', 'uncertain.txt']);
   assert.deepEqual(rows.map(row => row.language), ['English', 'Italian', 'Not checked', 'Not checked', 'Uncertain']);
   assert.equal(rows[0].characters, 1234);
+});
+
+test('language worksheet includes excluded documents and per-sample native/franc diagnostics as literal cells', async () => {
+  const check = { strategy: 'native-franc', target: 'eng', outcome: 'mismatch', detected: 'fra', checkedAt: '2026-11-28T10:00:00.000Z',
+    browser: { name: 'Firefox', version: '140.0' }, detector: { id: 'native', version: 'browser-managed' }, coverageVersion:'1', policy:{version:'1',minLetters:120,window:2048},
+    reason: '=Not a formula', samples: [{ start:0, characters:2048, letters:1500, detected:'fra', uncertain:false, native:{isReliable:true,languages:[{language:'fr',percentage:90},{language:'en',percentage:10}]} }] };
+  const excluded = entry('excluded',check,{included:false});
+  const fallback = entry('fallback',{...check,detector:{id:'franc',version:'6.2.0'},fallbackReason:'Native API unavailable.',samples:[{start:0,letters:300,detected:'eng',uncertain:false,candidates:[['eng',1],['fra',0.8]],relativeGap:0.12345}]});
+  const rows = languageReportRows([excluded,fallback]);
+  assert.equal(rows.length,2); assert.equal(rows[0][2],'No'); assert.equal(rows[0][6],'native'); assert.equal(rows[1][14],'Native API unavailable.');
+  const workbook = await makeMetadataWorkbook([excluded,fallback]);
+  execFileSync('python3',['-c',`
+import io,sys,zipfile,xml.etree.ElementTree as E,json
+n={'m':'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
+with zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())) as z:
+ for name in z.namelist(): E.fromstring(z.read(name))
+ names=[s.attrib['name'] for s in E.fromstring(z.read('xl/workbook.xml')).find('m:sheets',n)]
+ assert names==['Corpus metadata','Language detection']
+ main=E.fromstring(z.read('xl/worksheets/sheet1.xml'))
+ assert len(main.findall('m:sheetData/m:row',n))==2
+ sheet=E.fromstring(z.read('xl/worksheets/sheet2.xml'))
+ assert sheet.find('m:dimension',n).attrib['ref']=='A1:AB3'
+ assert sheet.find('m:autoFilter',n).attrib['ref']=='A1:AB3'
+ assert sheet.find('m:sheetViews/m:sheetView/m:pane',n).attrib['state']=='frozen'
+ assert not sheet.findall('.//m:f',n)
+ rows=sheet.findall('m:sheetData/m:row',n)
+ values=[[c.find('m:is/m:t',n).text if c.attrib.get('t')=='inlineStr' else float(c.find('m:v',n).text) for c in row] for row in rows]
+ assert values[1][2]=='No' and values[1][6]=='native'
+ assert values[1][15]=='=Not a formula'
+ assert json.loads(values[1][25])[0]['percentage']==90
+ assert values[2][27]==0.12345
+ assert rows[2][-1].attrib['s']=='0'
+`],{input:Buffer.from(await workbook.arrayBuffer())});
 });
 
 test('the generated XLSX has valid XML, literal strings, numeric counts, hyperlinks, header styling, filters and frozen headers', async () => {

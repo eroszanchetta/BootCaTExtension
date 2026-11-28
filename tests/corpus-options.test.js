@@ -9,12 +9,12 @@ import { makeProjectArchive, openProjectArchive, restoredProjectSnapshot } from 
 import { workspace, extracted, waitFor } from './helpers/workspace.js';
 
 test('optional inclusive character ranges validate independently of processing limits', () => {
-  assert.deepEqual(validateCorpusOptions({}), { extractor: 'readability', minimumCharacters: null, maximumCharacters: null });
+  assert.deepEqual(validateCorpusOptions({}), { extractor: 'readability', languageDetector: 'franc', minimumCharacters: null, maximumCharacters: null });
   for (const value of [0, -1, 1.5, NaN, Infinity, 100000001, '10']) assert.throws(() => validateCorpusOptions({ minimumCharacters: value }));
   assert.throws(() => validateCorpusOptions({ minimumCharacters: 20, maximumCharacters: 10 }), /Minimum/);
   assert.throws(() => validateCorpusOptions({ extractor: 'unknown' }));
   assert.throws(() => validateSettings({ defaultMinimumCharacters: 20, defaultMaximumCharacters: 10 }));
-  assert.deepEqual(corpusDefaults(DEFAULT_SETTINGS), validateCorpusOptions({}));
+  assert.deepEqual(corpusDefaults(DEFAULT_SETTINGS), validateCorpusOptions({languageDetector:'native-franc'}));
   for (const characters of [10, 20]) assert.equal(hasLengthWarning(applyLengthFilter(extracted('a'.repeat(characters)), { minimumCharacters: 10, maximumCharacters: 20 })), false);
   const short = applyLengthFilter(extracted('a'.repeat(9)), { minimumCharacters: 10 });
   assert.equal(short.included, false); assert.match(lengthMessage(short), /Too short: 9 characters/);

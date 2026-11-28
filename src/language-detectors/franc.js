@@ -1,20 +1,19 @@
+import { languageSamples, MIN_LETTERS, WINDOW } from './sampling.js';
 import { francAll } from '../vendor/franc/index.js';
-const MIN_LETTERS = 120, MIN_GAP = 0.03, WINDOW = 2048;
+const MIN_GAP = 0.03;
 export const francDetector = {
   id: 'franc', version: '6.2.0',
   detect(text) {
     // Bounded samples from the beginning, middle and end; no full-document copy.
-    const starts = text.length <= WINDOW ? [0] : text.length <= WINDOW * 2 ? [0, text.length - WINDOW] : [0, Math.floor((text.length - WINDOW) / 2), text.length - WINDOW];
-    const samples = starts.map(start => text.slice(start, start + WINDOW));
-    const votes = samples.map(sample => {
+    const votes = languageSamples(text).map(({start, text: sample}) => {
       const letters = (sample.match(/\p{L}/gu) || []).length;
-      if (letters < MIN_LETTERS) return { detected: null, uncertain: true, letters };
+      if (letters < MIN_LETTERS) return { detected: null, uncertain: true, letters, start, characters: sample.length };
       const ranked = francAll(sample, { minLength: MIN_LETTERS });
       const candidates = ranked.slice(0, 3), [best, next] = ranked;
       // Normalize the winning margin by the score range, not sample length.
       const range = best ? best[1] - ranked.at(-1)[1] : 0;
       const relativeGap = next && range > 0 ? (best[1] - next[1]) / range : next ? 0 : 1;
-      return { detected: best?.[0] === 'und' ? null : best?.[0], uncertain: !best || best[0] === 'und' || relativeGap < MIN_GAP, letters, candidates, relativeGap };
+      return { start, characters: sample.length, detected: best?.[0] === 'und' ? null : best?.[0], uncertain: !best || best[0] === 'und' || relativeGap < MIN_GAP, letters, candidates, relativeGap };
     });
     const languages = new Set(votes.map(vote => vote.detected).filter(Boolean));
     const uncertain = votes.some(vote => vote.uncertain) || languages.size !== 1;
