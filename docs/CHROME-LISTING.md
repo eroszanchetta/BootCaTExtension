@@ -1,4 +1,4 @@
-# Chrome Web Store listing draft — version 2.1
+# Chrome Web Store listing draft — version 2.2
 
 Name (from manifest): BootCaT — Bootstrap Corpora and Terms
 
@@ -23,10 +23,14 @@ Features:
 - Generate unique randomized seed tuples and edit your queries.
 - Track project search tabs, avoid duplicate batch openings and collect their results together.
 - Save complete portable .bootcat projects and reopen them in Chrome or Firefox.
-- Adjust download/extraction limits and other preferences in Settings.
+- Set project length filters and the web-page extractor in Settings; save personal defaults for new projects.
+- Use Ecosia, DuckDuckGo or Google, and save your preferred engine for new projects.
+- Follow downloads in a fixed progress strip and recover failed text by importing/dropping a file or pasting text manually.
+- Choose native language detection, franc, or native with franc fallback; inspect per-sample diagnostics in Report.xlsx.
 - Add an individual page through the popup or optional floating controls; choose whether successful actions close the tab.
 - Extract text from HTML, PDF and DOCX; choose Readability or Defuddle for HTML.
-- Review, edit or exclude extracted text in a large dialog, and inspect documents with issues.
+- Review, edit or exclude text, resolve length/language warnings, and identify manual interventions with the hand indicator.
+- Mark a query as having no results manually, with a distinct status and an explicit rerun action.
 - Optionally check document language; Google searches can follow the corpus language without an added regional preference.
 - Export original documents, extracted text files, an Excel metadata report, and your
   seeds, tuples and URL list in one corpus ZIP.
@@ -50,8 +54,8 @@ Source code: https://github.com/eroszanchetta/BootCaTExtension
 
 ## Version update text
 
-Use the short store update text in [RELEASE-NOTES-2.1.md](RELEASE-NOTES-2.1.md).
-Update the existing listing; the displayed release is 2.1 and package version is 2.1.0.
+Use the short store update text in [RELEASE-NOTES-2.2.md](RELEASE-NOTES-2.2.md).
+Update the existing listing; the displayed release is 2.2 and package version is 2.2.0.
 
 ## Complete before submission
 

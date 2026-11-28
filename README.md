@@ -2,12 +2,12 @@
 
 A local corpus-building extension with one shared JavaScript/HTML/CSS codebase and separate Chromium and Firefox builds. Search collection, downloads, Readability, Defuddle, portable projects, text review, corpus export, settings and branding are shared.
 
-## Version 2.1 release preparation
+## Version 2.2 release preparation
 
-The release version is **2.1.0**, displayed as **BootCaT · 2.1**. Store publication is a separate step; this repository does not assert approval or availability of 2.1 in either store.
+The prepared release version is **2.2.0**, displayed as **BootCaT · 2.2**. Version 2.1 is published in both browser stores. Submission and publication of 2.2 are separate steps.
 
-- [Release notes and store update text](docs/RELEASE-NOTES-2.1.md)
-- [Release checklist, final-package tests and artifact verification](docs/RELEASE-CHECKLIST-2.1.md)
+- [Release notes and store update text](docs/RELEASE-NOTES-2.2.md)
+- [Release checklist, final-package tests and artifact verification](docs/RELEASE-CHECKLIST-2.2.md)
 - [Chrome submission guide](docs/CHROME-SUBMISSION.md) and [listing draft](docs/CHROME-LISTING.md)
 - [Mozilla submission guide](docs/MOZILLA-SUBMISSION.md) and [listing draft](docs/MOZILLA-LISTING.md)
 
@@ -28,9 +28,9 @@ The repository root no longer contains a loadable manifest. Edit `src/`, rebuild
 
 Project creation requires an explicit choice of target language or **No language detection**. Existing projects default to no detection. The Project language selector can be changed later; **Recheck saved texts** applies the choice to existing extracted bodies without downloading pages again. Rechecks can be stopped with Stop; completed checks stay saved. Saved overrides and manual exclusions are preserved.
 
-Franc 6.2.0 and its MIT-licensed model/utilities are bundled locally with pinned source URLs, hashes and licence files in `src/vendor/franc/`. No detector code, model, or corpus text is sent to a remote service. The bundled model supports 178 distinct language codes, with names shown in the selector. The detector is behind a replaceable adapter returning ISO 639-3 codes and common assessments; franc-specific scores remain diagnostic metadata rather than displayed accuracy percentages.
+Settings → This project offers **Native API with franc fallback** (initial default for new projects), **Native API only** and **franc only**. Existing projects without a detector setting retain franc. Native coverage is verified by browser and language code; unverified labels or unavailable/failing native calls use franc in fallback mode. Native-only shows a review warning when unavailable. A valid native uncertain/mismatched result is never replaced by franc. Native results can differ between browsers/versions. Detection runs locally, with no external text-processing service.
 
-After successful HTML, plain-text, PDF, DOCX or manual-capture extraction, enabled detection checks up to three 2,048-character samples across the document. Samples need at least 120 Unicode letters. A small winning margin (normalized by the candidate score range), an undetermined result or disagreement between samples produces **Language uncertain**. These heuristics are conservative and are not a guarantee of correctness or a full multilingual segmentation algorithm.
+Franc 6.2.0 and its MIT-licensed model/utilities remain bundled with pinned source URLs, hashes and licences in `src/vendor/franc/`, supporting 178 selectable language labels. Policy-1 sampling remains up to three 2,048-UTF-16-unit windows, requiring 120 Unicode letters each; unreliable or disagreeing samples make the document uncertain. Native uses the browser reliability flag and franc retains its normalized relative-gap rule. Percentages and franc scores are not comparable confidence probabilities. See [language detection and report details](docs/LANGUAGE-DETECTION-2.2.md). Accuracy evaluation is deferred to research/teaching experiments.
 
 Mismatches and uncertain results retain successful extraction and the original files, but start unchecked in **Documents with issues**. Preview remains available. **Include anyway** records an explicit override, includes the text and returns the document to the main list. Users can subsequently uncheck it without losing that override. Extraction failures keep their own messages and do not receive a misleading language guess. Detector/version, target, assessment, bounded diagnostic samples, check time and override are retained in `extraction.json`; project settings are in `project.json`.
 
@@ -149,9 +149,9 @@ Extension URLs are generated with `runtime.getURL()`. Workspace reuse checks tab
 npm run package
 ```
 
-Produces `dist/packages/bootcat-chromium-2.1.0.zip` and `dist/packages/bootcat-firefox-2.1.0.zip`, each with its manifest at the ZIP root. Individual commands: `npm run package:chromium` and `npm run package:firefox`. Packages exclude development fixtures.
+Produces `dist/packages/bootcat-chromium-2.2.0.zip` and `dist/packages/bootcat-firefox-2.2.0.zip`, each with its manifest at the ZIP root. Individual commands: `npm run package:chromium` and `npm run package:firefox`. Packages exclude development fixtures.
 
-These are unsigned packages for review/upload, not store-published releases. Normal Firefox distribution requires Mozilla signing, whether listed on AMO or self-distributed. The Firefox development manifest includes a stable extension ID; its AMO data-collection/transmission declarations must be assessed and added before a first store submission. In particular, user-initiated searches send queries to the selected engine, even though corpus content is processed locally. No submission, signing or publication is performed by these build commands.
+These are unsigned packages for review/upload, not store-published releases. Normal Firefox distribution requires Mozilla signing, whether listed on AMO or self-distributed. The Firefox development manifest includes a stable extension ID; its existing AMO data-collection/transmission declarations must be reviewed against the current update before submission. In particular, user-initiated searches send queries to the selected engine, even though corpus content is processed locally. No submission, signing or publication is performed by these build commands.
 
 ## Testing
 
@@ -181,7 +181,7 @@ npm run test:browser
 
 The smoke test builds into a temporary folder/profile and routes all web requests to local fixtures. It checks the extraction page, actual script injection into a mock Google page, saved searches, download/extraction/ZIP with both extractors, workspace reuse and persistence. It never contacts real search engines. `CHROMIUM_EXECUTABLE_PATH` can select an existing compatible Chromium binary.
 
-**Validation in the build environment:** all unit/build tests and both ZIP packages passed. Live Chromium testing was attempted but the environment blocked browser startup (`socket() failed: Operation not permitted`). Firefox is not installed here. Live browser smoke tests and minimum-version verification therefore remain to be performed on a machine that can run the browsers. The optional smoke script is included but has not completed here.
+**Validation:** GitHub CI runs unit tests, packaging, Firefox validation, native Chromium/Firefox DOM workflows, the full Chromium extension and cross-browser portable-project checks using the pinned Playwright image. Current results belong to the tested commit, not this paragraph. Actual store-installed upgrade checks and browser-owned toolbar UI remain manual release checks; see the 2.2 release checklist.
 
 ## PDF.js security updates
 
@@ -277,15 +277,17 @@ Running queries and deleting a document use a shared styled confirmation dialog 
 
 All downloaded, captured and imported originals export directly into `pages/`; selected extracted texts export directly into `corpus/`. Raw PDF text remains in `raw-pdf/`. Captures already saved with older nested paths are flattened at export time, with collision-safe names. Stored blobs are not renamed. ZIP JSON metadata and the Excel export use the same mapping; acquisition method remains in metadata.
 
-Every corpus ZIP includes **Report.xlsx** at its root, with one row per included, successfully extracted corpus text, sorted by text filename. Columns contain the text filename, clickable HTTP(S) source URL, numeric character count and detected language name. Uncertain assessments show **Uncertain**; disabled or absent checks show **Not checked**. Accepting a language warning does not change the detected language. The workbook has filters and a frozen header, is generated locally using the existing ZIP writer and adds no dependencies or permissions. Report generation uses saved metadata only, without additional reads of document bodies.
+Every corpus ZIP includes **Report.xlsx** at its root. Its **Corpus metadata** worksheet has one row per included, successfully extracted corpus text, sorted by text filename. Columns contain the text filename, clickable HTTP(S) source URL, numeric character count and detected language name. Uncertain assessments show **Uncertain**; disabled or absent checks show **Not checked**. Accepting a language warning does not change the detected language. The workbook has filters and a frozen header, is generated locally using the existing ZIP writer and adds no dependencies or permissions. Report generation uses saved metadata only, without additional reads of document bodies.
 
-Every corpus ZIP also contains UTF-8 `url_list.txt`, `seeds.txt` and `tuples.txt` at its root. These preserve the current editable project lists, including manual edits; empty lists produce empty files. `Report.xlsx` contains a header-only sheet if no texts are included. There is no separate report download button.
+The **Language detection** worksheet contains all retained document records, including exclusions and failures, with one row per saved sample. It records the strategy, actual detector, browser/version, outcome, manual acceptance, fallback reason and sample diagnostics. Rechecks replace the assessment; save separate exports to compare experiments.
+
+UTF-8 `url_list.txt` matches the included Corpus metadata rows in filename order. `url_list_excluded.txt` contains other valid project URLs. `seeds.txt` and `tuples.txt` preserve the editable input. Empty lists remain empty; Corpus metadata is header-only when nothing is included, while Language detection still reports retained documents. There is no separate report download button.
 
 ## Release version
 
-`package.json` → `version` is the single release-version setting. Version 2.1 uses `2.1.0`, displayed as **BootCaT · 2.1** in both badges. Browser manifests and ZIP package filenames take the version from `package.json` during build. Badges and exported JSON read it from the installed manifest at runtime. Storage schema and third-party library versions are independent.
+`package.json` → `version` is the single release-version setting. Version 2.2 uses `2.2.0`, displayed as **BootCaT · 2.2** in both badges. Browser manifests and ZIP package filenames take the version from `package.json` during build. Badges and exported JSON read it from the installed manifest at runtime. Storage schema and third-party library versions are independent.
 
-For the next release, run `npm version 2.1.1 --no-git-tag-version` (substitute the intended version). This updates `package.json` and the npm-managed lockfile together without creating a Git tag or commit. Then run `npm run build` and reload the installed extension. Use three numeric components without a prerelease suffix. Do not edit generated files in `dist/` or add version fields to browser manifest templates.
+For the next release, run `npm version 2.2.1 --no-git-tag-version` (substitute the intended version). This updates `package.json` and the npm-managed lockfile together without creating a Git tag or commit. Then run `npm run build` and reload the installed extension. Use three numeric components without a prerelease suffix. Do not edit generated files in `dist/` or add version fields to browser manifest templates.
 
 ## Contextual popup
 
@@ -311,7 +313,7 @@ not the same as making it available to recipients.
 ## Chrome Web Store submission
 
 Follow [the Chrome checklist](docs/CHROME-SUBMISSION.md) and
-[listing draft](docs/CHROME-LISTING.md) for the first Chrome submission.
+[listing draft](docs/CHROME-LISTING.md) for the existing Chrome listing update.
 `npm run package:chromium` creates the Chromium extension ZIP, corresponding source ZIP,
 and a standalone `dist/packages/bootcat-privacy.html` page for public HTTPS hosting.
 `npm run export:privacy` creates just that policy page from the privacy section in
@@ -384,7 +386,7 @@ Recognized unreadable Google result links use the same sign-in-or-switch-engine 
 
 Collection feedback reports newly added URLs separately from URLs already in the project. If some search links are unreadable, **Continue with collected URLs** keeps the saved subset, accepts that query as collected and opens URLs and Build Corpus without closing the search tab. The popup and floating control offer **Review URLs** after a complete collection, and a route back to BootCaT after failure. Google Books content URLs are supported without treating them as internal search navigation.
 
-PDF.js package preparation for the 2.0.1 Chrome code-readability notice is documented in [docs/PDFJS-STORE-BUILD.md](docs/PDFJS-STORE-BUILD.md). Normal builds remove the reviewed obsolete fallbacks automatically, and packaging verifies the serialized ZIP contents. Repeat `node scripts/verify-release-package.mjs` after packaging to check the exact release files. Version 2.1 is prepared as the replacement update; store submission and approval are separate steps.
+PDF.js package preparation for the 2.0.1 Chrome code-readability notice is documented in [docs/PDFJS-STORE-BUILD.md](docs/PDFJS-STORE-BUILD.md). Normal builds remove the reviewed obsolete fallbacks automatically, and packaging verifies the serialized ZIP contents. Repeat `node scripts/verify-release-package.mjs` after packaging to check the exact release files. The 2.1 replacement was published in both stores. Version 2.2 retains that preparation; its submission and approval are separate steps.
 
 Corpus ZIPs contain `url_list.txt` for the included corpus texts, in the same order as `Report.xlsx`, and `url_list_excluded.txt` for other valid project URLs (unchecked documents, failed downloads/extractions and URLs not yet downloaded). Both lists cover manually added pages, even when absent from the URL input field. The original input list remains in the project's metadata and portable project. User-created corpus ZIPs and `.bootcat` projects timestamp their entries at export/save time, with ZIP's two-second precision; these are archive creation times, not source-file modification dates.
 
@@ -402,9 +404,9 @@ Dismiss clears the sticky completion message, special tab title and badge in all
 
 Click Import downloaded file or drop one downloaded file onto that button. Both use the same format, size and extraction checks. The button highlights during a file drag. Links, folders and multiple files are rejected; file drops elsewhere do not navigate away from BootCaT.
 
-Successful recovery says “Text recovered successfully”. Import downloaded file reports the saved extraction result. If usable text has no remaining language issue, Corpus documents opens, the recovered row scrolls into view and receives a soft green highlight for about two seconds. The message remains on the row and in the import summary, with Show document available to find it again. Successful recovery can still leave a document excluded from export when that was the user's existing choice.
+Successful recovery uses brief action-specific feedback such as “Download recovered”, “Text recovered” or “Length warning accepted”. Import downloaded file reports the saved extraction result. If usable text has no remaining language issue, Corpus documents opens, the recovered row scrolls into view and receives a soft green highlight for about two seconds. The message remains on the row and in the import summary, with Show document available to find it again. Successful recovery can still leave a document excluded from export when that was the user's existing choice.
 
-If extraction still fails or a language warning remains, the document stays in Documents with issues with a specific explanation and an amber highlight. Invalid files produce an explicit import error. Navigation waits until any open editor or dialog closes; it does not move keyboard focus. Reduced-motion preferences use a static timed highlight instead of a fading animation.
+If extraction still fails or a length/language warning remains, the document stays in Documents with issues with a specific explanation and an amber highlight. Invalid files produce an explicit import error. Navigation waits until any open editor or dialog closes; it does not move keyboard focus. Reduced-motion preferences use a static timed highlight instead of a fading animation.
 
 
 When a retained document has no usable extracted text, open **Details → Edit** to paste text from the original page or document. Save checks the text and language, preserves the original and earlier extraction diagnostics, and marks the text as manually recovered. Manual edits survive portable saves and cannot be overwritten by a retry. Failed requests with no saved document still use browser capture or **Import downloaded file**. See [the 2.2 extraction investigation](docs/EXTRACTION-2.2.md) for the supplied examples and limits.
