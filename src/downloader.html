@@ -115,10 +115,7 @@
       <textarea id="urls" disabled spellcheck="false" placeholder="https://example.com/&#10;https://www.iana.org/help/example-domains"></textarea>
       <p class="hint">Blank lines are ignored. Duplicates and URL fragments are removed. Large URL lists may take longer to process.</p>
       <p id="urls-warning" class="hint performance-warning" role="status" aria-live="polite"></p>
-      <div class="extractor-setting">
-        <label for="extractor">Text extractor for web pages</label>
-        <select id="extractor" disabled><option value="readability" selected>Mozilla Readability (default)</option><option value="defuddle">Defuddle</option></select>
-      </div>
+
       </div></details>
     </section>
     <section id="review-section" aria-labelledby="results-heading" tabindex="-1">
@@ -160,9 +157,21 @@
     <div class="text-review-footer"><p id="text-review-status" class="hint" role="status" aria-live="polite"></p><div class="actions"><button id="text-review-edit" type="button" class="secondary" disabled>Edit</button><button id="text-review-save" type="button" disabled>Save</button></div></div>
   </dialog>
   <dialog id="settings-dialog" aria-labelledby="settings-title" aria-describedby="settings-description">
+    <h2 id="settings-title">Settings</h2>
+    <form id="project-corpus-settings-form" class="project-corpus-settings">
+      <h3>This project</h3>
+      <p class="hint">Length filters recheck saved texts. Spaces and line breaks count. Blank means no limit.</p>
+      <div class="settings-fields">
+        <div><label for="project-minimum-characters">Minimum characters</label><input id="project-minimum-characters" type="number" min="1" max="100000000" step="1" placeholder="No minimum"></div>
+        <div><label for="project-maximum-characters">Maximum characters</label><input id="project-maximum-characters" type="number" min="1" max="100000000" step="1" placeholder="No maximum"></div>
+        <div><label for="extractor">Text extractor for web pages</label><select id="extractor"><option value="readability">Mozilla Readability</option><option value="defuddle">Defuddle</option></select><p class="hint">Applies to future web-page extractions. Existing texts and edits are kept.</p></div>
+      </div>
+      <p id="project-corpus-settings-status" class="hint" role="status"></p>
+      <div class="actions"><button id="project-corpus-settings-save" type="submit">Save project settings</button><button id="project-corpus-settings-defaults" type="button" class="secondary">Use as defaults for new projects</button></div>
+    </form>
     <form id="settings-form">
-      <h2 id="settings-title">Settings</h2>
-      <p id="settings-description">Personal settings for all projects in this browser. Changes apply to subsequent operations; work already running keeps its starting settings. Existing saved texts are unchanged.</p>
+      <h3>Personal settings</h3>
+      <p id="settings-description">Preferences and processing limits for this browser. Defaults apply to new projects; opened projects keep their own settings. Processing-limit changes apply to subsequent operations.</p>
       <div id="settings-main-fields" class="settings-fields"></div>
       <details id="settings-advanced" class="options-panel">
         <summary>Advanced Settings</summary>

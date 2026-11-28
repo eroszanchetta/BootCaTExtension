@@ -229,6 +229,19 @@ const assert = require('node:assert/strict');
             const settings = await import('/settings.js');
             const area = { get: async key => ({ [key]: JSON.parse(localStorage.getItem(key) || 'null') }), set: async patch => { for (const [key, value] of Object.entries(patch)) { localStorage.setItem(key, JSON.stringify(value)); for (const fn of settingsListeners) fn({ [key]: { newValue: value } }, 'local'); } } };
             try {
+              if (message.type === 'get-project-corpus-options') {
+                const storage = await import('/project-store.js'); await storage.ensureStoredProject('settings-project');
+                const {draft} = await storage.loadWorkspace('settings-project');
+                return {ok:true, projectId:'settings-project', options:draft, revision:draft.optionsRevision||0};
+              }
+              if (message.type === 'save-project-corpus-options') {
+                const storage = await import('/project-store.js');
+                return {ok:true,...await storage.saveCorpusOptions(message.projectId,message.values,message.revision)};
+              }
+              if (message.type === 'set-default-corpus-options') {
+                const current = await settings.readSettingsState(area), v=message.values;
+                return {ok:true,settings:await settings.saveSettings(area,{...current.values,defaultExtractor:v.extractor,defaultMinimumCharacters:v.minimumCharacters,defaultMaximumCharacters:v.maximumCharacters},current.revision)};
+              }
               if (message.type === 'get-settings') return { ok: true, settings: await settings.readSettingsState(area) };
               if (message.type === 'set-default-search-engine') { const current = await settings.readSettingsState(area); return { ok: true, settings: await settings.saveSettings(area, { ...current.values, defaultEngine: message.engine }, current.revision) }; }
               if (message.type === 'save-settings') return { ok: true, settings: await settings.saveSettings(area, message.values, message.revision) };
@@ -518,6 +531,31 @@ const assert = require('node:assert/strict');
         await workspace.setViewportSize({ width: 1050, height: 850 });
         console.log(`${name}: WP2 preference persistence, Settings synchronization and save failure passed.`);
         console.log(`${name}: WP1 welcome layout, focus spacing, engine colors, document disclosure and collection navigation passed.`);
+        // Collection scenarios replace the runtime fixture. Restore the Settings
+        // fixture before exercising the new project controls.
+        await workspace.reload();
+        await openSettings();
+        assert.equal(await workspace.locator('#urls-section #extractor').count(),0);
+        await workspace.fill('#project-minimum-characters','500');
+        await workspace.fill('#project-maximum-characters','100');
+        await workspace.click('#project-corpus-settings-save');
+        assert.match(await workspace.locator('#project-corpus-settings-status').innerText(),/Minimum characters cannot exceed/);
+        await workspace.fill('#project-maximum-characters','1000');
+        await workspace.selectOption('#extractor','defuddle');
+        await workspace.click('#project-corpus-settings-save');
+        await workspace.waitForFunction(()=>document.querySelector('#project-corpus-settings-status').textContent==='Project settings saved.');
+        await workspace.click('#project-corpus-settings-defaults');
+        await workspace.waitForFunction(()=>document.querySelector('#project-corpus-settings-status').textContent==='Defaults saved for new projects.');
+        assert.equal(await workspace.inputValue('#setting-defaultMinimumCharacters'),'500');
+        await workspace.click('#settings-cancel'); await openSettings();
+        assert.equal(await workspace.inputValue('#project-minimum-characters'),'500');
+        assert.equal(await workspace.inputValue('#extractor'),'defuddle');
+        await workspace.fill('#project-minimum-characters',''); await workspace.fill('#project-maximum-characters','');
+        await workspace.click('#project-corpus-settings-save');
+        await workspace.waitForFunction(()=>document.querySelector('#project-corpus-settings-status').textContent==='Project settings saved.');
+        await workspace.click('#settings-reset'); await workspace.click('#settings-save');
+        await workspace.locator('#settings-dialog[open]').waitFor({state:'hidden'});
+        console.log(`${name}: WP6 project range validation, extractor persistence and new-project defaults passed.`);
         // Exercise the real text-review controller and native modal in both engines.
         await workspace.evaluate(async () => {
           const storage = await import('./project-store.js');

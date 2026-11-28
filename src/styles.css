@@ -266,3 +266,6 @@ section { scroll-margin-top: 0; }
 .download-error-details p { overflow-wrap: anywhere; }
 
 .manual-indicator-space { display: inline-block; width: 22px; height: 16px; vertical-align: middle; }
+
+.project-corpus-settings { padding-bottom: 18px; margin-bottom: 18px; border-bottom: 1px solid #ccd5db; }
+#export.export-highlight { background: #ccebd4; color: #124c28; box-shadow: 0 0 0 5px #ccebd4; }

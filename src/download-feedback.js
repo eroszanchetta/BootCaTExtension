@@ -1,4 +1,4 @@
-import { hasLanguageWarning } from './language-detection.js';
+import { hasDocumentWarning } from './corpus-options.js';
 export const DOWNLOAD_FEEDBACK_KEY = 'downloadFeedback';
 export const DEFAULT_ACTION_TITLE = 'BootCaT: collect results or open workspace';
 const terminal = new Set(['finished', 'stopped', 'interrupted']);
@@ -48,7 +48,7 @@ export function createDownloadFeedback({ ext, getProject, serialize, getEntries 
   async function reconcile(value) {
     if (value?.state !== 'finished' || !getEntries) return value;
     const entries = await getEntries(value.projectId);
-    const remainingIssues = entries.filter(entry => !entry.doc || entry.doc.extraction.status !== 'ok' || hasLanguageWarning(entry.doc.extraction)).length;
+    const remainingIssues = entries.filter(entry => !entry.doc || entry.doc.extraction.status !== 'ok' || hasDocumentWarning(entry.doc.extraction)).length;
     const hadIssues = !!(value.hadIssues || originalIssues(value) || remainingIssues);
     return value.remainingIssues === remainingIssues && value.hadIssues === hadIssues ? value : { ...value, remainingIssues, hadIssues };
   }

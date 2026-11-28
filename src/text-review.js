@@ -1,3 +1,4 @@
+import { hasLengthWarning, lengthMessage } from './corpus-options.js';
 import { DEFAULT_SETTINGS } from './settings.js';
 import * as storage from './project-store.js';
 import { checkLanguage, languageMessage, hasLanguageWarning } from './language-detection.js';
@@ -40,7 +41,7 @@ export function initTextReview({ root = document, confirm, run, getProjectId, ge
     const doc = current.entry.doc, extraction = doc.extraction;
     el('preview-title').textContent = extraction.title || 'Document text';
     el('preview-source').href = doc.url; el('preview-source').textContent = doc.url;
-    const warnings = [...fileWarnings(extraction, { details: true }), languageMessage(extraction)].filter(Boolean);
+    const warnings = [...fileWarnings(extraction, { details: true }), languageMessage(extraction), lengthMessage(extraction)].filter(Boolean);
     el('preview-meta').textContent = `${extraction.recovery ? 'Manually recovered text · ' : ''}${extraction.extractor || 'Unsupported format'} · ${extraction.characters.toLocaleString()} characters${extraction.pageCount ? ` · ${extraction.pageCount} pages` : ''}${doc.editedAt ? ' · Manually edited' : ''}${warnings.length ? ` · ${warnings.join(' ')}` : ''}`;
   }
   function clear() {
@@ -123,7 +124,7 @@ export function initTextReview({ root = document, confirm, run, getProjectId, ge
       if (request === generation) status.textContent = `Text not saved: ${error.message}`;
     } finally { if (request === generation) { saving = false; controls(); } }
   });
-  function metadataView(recovered = false) { metadata(); status.textContent = recovered ? (hasLanguageWarning(current.entry.doc.extraction) ? 'Text saved · language review needed' : 'Text recovered') : 'Text saved in this project. Save corpus to download the updated corpus.'; }
+  function metadataView(recovered = false) { metadata(); status.textContent = recovered ? (hasLengthWarning(current.entry.doc.extraction) ? 'Text saved · length review needed' : hasLanguageWarning(current.entry.doc.extraction) ? 'Text saved · language review needed' : 'Text recovered') : 'Text saved in this project. Save corpus to download the updated corpus.'; }
   close.addEventListener('click', requestClose);
   dialog.addEventListener('cancel', event => { event.preventDefault(); requestClose(); });
   dialog.addEventListener('close', () => { if (opened) clear(); });
