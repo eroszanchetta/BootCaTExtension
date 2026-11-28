@@ -45,6 +45,14 @@ for (const namespace of ['chrome', 'browser']) test(`${namespace}: inactive proj
     assert.equal(injections, 0); assert.equal(tabs.size, 0);
     const { project } = await request({ type: 'new-project', projectId: null, name: 'Corpus', language: 'none' });
     assert.ok(project.id); assert.equal(project.nameConfirmed, true);
+    const options = await request({ type: 'get-project-corpus-options' });
+    assert.equal(options.projectId, project.id); assert.equal(options.options.minimumCharacters, null);
+    const changedOptions = await request({ type: 'save-project-corpus-options', projectId: project.id, values: { minimumCharacters: 5, maximumCharacters: 100, extractor: 'defuddle' }, revision: options.revision });
+    assert.equal(changedOptions.ok, true); assert.equal(changedOptions.revision, 1);
+    assert.equal((await request({ type: 'save-project-corpus-options', projectId: project.id, values: {}, revision: 0 })).ok, false);
+    assert.equal((await request({ type: 'save-project-corpus-options', projectId: 'stale', values: {}, revision: 1 })).ok, false);
+    assert.equal((await request({ type: 'set-default-corpus-options', projectId: project.id, values: { minimumCharacters: 5, maximumCharacters: 100, extractor: 'defuddle' } })).ok, true);
+    assert.equal((await storage.loadWorkspace(project.id)).draft.extractor, 'defuddle');
     await request({ type: 'save-user-defaults', projectId: project.id, patch: { excludedSites: ['example.org'] } });
     const preferences = structuredClone(local.userDefaults);
     const url = 'https://corpus.test/', filename = 'pages/page.html';
@@ -82,6 +90,9 @@ for (const namespace of ['chrome', 'browser']) test(`${namespace}: inactive proj
     const next = await request({ type: 'new-project', projectId: null, name: 'Next corpus', language: 'ita' });
     assert.equal(next.ok, true); assert.notEqual(next.project.id, project.id);
     assert.equal((await storage.loadWorkspace(next.project.id)).draft.excludedSites, 'example.org');
+    assert.equal((await storage.loadWorkspace(next.project.id)).draft.minimumCharacters, 5);
+    assert.equal((await storage.loadWorkspace(next.project.id)).draft.maximumCharacters, 100);
+    assert.equal((await storage.loadWorkspace(next.project.id)).draft.extractor, 'defuddle');
     assert.equal((await request({ type: 'close-project', projectId: project.id })).ok, false);
     assert.equal((await request({ type: 'clear-collections', projectId: project.id })).ok, false);
     assert.equal((await request({ type: 'new-project', projectId: null, name: 'Stale creation' })).ok, false);

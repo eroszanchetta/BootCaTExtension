@@ -1,10 +1,11 @@
+import { validateCorpusOptions, applyLengthFilter, hasLengthWarning } from './corpus-options.js';
 import { manualActions } from './manual-intervention.js';
 import { LEGACY_SEARCH_ENGINE } from './search-engine-options.js';
 import { DEFAULT_EXCLUDED_SITES } from './search-filters.js';
 import { hasLanguageWarning } from './language-detection.js';
 import { transaction, STORES } from './storage-db.js';
 import { parseURLs } from './core.js';
-const initialDraft = (defaults = {}) => ({ key: 'draft', urls: '', query: '', engine: defaults.engine ?? LEGACY_SEARCH_ENGINE, extractor: 'readability', seenCollections: [], seeds: '', tupleLength: '3', tupleCount: '10', tuples: '', preparedQueries: [], preparedQueryBases: null, preparedFilters: null, searchFileType: '', searchSite: '', excludedSites: (defaults.excludedSites ?? DEFAULT_EXCLUDED_SITES).join('\n') });
+const initialDraft = (defaults = {}) => ({ key: 'draft', urls: '', query: '', engine: defaults.engine ?? LEGACY_SEARCH_ENGINE, ...validateCorpusOptions(defaults), optionsRevision: 0, seenCollections: [], seeds: '', tupleLength: '3', tupleCount: '10', tuples: '', preparedQueries: [], preparedQueryBases: null, preparedFilters: null, searchFileType: '', searchSite: '', excludedSites: (defaults.excludedSites ?? DEFAULT_EXCLUDED_SITES).join('\n') });
 const initialBatch = () => ({ key: 'batch', startedAt: null, state: 'idle', processed: 0, total: 0, nextFileIndex: 0, storedBytes: 0, lastStatus: 'Ready when you are.' });
 // Reserve the whole URL list before the first result, so completion/recovery
 // timing cannot change document order. Later URLs always follow existing ones.
@@ -13,12 +14,13 @@ function documentURLs(draft, entries, order) {
 }
 function saveOrderedEntry(tx, entry) {
   const meta = tx.objectStore('meta'), documents = tx.objectStore('documents');
-  const order = meta.get('documentOrder');
-  order.onsuccess = () => {
-    const position = order.result?.urls.indexOf(entry.url) ?? -1;
-    if (position >= 0) { entry.listPosition = position; documents.put(entry); return; }
-    const draft = meta.get('draft');
-    draft.onsuccess = () => {
+  const draft = meta.get('draft');
+  draft.onsuccess = () => {
+    if (entry.doc) entry.doc.extraction = applyLengthFilter(entry.doc.extraction, validateCorpusOptions(draft.result));
+    const order = meta.get('documentOrder');
+    order.onsuccess = () => {
+      const position = order.result?.urls.indexOf(entry.url) ?? -1;
+      if (position >= 0) { entry.listPosition = position; documents.put(entry); return; }
       const save = entries => {
         const urls = documentURLs(draft.result, [...entries, entry], order.result);
         entry.listPosition = urls.indexOf(entry.url);
@@ -150,6 +152,8 @@ export function saveDocument(projectId, record, document, original, { advance = 
       const entry = { url: record.url, record: { ...record }, doc, fileNames: [...(previous?.fileNames || []), record.filename], originalBytes: (previous?.originalBytes || 0) + blob.size };
       if (previous?.record) entry.record.previousAttempt = previous.record;
       entry.doc.manualInterventions = [...new Set([...manualActions(previous || {}), ...manualActions(entry)])];
+      if (previous?.doc?.extraction.inclusionOverride !== undefined) entry.doc.extraction.inclusionOverride = previous.doc.extraction.inclusionOverride;
+      if (previous?.doc?.extraction.lengthCheck) entry.doc.extraction.lengthCheck = previous.doc.extraction.lengthCheck;
       saveOrderedEntry(tx, entry);
       tx.objectStore('files').add({ name: record.filename, blob });
       const textBlob = new Blob([text || ''], { type: 'text/plain;charset=utf-8' });
@@ -186,6 +190,7 @@ export function setIncluded(projectId, url, included) {
       const next = entry.doc.extraction.status === 'ok' && !hasLanguageWarning(entry.doc.extraction) && included;
       if (next !== entry.doc.extraction.included) entry.doc.manualInterventions = [...new Set([...manualActions(entry), 'inclusion-change'])];
       entry.doc.extraction.included = next;
+      entry.doc.extraction.inclusionOverride = next;
       if (entry.doc.extraction.languageCheck && !hasLanguageWarning(entry.doc.extraction)) entry.doc.extraction.languageCheck.inclusionBeforeCheck = included;
       saveOrderedEntry(tx, entry);
     };
@@ -206,6 +211,41 @@ export function saveLanguageCheck(projectId, url, filename, languageCheck, inclu
     };
   });
 }
+export function acceptDocumentIssues(projectId, url) {
+  return projectTransaction(projectId, ['documents'], 'readwrite', (tx, done, fail) => {
+    const request = tx.objectStore('documents').get(url);
+    request.onsuccess = () => {
+      const entry = request.result, e = entry?.doc?.extraction;
+      if (!e || e.status !== 'ok') { fail(new Error('Document changed. Reopen its details.')); return; }
+      const actions = new Set(manualActions(entry));
+      if (hasLanguageWarning(e)) {
+        e.languageCheck = { ...e.languageCheck, accepted: true, acceptedAt: new Date().toISOString(), inclusionBeforeCheck: true };
+        actions.add('language-override');
+      }
+      if (hasLengthWarning(e)) { e.lengthCheck = { ...e.lengthCheck, accepted: true }; actions.add('length-override'); }
+      e.included = true; e.inclusionOverride = true;
+      entry.doc.manualInterventions = [...actions];
+      saveOrderedEntry(tx, entry); done(entry);
+    };
+  });
+}
+export function saveCorpusOptions(projectId, values, revision) {
+  const options = validateCorpusOptions(values);
+  return projectTransaction(projectId, ['documents'], 'readwrite', (tx, done, fail) => {
+    const meta = tx.objectStore('meta'), request = meta.get('draft');
+    request.onsuccess = () => {
+      const draft = request.result;
+      if ((draft.optionsRevision || 0) !== revision) { fail(new Error('Project settings changed in another window. Close and reopen Settings.')); return; }
+      Object.assign(draft, options, { optionsRevision: revision + 1 }); meta.put(draft);
+      const docs = tx.objectStore('documents'), all = docs.getAll();
+      all.onsuccess = () => {
+        for (const entry of all.result) if (entry.doc) { entry.doc.extraction = applyLengthFilter(entry.doc.extraction, options); docs.put(entry); }
+      };
+      done({ options, revision: draft.optionsRevision });
+    };
+  });
+}
+
 export const deletionKey = value => { try { const url = new URL(value); url.hash = ''; return 'deleted:' + url.href; } catch { return 'deleted:' + value; } };
 export function getDeletionVersion(projectId, url) {
   return projectTransaction(projectId, [], 'readonly', (tx, done) => {

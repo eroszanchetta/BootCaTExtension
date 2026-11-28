@@ -1,7 +1,7 @@
 const labels = {
   'browser-capture': 'Added from browser', 'file-import': 'Imported file',
   'manual-text': 'Text supplied manually', 'text-edit': 'Text edited manually',
-  'language-override': 'Language warning accepted', 'language-recheck': 'Language rechecked', 'inclusion-change': 'Inclusion changed manually'
+  'length-override': 'Length warning accepted', 'language-override': 'Language warning accepted', 'language-recheck': 'Language rechecked', 'inclusion-change': 'Inclusion changed manually'
 };
 export function manualActions(entry) {
   const actions = new Set((Array.isArray(entry.doc?.manualInterventions) ? entry.doc.manualInterventions : []).filter(value => Object.hasOwn(labels, value)));

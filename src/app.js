@@ -1,3 +1,4 @@
+import { hasDocumentWarning, hasLengthWarning, lengthMessage } from './corpus-options.js';
 import { createManualIndicator, updateManualIndicator } from './manual-intervention.js';
 import { bindImportFileDrop, guardFileDropNavigation } from './import-file-drop.js';
 import { initRecoveryFeedback, recoveryOutcome, preserveRecoveryInclusion } from './recovery-feedback.js';
@@ -28,11 +29,10 @@ import { initSeedsUI } from './seeds-ui.js';
 import { initProjectTabsUI } from './project-tabs-ui.js';
 import { extractDocument } from './extraction.js';
 import { extractionMetadata } from './corpus.js';
-import { DEFUDDLE_AVAILABLE } from './defuddle-loader.js';
 
 initWorkspaceSections();
 const ext = getExtensionAPI(), VERSION = initVersionBadge();
-const ui = Object.fromEntries(['urls', 'start', 'stop', 'export', 'status', 'progress', 'results', 'problem-results', 'attention-section', 'attention-count', 'project-language', 'recheck-language', 'language-status', 'corpus-status', 'extractor', 'urls-warning', 'saved-status', 'engine', 'import-document-picker', 'document-import-status', 'export-status'].map(id => [id, document.getElementById(id)]));
+const ui = Object.fromEntries(['urls', 'start', 'stop', 'export', 'status', 'progress', 'results', 'problem-results', 'attention-section', 'attention-count', 'project-language', 'recheck-language', 'language-status', 'corpus-status', 'urls-warning', 'saved-status', 'engine', 'import-document-picker', 'document-import-status', 'export-status'].map(id => [id, document.getElementById(id)]));
 let currentSettings = DEFAULT_SETTINGS;
 async function loadSettings() { currentSettings = await readSettings(ext.storage.local); warnURLs(); updateLimitHints(); seedsUI?.setMinimumSeeds?.(currentSettings.minimumSeeds); return currentSettings; }
 function updateLimitHints() {
@@ -42,7 +42,7 @@ function updateLimitHints() {
 let portableBusy = false, portableUI;
 let ready = false, running = false, downloading = false, importing = false, stopping = false, resetting = false, controller = null;
 let projectId, state, entries = [], searchUI, seedsUI, projectTabsUI, archiveURL = null, previewURL = null, previewFilename = null, textReview;
-let exportSaved = false, exportRevision = 0;
+let exportSaved = false, exportRevision = 0, exportHighlightTimer;
 let writes = Promise.resolve(), pendingWrites = 0, writeError = null, capturesPending = false, refreshing = false;
 let pickingDocument = false, documentImportTarget = null, documentImportStatus = { url: null, message: '' };
 const documentImportMessages = new Map(), pendingResolutions = new Map();
@@ -56,8 +56,6 @@ const isBatchActive = () => downloading || remoteActivity.batch;
 const hasDocumentWork = () => documentJobs.size > 0 || remoteActivity.documents.size > 0;
 
 ui.start.disabled = ui.export.disabled = true;
-ui.extractor.querySelector('option[value="defuddle"]').disabled = !DEFUDDLE_AVAILABLE;
-if (!DEFUDDLE_AVAILABLE) ui.extractor.querySelector('option[value="defuddle"]').textContent = 'Defuddle — library unavailable';
 let engineDefaultUI, downloadFeedbackUI, recoveryFeedback, removeFileDropGuard;
 const projectUI = initProjectUI({
   onRename: () => { invalidateArchive(); seedsUI?.refreshLanguage?.(); },
@@ -78,7 +76,7 @@ textReview = initTextReview({ root: document, confirm: confirmAction, run: (task
   onSaved: (entry, { recovered = false } = {}) => {
     remember(entry, { keepPreview: true });
     if (recovered && needsAttention(entry)) {
-      documentImportMessage(entry.url, 'Text saved · language review needed', 'warning');
+      documentImportMessage(entry.url, hasLengthWarning(entry.doc.extraction) ? 'Text saved · length review needed' : 'Text saved · language review needed', 'warning');
       recoveryFeedback?.show({url:entry.url,tone:'warning'});
     }
   },
@@ -152,7 +150,7 @@ function updateControls() {
   const parsed = idle ? parseURLs(ui.urls.value) : null;
   if (!inclusionJobs.size) document.getElementById('download-readiness').textContent = !idle ? '' : parsed.errors.length ? parsed.errors[0] : pending ? '' : parsed.urls.length ? 'All listed URLs have been downloaded. Add more URLs to download additional documents.' : 'Add URLs in the URLs section to start building your corpus.';
   ui.export.disabled = !ready || exclusive || batch || importing || hasDocumentWork() || exportSaved || !entries.length;
-  ui.urls.disabled = ui.extractor.disabled = !ready || exclusive || batch;
+  ui.urls.disabled = !ready || exclusive || batch;
   ui['project-language'].disabled = !ready || exclusive || batch || hasDocumentWork();
   ui['recheck-language'].disabled = !ready || exclusive || batch || hasDocumentWork() || !entries.some(entry => entry.doc?.extraction.status === 'ok');
   ui.start.textContent = !exclusive && !batch && ready && ['running', 'stopped'].includes(state.batch.state) && pending ? 'Resume downloads' : 'Download URLs';
@@ -168,7 +166,7 @@ function updateControls() {
   const activity = document.getElementById('download-activity');
   activity.textContent = remoteActivity.batch && !downloading ? 'Downloads are running in another BootCaT window. You can work on completed documents here.' : '';
 }
-const needsAttention = entry => !entry.doc || entry.doc.extraction.status !== 'ok' || hasLanguageWarning(entry.doc.extraction);
+const needsAttention = entry => !entry.doc || entry.doc.extraction.status !== 'ok' || hasDocumentWarning(entry.doc.extraction);
 function markPreviewRow(url, row) {
   const selected = url === previewURL;
   row.classList.toggle('preview-selected', selected);
@@ -215,6 +213,9 @@ function goToExport() {
   openWorkspaceSection('project-section');
   ui.export.scrollIntoView({ block: 'center' });
   ui.export.focus({ preventScroll: true });
+  ui.export.classList.toggle('export-highlight', true);
+  clearTimeout(exportHighlightTimer);
+  exportHighlightTimer = setTimeout(() => ui.export.classList.toggle('export-highlight', false), 2000);
 }
 document.getElementById('go-to-export').addEventListener('click', event => { event.preventDefault(); goToExport(); });
 
@@ -263,20 +264,22 @@ function renderRow(entry) {
     const button = document.createElement('button'); button.className = 'secondary preview-button'; button.textContent = e.status === 'ok' ? 'Preview text' : 'Details';
     button.addEventListener('click', () => preview(doc)); result.append(button);
     const warnings = fileWarnings(e);
+    const lengthStatus = lengthMessage(e);
+    if (lengthStatus) { const hint = document.createElement('p'); hint.className = 'hint length-status'; hint.textContent = lengthStatus; result.append(hint); }
     const languageStatus = languageMessage(e);
     if (languageStatus) { const languageHint = document.createElement('p'); languageHint.className = 'hint'; languageHint.textContent = languageStatus; result.append(languageHint); }
     if (warnings.length) { const warning = document.createElement('p'); warning.className = 'hint'; warning.textContent = warnings.join(' '); result.append(warning); }
   }
   let acceptLanguage;
-  if (doc && hasLanguageWarning(doc.extraction)) {
+  if (doc && hasDocumentWarning(doc.extraction)) {
     acceptLanguage = document.createElement('button'); acceptLanguage.type = 'button'; acceptLanguage.className = 'secondary accept-language'; acceptLanguage.textContent = 'Include anyway';
     acceptLanguage.addEventListener('click', async () => {
       const hadFocus = document.activeElement === acceptLanguage;
       await documentWork(url, async () => {
         const current = (await storage.loadWorkspace(projectId)).entries.find(entry => entry.url === url);
         if (!current?.doc || current.doc.extraction.status !== 'ok') return;
-        const check = { ...current.doc.extraction.languageCheck, accepted: true, acceptedAt: new Date().toISOString(), inclusionBeforeCheck: true };
-        remember(await storage.saveLanguageCheck(projectId, url, current.doc.filename, check, true), { resolution: 'Language warning accepted' }); updateControls();
+        const label = hasLengthWarning(current.doc.extraction) ? (hasLanguageWarning(current.doc.extraction) ? 'Review warnings accepted' : 'Length warning accepted') : 'Language warning accepted';
+        remember(await storage.acceptDocumentIssues(projectId, url), { resolution: label }); updateControls();
       });
       if (hadFocus && document.activeElement === document.body) rows.get(url)?.querySelector('.preview-button')?.focus({preventScroll:true});
     });
@@ -340,9 +343,9 @@ function renderRow(entry) {
     target.insertBefore(tr, next || null);
   }
   const activity = document.createElement('p'); activity.className = 'hint document-activity'; activity.setAttribute('role', 'status'); result.append(activity);
-  rows.set(url, tr); recoveryFeedback?.apply(tr, url); markPreviewRow(url, tr); controls.set(url, { manualIndicator, activity, trash, checkbox, acceptLanguage, importDocument, importFeedback, failed: doc?.extraction.status !== 'ok' || hasLanguageWarning(doc?.extraction) });
+  rows.set(url, tr); recoveryFeedback?.apply(tr, url); markPreviewRow(url, tr); controls.set(url, { manualIndicator, activity, trash, checkbox, acceptLanguage, importDocument, importFeedback, failed: doc?.extraction.status !== 'ok' || hasDocumentWarning(doc?.extraction) });
   if (importDocument) importDocument.disabled = isDocumentBusy(url);
-  trash.disabled = isDocumentBusy(url); if (checkbox) checkbox.disabled = isDocumentBusy(url) || doc.extraction.status !== 'ok' || hasLanguageWarning(doc.extraction);
+  trash.disabled = isDocumentBusy(url); if (checkbox) checkbox.disabled = isDocumentBusy(url) || doc.extraction.status !== 'ok' || hasDocumentWarning(doc.extraction);
 }
 function documentImportMessage(url, message, tone = 'hint') {
   documentImportStatus = { url, message, tone }; documentImportMessages.set(url, documentImportStatus);
@@ -398,7 +401,7 @@ function remember(entry, { keepPreview = false, updateRow = true, feedback = tru
   const index = entries.findIndex(item => item.url === entry.url);
   const previous = entries[index];
   if (feedback && previous && needsAttention(previous) && !needsAttention(entry)) {
-    const message = resolution || (!previous.doc ? 'Download recovered' : previous.doc.extraction.status !== 'ok' ? 'Text recovered' : entry.doc.extraction.languageCheck?.outcome === 'disabled' ? 'Language review cleared' : 'Language check passed');
+    const message = resolution || (!previous.doc ? 'Download recovered' : hasLengthWarning(previous.doc.extraction) ? 'Length review cleared' : previous.doc.extraction.status !== 'ok' ? 'Text recovered' : entry.doc.extraction.languageCheck?.outcome === 'disabled' ? 'Language review cleared' : 'Language check passed');
     pendingResolutions.set(entry.url, message);
   }
   revealAddedDocument(previous, entry);
@@ -428,7 +431,7 @@ async function restore({ draft = true } = {}) {
     for (const entry of saved.entries) revealAddedDocument(previous.get(entry.url), entry);
   }
   revokeArchive(); state = saved; entries = saved.entries;
-  if (draft) { ui.urls.value = saved.draft.urls; ui.extractor.value = saved.draft.extractor; if (saved.draft.engine) ui.engine.value = saved.draft.engine; seedsUI?.restore(saved.draft); engineDefaultUI?.refreshSelection(); }
+  if (draft) { ui.urls.value = saved.draft.urls; if (saved.draft.engine) ui.engine.value = saved.draft.engine; seedsUI?.restore(saved.draft); engineDefaultUI?.refreshSelection(); }
   renderEntries();
   const selected = entries.find(entry => entry.url === previewURL)?.doc;
   if (previewURL && selected?.filename !== previewFilename) clearPreview();
@@ -441,6 +444,13 @@ async function restore({ draft = true } = {}) {
 async function notifyWorkspace() {
   if (resetting || !ext.storage.local?.set) return;
   try { await ext.storage.local.set({ workspaceRevision: { projectId, revision: crypto.randomUUID() } }); } catch {}
+}
+async function applyProjectOptionsFeedback() {
+  const saved = await storage.loadWorkspace(projectId);
+  if (resetting) return;
+  for (const key of ['extractor', 'minimumCharacters', 'maximumCharacters', 'optionsRevision']) state.draft[key] = saved.draft[key];
+  for (const entry of saved.entries) remember(entry);
+  flushResolutions(); updateControls(); await refreshActivity();
 }
 async function refreshMetadata() {
   if (!ready || resetting || metadataRefreshing) return;
@@ -543,7 +553,7 @@ ui.start.addEventListener('click', async () => {
       if (parsed.errors.length || !parsed.urls.length) { ui.status.textContent = parsed.errors.join(' · ') || 'Please enter at least one URL.'; return; }
       const saved = await storage.loadWorkspace(projectId); state.batch = saved.batch;
       const complete = new Set(saved.entries.filter(entry => entry.doc && ['downloaded', 'captured'].includes(entry.record.outcome) && (entry.doc?.editRevision > 0 || !entry.record.processingIncomplete)).map(entry => entry.url));
-      const queueRevision = saved.deleteRevision?.value || 0, urls = parsed.urls.filter(url => !complete.has(url)), extractor = ui.extractor.value;
+      const queueRevision = saved.deleteRevision?.value || 0, urls = parsed.urls.filter(url => !complete.has(url)), extractor = saved.draft.extractor;
       if (!urls.length) { ui.status.textContent = 'All listed pages are already saved. Add URLs to download more pages.'; return; }
       stopping = false; ui.stop.disabled = false;
       const startedAt = state.batch.startedAt || new Date().toISOString();
@@ -572,7 +582,7 @@ ui.start.addEventListener('click', async () => {
             const index = await storage.allocateFileIndex(projectId);
             const filename = filenameFor(url, extractionContentType(response.bytes, response.contentType), index);
             await publishDownloadFeedback('download-feedback-progress', { phase: 'extracting' });
-            const extraction = await extractionQueue.run(() => {
+            const extraction = await extractionQueue.run(async () => {
               if (resetting) return;
               return extractDownloadedDocument(response.bytes, response.contentType, { settings, extractor, sourceURL: response.finalURL || url, signal: active.signal });
             });
@@ -612,11 +622,11 @@ async function storeCapture({ url, finalURL, bytes, contentType, source, capture
   const index = await storage.allocateFileIndex(projectId), filename = filenameFor(url, contentType, index);
   const active = new AbortController(); operationControllers.add(active);
   try {
-    const extraction = await extractionQueue.run(() => {
+    const extraction = await extractionQueue.run(async () => {
       active.signal.throwIfAborted();
       return formatByMIME(contentType)
         ? extractDownloadedDocument(bytes, contentType, { settings, sourceURL: finalURL, signal: active.signal })
-        : extractDocument(bytes, contentType, { settings, extractor: ui.extractor.value, sourceURL: finalURL });
+        : extractDocument(bytes, contentType, { settings, extractor: (await storage.loadWorkspace(projectId)).draft.extractor, sourceURL: finalURL });
     }, { priority: true });
     if (resetting) return;
     const previous = source === 'local-file' ? (await storage.readDownloadTarget(projectId, url)).entry?.doc?.extraction : null;
@@ -760,14 +770,17 @@ ui.export.addEventListener('click', () => {
     } finally { controller = null; }
   });
 });
-for (const [id, key, type] of [['urls', 'urls', 'input'], ['engine', 'engine', 'change'], ['extractor', 'extractor', 'change']]) {
+for (const [id, key, type] of [['urls', 'urls', 'input'], ['engine', 'engine', 'change']]) {
   ui[id].addEventListener(type, () => { queueDraft({ [key]: ui[id].value }); if (id === 'urls') warnURLs(); });
 }
 ext.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local' || resetting) return;
   if (changes[SETTINGS_KEY]) loadSettings().catch(report);
   if (changes.captureRevision) importSavedPages();
-  if (changes.workspaceRevision?.newValue?.projectId === projectId) refreshActivity();
+  if (changes.workspaceRevision?.newValue?.projectId === projectId) {
+    if (changes.workspaceRevision.newValue.reason === 'corpus-options') applyProjectOptionsFeedback().catch(report);
+    else refreshActivity();
+  }
 });
 window.addEventListener('focus', async () => {
   if (!ready || running || seedsUI?.isBusy() || pickingDocument || pendingWrites || refreshing || resetting) return;

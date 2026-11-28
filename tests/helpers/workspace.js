@@ -1,3 +1,4 @@
+import { hasDocumentWarning, hasLengthWarning, lengthMessage } from '../../src/corpus-options.js';
 import { updateManualIndicator } from '../../src/manual-intervention.js';
 import { bindImportFileDrop, guardFileDropNavigation } from '../../src/import-file-drop.js';
 import { recoveryOutcome, preserveRecoveryInclusion } from '../../src/recovery-feedback.js';
@@ -48,7 +49,7 @@ export async function workspace(projectId, options = {}) {
   const local = options.local || { [SETTINGS_KEY]: { version: 1, revision: 0, values: options.settings || {} } };
   const createManualIndicatorForTest = entry => { const node = new Element(); updateManualIndicator(node,entry); return node; };
   const context = vm.createContext({
-    createManualIndicator: entry => createManualIndicatorForTest(entry), updateManualIndicator, DEFAULT_SETTINGS, SETTINGS_KEY, readSettings, fileLimit,
+    hasDocumentWarning, hasLengthWarning, lengthMessage, createManualIndicator: entry => createManualIndicatorForTest(entry), updateManualIndicator, DEFAULT_SETTINGS, SETTINGS_KEY, readSettings, fileLimit,
     console, navigator: options.navigator || {}, Blob, URL: { createObjectURL: value => { archive = value; downloads++; return 'blob:test'; }, revokeObjectURL() {} },
     AbortController, TextEncoder, Date, crypto, queueMicrotask, corpusFingerprint, corpusSavedMessage, initTextReview, createProjectWork, createExtractionQueue,
     setTimeout: (fn, delay) => { if (delay < 1000) { queueMicrotask(fn); return 0; } return setTimeout(fn, delay); }, clearTimeout,

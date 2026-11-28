@@ -1,8 +1,12 @@
+import { validateCorpusOptions } from './corpus-options.js';
 import { SEARCH_ENGINE_NAMES, INITIAL_SEARCH_ENGINE } from './search-engine-options.js';
 // Personal preferences, independent of project contents and browser sessions.
 export const SETTINGS_KEY = 'bootcatSettings';
 const memoryWarning = 'Increasing this limit may use substantially more memory and browser storage, slow processing, or make the tab unresponsive.';
 export const SETTING_FIELDS = [
+  { key: 'defaultExtractor', label: 'Text extractor for new projects', initial: 'readability', options: [{ value: 'readability', label: 'Mozilla Readability' }, { value: 'defuddle', label: 'Defuddle' }], help: 'Existing projects keep their selected extractor.' },
+  { key: 'defaultMinimumCharacters', label: 'Minimum characters for new projects', initial: null, optional: true, max: 100000000, help: 'Blank means no minimum. Includes spaces and line breaks.' },
+  { key: 'defaultMaximumCharacters', label: 'Maximum characters for new projects', initial: null, optional: true, max: 100000000, help: 'Blank means no maximum. These filters do not raise extraction limits.' },
   { key: 'defaultEngine', label: 'Default search engine', initial: INITIAL_SEARCH_ENGINE, options: Object.entries(SEARCH_ENGINE_NAMES).map(([value, label]) => ({ value, label })), help: 'Used for new projects in this browser. Existing and opened projects keep their selected engine.' },
   { key: 'minimumSeeds', label: 'Minimum number of distinct seeds', initial: 5, max: 1000000, help: 'Required for tuple generation only. You can enter your own tuples without seeds.', warning: 'More seeds will be required before tuple generation is enabled.' },
   { key: 'fileMiB', label: 'Maximum downloaded or imported file size', unit: 'MiB', initial: 50, max: 1024, help: 'Applies to downloads, PDF recovery and imported files. Extraction has separate limits.', warning: memoryWarning },
@@ -27,11 +31,13 @@ export function validateSettings(values = {}) {
   for (const field of SETTING_FIELDS) {
     const value = result[field.key];
     if (field.options) {
-      if (!field.options.some(option => option.value === value)) throw new Error(`${field.label}: choose a supported search engine.`);
+      if (!field.options.some(option => option.value === value)) throw new Error(`${field.label}: choose a supported ${field.key === 'defaultEngine' ? 'search engine' : 'option'}.`);
       continue;
     }
+    if (field.optional && value === null) continue;
     if (!Number.isSafeInteger(value) || value < 1 || value > field.max) throw new Error(`${field.label}: enter a whole number from 1 to ${field.max.toLocaleString()}.`);
   }
+  validateCorpusOptions({ extractor: result.defaultExtractor, minimumCharacters: result.defaultMinimumCharacters, maximumCharacters: result.defaultMaximumCharacters });
   return Object.freeze(result);
 }
 export async function readSettingsState(area) {

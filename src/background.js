@@ -1,3 +1,5 @@
+import { validateCorpusOptions, corpusDefaults } from './corpus-options.js';
+import { createProjectWork } from './project-work.js';
 import { languageFilterFromURL } from './search-language.js';
 import { createDownloadFeedback } from './download-feedback.js';
 import { collectionFailure, collectionLinkWarning } from './search-feedback.js';
@@ -10,7 +12,7 @@ import { readSettings, readSettingsState, saveSettings } from './settings.js';
 import { resetProjectLocalState } from './project-local-state.js';
 import { readUserDefaults, saveUserDefaults } from './user-defaults.js';
 import { validateLanguage } from './language-detection.js';
-import { loadWorkspace, ensureStoredProject, resetStoredProject, closeStoredProject, storedProjectState, hasStoredPage, getDeletionVersion, snapshotStoredProject, replaceStoredProject } from './project-store.js';
+import { loadWorkspace, ensureStoredProject, resetStoredProject, closeStoredProject, storedProjectState, hasStoredPage, getDeletionVersion, snapshotStoredProject, replaceStoredProject, saveCorpusOptions } from './project-store.js';
 import { captureTabDocument } from './pdf-recovery.js';
 import { savePage, listSavedPages } from './page-store.js';
 import { getExtensionAPI } from './extension-api.js';
@@ -47,7 +49,7 @@ async function ensureProject() {
   if (!project) {
     return null;
   }
-  await ensureStoredProject(project.id, !storedId ? await readUserDefaults(ext.storage.local) : undefined);
+  await ensureStoredProject(project.id, !storedId ? { ...await readUserDefaults(ext.storage.local), ...corpusDefaults(await readSettings(ext.storage.local)) } : undefined);
   return project;
 }
 async function assertProject(id) {
@@ -243,6 +245,28 @@ async function handle(message) {
     try { await floatingControls.sync(); } catch { floatingWarning = 'Preferences saved. Some pages may need a reload before floating controls can appear.'; }
     return { preferences, floatingWarning };
   }
+  if (message.type === 'get-project-corpus-options') return serialize(async () => {
+    const project = await ensureProject();
+    if (!project) return { projectId: null };
+    const { draft } = await loadWorkspace(project.id);
+    return { projectId: project.id, options: validateCorpusOptions(draft), revision: draft.optionsRevision || 0 };
+  });
+  if (message.type === 'save-project-corpus-options') return serialize(async () => {
+    await assertProject(message.projectId);
+    const work = createProjectWork({ locks: globalThis.navigator?.locks, getProjectId: () => message.projectId });
+    const result = await work.exclusive(async () => {
+      const saved = await saveCorpusOptions(message.projectId, message.values, message.revision);
+      await ext.storage.local.set({ workspaceRevision: { projectId: message.projectId, revision: crypto.randomUUID(), reason: 'corpus-options' } });
+      return saved;
+    });
+    if (result === false) throw new Error('Wait for project processing to finish, then save these settings again.');
+    return result;
+  });
+  if (message.type === 'set-default-corpus-options') return serialize(async () => {
+    await assertProject(message.projectId);
+    const values = validateCorpusOptions(message.values), current = await readSettingsState(ext.storage.local);
+    return { settings: await saveSettings(ext.storage.local, { ...current.values, defaultExtractor: values.extractor, defaultMinimumCharacters: values.minimumCharacters, defaultMaximumCharacters: values.maximumCharacters }, current.revision) };
+  });
   if (message.type === 'get-settings') return { settings: await readSettingsState(ext.storage.local) };
   if (message.type === 'save-settings') return serialize(async () => ({ settings: await saveSettings(ext.storage.local, message.values, message.revision) }));
   if (message.type === 'set-default-search-engine') return serialize(async () => {
@@ -309,7 +333,7 @@ async function handle(message) {
     if (!chosenName) throw new Error('Enter a project name.');
     const project = { language: validateLanguage(message.language ?? 'none'), id: crypto.randomUUID(), name: chosenName, nameConfirmed: true };
     for (const controller of captures.values()) controller.abort();
-    await resetStoredProject(project.id, { ...await readUserDefaults(ext.storage.local), engine: (await readSettings(ext.storage.local)).defaultEngine }, project);
+    await resetStoredProject(project.id, { ...await readUserDefaults(ext.storage.local), engine: (await readSettings(ext.storage.local)).defaultEngine, ...corpusDefaults(await readSettings(ext.storage.local)) }, project);
     await searchTabs.resetInQueue();
     await resetProjectLocalState(ext.storage.local, project);
     return { project };

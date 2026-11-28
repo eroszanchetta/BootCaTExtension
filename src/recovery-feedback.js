@@ -1,10 +1,11 @@
+import { hasLengthWarning } from './corpus-options.js';
 import { hasLanguageWarning } from './language-detection.js';
 import { openWorkspaceSection } from './workspace-sections.js';
 
 export function preserveRecoveryInclusion(extraction, previous) {
   // A failed extraction's default exclusion is not a deliberate user choice.
   if (previous?.status !== 'ok' || hasLanguageWarning(previous)) return extraction;
-  return { ...extraction, included: previous.included };
+  return { ...extraction, included: previous.inclusionOverride ?? previous.lengthCheck?.inclusionBeforeCheck ?? previous.included };
 }
 export function recoveryOutcome(entry, format) {
   const extraction = entry.doc?.extraction;
@@ -12,6 +13,7 @@ export function recoveryOutcome(entry, format) {
     return { tone: 'warning', message: 'File imported · text still unavailable' };
   }
   if (hasLanguageWarning(extraction)) return { tone: 'warning', message: 'File imported · language review needed' };
+  if (hasLengthWarning(extraction)) return { tone: 'warning', message: 'File imported · length review needed' };
   return { tone: 'success', message: 'Download recovered' };
 }
 

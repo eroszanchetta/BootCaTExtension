@@ -44,7 +44,7 @@ Diagnose the supplied IEEE PDF, distinguishing access/wrapper responses from PDF
 
 ## WP6 — Length filters and Settings
 
-Optional project minimum/maximum character filters with personal defaults, distinct from technical processing limits; retain excluded documents and manual overrides; reassess after edits. Confirm counting/application rules before implementation. Move Text extractor into Settings, preserving selection and clarifying applicability to future versus existing extractions.
+Authorized 28 November 2026: optional minimum/maximum character filters in Settings → This project, with blank bounds initially and inclusive limits. Count Unicode code points in the extracted/edited text, including spaces and line breaks. Filtered documents stay in Documents with issues with a brief short/long reason and Include anyway; preserve originals, text, manual inclusion/exclusion choices and stable order. Recheck saved texts when the range changes and after edits. Keep length and language review independent. Move Text extractor into the same project Settings group; preserve existing selections and apply changes to future extractions only. Use as defaults for new projects saves these three choices as personal defaults; opened projects retain their choices. Technical extraction limits remain separate. Go to export also highlights Export Corpus briefly in green, without animation. See CORPUS-FILTERS-2.2.md for implementation and validation.
 
 ## WP7 — Language detection
 

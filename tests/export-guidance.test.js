@@ -23,6 +23,7 @@ test('export guidance covers processing, partial success, navigation, inclusion 
     app.get('export').scrollIntoView = options => { scrolled = options; }; app.get('export').focus = options => { focused = options; };
     app.get('go-to-export').handlers.click({ preventDefault() { prevented = true; } });
     assert.equal(prevented, true); assert.equal(sections.at(-1), 'project-section');
+    assert.equal(app.get('export').classList.contains('export-highlight'), true);
     assert.equal(scrolled.block, 'center'); assert.equal(focused.preventScroll, true);
     let checkbox = app.get('results').children[0].children[0].children[0]; checkbox.checked = false; await checkbox.handlers.change();
     assert.equal(app.get('export-guidance').hidden, true);

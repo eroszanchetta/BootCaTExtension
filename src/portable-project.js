@@ -1,3 +1,4 @@
+import { validateCorpusOptions } from './corpus-options.js';
 import { makeStoredZIP } from './zip-blob.js';
 import { readPortableZIP, safeArchivePath } from './portable-zip.js';
 import { validateLanguage } from './language-detection.js';
@@ -41,6 +42,8 @@ export function validateProjectSnapshot(snapshot) {
   const meta = new Map(snapshot.stores.meta.map(r => [r.key, r]));
   for (const key of ['active', 'draft', 'batch', 'searches']) if (!meta.has(key)) fail(`missing ${key} metadata.`);
   const draft = meta.get('draft'), batch = meta.get('batch');
+  validateCorpusOptions(draft);
+  if (draft.optionsRevision !== undefined && !integer(draft.optionsRevision)) fail('invalid project settings revision.');
   const order = meta.get('documentOrder');
   if (order && (!Array.isArray(order.urls) || !order.urls.every(url => string(url) && web(url)) || new Set(order.urls).size !== order.urls.length)) fail('invalid document order.');
   for (const key of ['urls', 'query', 'engine', 'extractor', 'seeds', 'tupleLength', 'tupleCount', 'tuples', 'searchFileType', 'searchSite', 'excludedSites']) if (!string(draft[key])) fail(`invalid ${key} draft.`);

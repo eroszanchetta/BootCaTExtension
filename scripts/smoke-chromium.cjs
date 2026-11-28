@@ -209,7 +209,7 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
     await page.focus('#urls');
     assert.equal(await page.locator('#urls').evaluate(el => getComputedStyle(el, '::placeholder').color), 'rgba(0, 0, 0, 0)');
     assert.equal(await page.inputValue('#urls'), '');
-    await page.locator('#extractor').focus();
+    await page.locator('#urls-section summary').focus();
     assert.notEqual(await page.locator('#urls').evaluate(el => getComputedStyle(el, '::placeholder').color), 'rgba(0, 0, 0, 0)');
     let cancelUnload = false;
     const dialogMessages = [];
@@ -522,7 +522,12 @@ with zipfile.ZipFile(io.BytesIO(report)) as z:
         await page.waitForFunction(() => !document.querySelector('#review-lists tbody tr') && !document.querySelector('#urls').disabled && !document.querySelector('#open-project').disabled);
         await page.fill('#urls', 'https://corpus.test/article');
       }
+      await page.click('#open-settings');
+      await page.waitForFunction(()=>!document.querySelector('#project-corpus-settings-save').disabled);
       await page.selectOption('#extractor', extractor);
+      await page.click('#project-corpus-settings-save');
+      await page.waitForFunction(()=>document.querySelector('#project-corpus-settings-status').textContent==='Project settings saved.');
+      await page.click('#settings-cancel');
       await page.click('#start');
       await waitForFinished();
       assert.match(await page.locator('#status').innerText(), /^Finished\.$/);
@@ -651,6 +656,31 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     await parallelWorkspace.reload();
     await parallelWorkspace.waitForFunction(() => document.querySelector('#download-feedback-summary').textContent === 'Your corpus is ready to export.');
     assert.deepEqual(await parallelWorkspace.locator('#results tr td:nth-child(2) > a').evaluateAll(links=>links.map(a=>a.href)),concurrentURLs);
+    async function setProjectLength(minimum, maximum) {
+      await page.click('#open-settings');
+      await page.waitForFunction(()=>!document.querySelector('#project-corpus-settings-save').disabled);
+      await page.fill('#project-minimum-characters',minimum);
+      await page.fill('#project-maximum-characters',maximum);
+      await page.click('#project-corpus-settings-save');
+      await page.waitForFunction(()=>document.querySelector('#project-corpus-settings-status').textContent==='Project settings saved.');
+      await page.click('#settings-cancel');
+    }
+    await setProjectLength('1000000','');
+    await page.waitForFunction(()=>document.querySelectorAll('#problem-results tr').length===5);
+    assert.match(await page.locator('#problem-results').innerText(),/Too short:/);
+    await parallelWorkspace.waitForFunction(()=>document.querySelectorAll('#problem-results tr').length===5);
+    await openIssues();
+    await page.locator('#problem-results .accept-language').first().click();
+    await page.waitForFunction(()=>document.querySelectorAll('#results tr').length===1);
+    assert.match(await page.locator('#results .manual-intervention').getAttribute('title'),/Length warning accepted/);
+    await setProjectLength('','1');
+    await page.waitForFunction(()=>document.querySelectorAll('#problem-results tr').length===4 && document.querySelector('#problem-results').textContent.includes('Too long:'));
+    assert.equal(await page.locator('#results tr').count(),1,'manual inclusion survives a range change');
+    await setProjectLength('','');
+    await page.waitForFunction(()=>document.querySelectorAll('#results tr').length===5 && document.querySelector('#attention-section').hidden);
+    assert.deepEqual(await page.locator('#results tr td:nth-child(2) > a').evaluateAll(links=>links.map(a=>a.href)),concurrentURLs);
+    await parallelWorkspace.waitForFunction(()=>document.querySelectorAll('#results tr').length===5);
+    console.log('WP6: saved texts rechecked across windows, short/long reasons, manual override and clearing filters passed.');
     await parallelWorkspace.locator('#dismiss-download-feedback').click();
     await page.waitForFunction(() => document.querySelector('#download-feedback-strip').hidden);
     assert.equal(await page.evaluate(async () => (globalThis.browser ?? chrome).action.getBadgeText({})), '');
@@ -995,6 +1025,8 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert.equal(await page.locator('#download-feedback-summary').innerText(),'Your corpus is ready to export.');
     await page.locator('#download-feedback-link').click();
     assert.equal(await page.locator('#export').evaluate(button=>button===document.activeElement),true);
+    assert.equal(await page.locator('#export').evaluate(button=>button.classList.contains('export-highlight')),true);
+    await page.waitForFunction(()=>!document.querySelector('#export').classList.contains('export-highlight'));
     assert.equal(await page.evaluate(async()=>await (globalThis.browser??chrome).action.getBadgeText({})),'✓');
     await page.click('#recheck-language');
     await page.waitForFunction(() => document.querySelector('#language-status').textContent.startsWith('1 of 1 saved texts rechecked') && !document.querySelector('#urls').disabled && !document.querySelector('#open-project').disabled);
