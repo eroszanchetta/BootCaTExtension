@@ -531,6 +531,9 @@ const assert = require('node:assert/strict');
         await workspace.setViewportSize({ width: 1050, height: 850 });
         console.log(`${name}: WP2 preference persistence, Settings synchronization and save failure passed.`);
         console.log(`${name}: WP1 welcome layout, focus spacing, engine colors, document disclosure and collection navigation passed.`);
+        // Collection scenarios replace the runtime fixture. Restore the Settings
+        // fixture before exercising the new project controls.
+        await workspace.reload();
         await openSettings();
         assert.equal(await workspace.locator('#urls-section #extractor').count(),0);
         await workspace.fill('#project-minimum-characters','500');
