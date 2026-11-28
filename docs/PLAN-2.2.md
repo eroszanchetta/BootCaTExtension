@@ -50,12 +50,24 @@ Authorized 28 November 2026: optional minimum/maximum character filters in Setti
 
 Collect actual failures and comparison examples early. Evaluate sampling/uncertainty policy independently from the detector; benchmark local alternatives for accuracy, language coverage, browser compatibility, speed, package size and licensing. Agree the resulting detector/inclusion policy before implementation; defer substantial model integration if necessary.
 
+## Maintenance work package — after 2.2, before starting 2.3
+
+Authorized for planning on 28 November 2026. Complete the 2.2 release first, then carry out this maintenance package before implementing 2.3 features. This package preserves user-visible behavior, portable-project compatibility, stored data and supported browsers; agree any behavior change separately.
+
+- Split the workspace controller into focused modules for document rendering, download orchestration, recovery and export, with clear ownership of shared state.
+- Clarify the document-state model: extraction success, language/length review, manual acceptance, inclusion/exclusion and recovery history. Centralize the rules and retain existing user decisions.
+- Split browser workflows into independent scenarios with isolated fixtures, reliable setup/cleanup and clearer failure reporting. Reduce unit tests' dependence on rewriting application source or inspecting its internal variables.
+- Add consistent formatting and general JavaScript linting. Evaluate incremental type checking for stored records, detector results and cross-module messages; avoid a wholesale rewrite or framework migration.
+- Validate each refactoring step against the existing unit, Chromium/Firefox, export, recovery, concurrency and portable-project checks. Preserve original files, manual edits, ordering, preferences and metadata across reopening and project transfer.
+
+Deliver this work in small reviewable PRs. The package is complete when these responsibilities and rules are explicit, the regression checks pass, and no unapproved product behavior or file-format changes have been introduced. Bing and pseudo-XML remain 2.3 work and do not belong in this maintenance package.
+
 ## Deferred to 2.3
 
 - Pseudo-XML export: preserve the legacy text/s tag structure, attribute order and one file per document under xml_corpus. Use standard XML escaping, UTF-8, standard original-document media types, and consistent stable IDs/filenames. Sentence segmentation remains undecided.
 - Bing support, with a reserved teal accent distinct from Google blue and Ecosia green. This is a design reservation, not an implemented adapter or engine choice.
 
-Suggested delivery order: WP1 through WP7, gathering WP7 examples early. WP1, WP2 and WP3 are authorized for implementation.
+Delivery order: WP1 through WP7 and completion of the 2.2 release, followed by the maintenance work package, then 2.3 feature development. Gather WP7 examples early. Individual implementation scope continues to require the agreed package decisions.
 
 ## Manual empty-query follow-up and small interface changes (authorized 27 November 2026)
 
